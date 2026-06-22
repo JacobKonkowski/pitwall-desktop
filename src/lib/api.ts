@@ -117,6 +117,14 @@ export async function getVrOverlayStatus(): Promise<VrOverlayStatus> {
   return invoke("get_vr_overlay_status");
 }
 
+export async function checkVrHudHealth(): Promise<boolean> {
+  return invoke("check_vr_hud_health");
+}
+
+export async function openVrHudPreview(): Promise<void> {
+  return invoke("open_vr_hud_preview_cmd");
+}
+
 export async function startAudioCoach(): Promise<void> {
   return invoke("start_audio_coach");
 }

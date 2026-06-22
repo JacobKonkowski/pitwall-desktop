@@ -1,8 +1,11 @@
 //! Desktop pop-out overlay window (monitor / companion screen).
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use std::sync::Arc;
 
-use crate::settings::load_settings;
+use tauri::{AppHandle, Manager, WebviewWindow, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+use crate::commands::AppState;
+use crate::settings::{load_settings, save_settings};
 
 const OVERLAY_LABEL: &str = "live-overlay";
 
@@ -16,7 +19,7 @@ pub fn open_desktop_overlay(app: &AppHandle) -> Result<(), String> {
     }
 
     let settings = load_settings();
-    WebviewWindowBuilder::new(
+    let win = WebviewWindowBuilder::new(
         app,
         OVERLAY_LABEL,
         WebviewUrl::App("overlay.html".into()),
@@ -30,7 +33,30 @@ pub fn open_desktop_overlay(app: &AppHandle) -> Result<(), String> {
     .resizable(true)
     .build()
     .map_err(|e| e.to_string())?;
+
+    // Remember where the user left the overlay so it reopens in the same spot.
+    let app_handle = app.clone();
+    let event_win = win.clone();
+    win.on_window_event(move |event| {
+        if matches!(event, WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed) {
+            save_overlay_geometry(&app_handle, &event_win);
+        }
+    });
+
     Ok(())
+}
+
+fn save_overlay_geometry(app: &AppHandle, win: &WebviewWindow) {
+    let (Ok(pos), Ok(size)) = (win.outer_position(), win.inner_size()) else {
+        return;
+    };
+    let state = app.state::<Arc<AppState>>();
+    let mut settings = state.settings.lock();
+    settings.overlay_x = pos.x;
+    settings.overlay_y = pos.y;
+    settings.overlay_width = size.width;
+    settings.overlay_height = size.height;
+    let _ = save_settings(&settings);
 }
 
 pub fn close_desktop_overlay(app: &AppHandle) -> Result<(), String> {

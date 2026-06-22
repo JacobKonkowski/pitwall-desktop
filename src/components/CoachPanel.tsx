@@ -19,6 +19,19 @@ function severityClass(severity: string): string {
   }
 }
 
+const KIND_META: Record<string, { icon: string; label: string }> = {
+  early_lift: { icon: "🔻", label: "Early lift" },
+  late_brake: { icon: "🛑", label: "Late braking" },
+  high_steering: { icon: "↩️", label: "Steering" },
+  sector_weakness: { icon: "⏱️", label: "Sector" },
+  consistency: { icon: "📊", label: "Consistency" },
+  fuel: { icon: "⛽", label: "Fuel" },
+};
+
+function kindMeta(kind: string): { icon: string; label: string } {
+  return KIND_META[kind] ?? { icon: "💡", label: "Tip" };
+}
+
 export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Props) {
   const [report, setReport] = useState<CoachReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,6 +129,7 @@ export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Prop
             const active =
               insight.lapNumbers.length > 0 &&
               insight.lapNumbers.every((n) => highlightedLaps.includes(n));
+            const meta = kindMeta(insight.kind);
             return (
               <button
                 key={`${insight.kind}-${insight.title}`}
@@ -123,7 +137,12 @@ export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Prop
                 className={`${severityClass(insight.severity)}${active ? " coach-card-active" : ""}`}
                 onClick={() => handleInsightClick(insight)}
               >
-                <strong>{insight.title}</strong>
+                <strong>
+                  <span className="coach-card-icon" aria-hidden="true">
+                    {meta.icon}
+                  </span>
+                  {insight.title}
+                </strong>
                 <p>{insight.detail}</p>
                 {insight.lapNumbers.length > 0 && (
                   <span className="muted small">Laps: {insight.lapNumbers.join(", ")}</span>

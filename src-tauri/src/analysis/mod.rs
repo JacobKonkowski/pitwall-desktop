@@ -3,6 +3,7 @@ pub mod fuel_tire;
 pub mod lap_segmenter;
 pub mod pipeline;
 pub mod sector_splitter;
+pub mod trace_coach;
 pub mod types;
 
 pub use coach::{build_coach_report, CoachInsight, CoachReport, SessionCoachStats};

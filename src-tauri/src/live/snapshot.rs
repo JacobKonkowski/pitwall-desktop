@@ -6,6 +6,7 @@ pub enum LiveConnectionState {
     #[default]
     Disconnected,
     WaitingForSession,
+    Reconnecting,
     Connected,
     Error,
 }

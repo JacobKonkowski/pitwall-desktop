@@ -58,6 +58,8 @@ pub fn run() {
             commands::start_vr_overlay,
             commands::stop_vr_overlay,
             commands::get_vr_overlay_status,
+            commands::check_vr_hud_health,
+            commands::open_vr_hud_preview_cmd,
             commands::start_audio_coach,
             commands::stop_audio_coach,
             commands::get_audio_coach_status,

@@ -1,5 +1,7 @@
 # PitWall Desktop
 
+[![CI](https://github.com/JacobKonkowski/pitwall-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobKonkowski/pitwall-desktop/actions/workflows/ci.yml)
+
 iRacing telemetry analysis for Windows — post-session IBT import, live shared-memory telemetry, rule-based coaching, optional local AI summaries, and in-race HUD overlays (desktop + VR via OpenKneeboard).
 
 **Repository:** [github.com/JacobKonkowski/pitwall-desktop](https://github.com/JacobKonkowski/pitwall-desktop)
@@ -75,6 +77,7 @@ Record telemetry in-car with **Alt+L**. Files are saved to `Documents\iRacing\te
 |-----|-------------|
 | [docs/SETUP.md](docs/SETUP.md) | Step-by-step install, iRacing, live, VR, Ollama, troubleshooting |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical audit — modules, IPC, schema, data flow |
+| [docs/VR_NATIVE_SPIKE.md](docs/VR_NATIVE_SPIKE.md) | Native OpenXR in-headset HUD research & decision (no-go; OpenKneeboard is the path) |
 
 ## Stack
 

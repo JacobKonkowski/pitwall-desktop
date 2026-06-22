@@ -152,11 +152,12 @@ Uses Windows built-in TTS — no extra voice software required.
 Use iRacing in **OpenXR** mode (not SteamVR-only).
 
 1. PitWall **Live** → **Start live monitor** → **Start in-headset HUD**
-2. Copy the URL shown: `http://127.0.0.1:17342/vr`
-3. Install [OpenKneeboard](https://openkneeboard.com/)
-4. OpenKneeboard → **Settings** → **Tabs** → **Add tab** → **Web Dashboard**
-5. Paste the PitWall URL
-6. Start iRacing in VR, join a session, use OpenKneeboard recenter binding
+2. Click **Preview in browser** to confirm the HUD shows live data
+3. Copy the URL shown: `http://127.0.0.1:17342/vr`
+4. Install [OpenKneeboard](https://openkneeboard.com/)
+5. OpenKneeboard → **Settings** → **Tabs** → **Add tab** → **Web Dashboard**
+6. Paste the PitWall URL
+7. Start iRacing in VR, join a session, use OpenKneeboard recenter binding
 
 Same approach used by many iRacing VR overlays (iOverlay, RaceLab, etc.) — OpenXR via OpenKneeboard, not SteamVR.
 

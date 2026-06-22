@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  checkVrHudHealth,
   closeDesktopOverlay,
   formatDelta,
   formatLapTime,
@@ -12,6 +13,7 @@ import {
   onLiveStatus,
   onLiveTelemetry,
   openDesktopOverlay,
+  openVrHudPreview,
   saveSettings,
   startAudioCoach,
   startLiveMonitor,
@@ -27,6 +29,7 @@ function stateClass(state: LiveStatus["state"]): string {
     case "connected":
       return "live-pill live-pill-ok";
     case "waitingForSession":
+    case "reconnecting":
       return "live-pill live-pill-wait";
     case "error":
       return "live-pill live-pill-err";
@@ -41,6 +44,8 @@ function stateLabel(state: LiveStatus["state"]): string {
       return "Connected";
     case "waitingForSession":
       return "Waiting";
+    case "reconnecting":
+      return "Reconnecting";
     case "error":
       return "Error";
     default:
@@ -57,6 +62,7 @@ export function LivePanel() {
   const [running, setRunning] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [vrStatus, setVrStatus] = useState<VrOverlayStatus | null>(null);
+  const [vrHudHealthy, setVrHudHealthy] = useState<boolean | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioCoachStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -102,6 +108,29 @@ export function LivePanel() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!vrStatus?.active) {
+      setVrHudHealthy(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = () => {
+      checkVrHudHealth()
+        .then((ok) => {
+          if (!cancelled) setVrHudHealthy(ok);
+        })
+        .catch(() => {
+          if (!cancelled) setVrHudHealthy(false);
+        });
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [vrStatus?.active]);
+
   const handleStart = async () => {
     setError(null);
     try {
@@ -142,10 +171,20 @@ export function LivePanel() {
     try {
       if (vrStatus?.active) {
         await stopVrOverlay();
+        setVrHudHealthy(null);
       } else {
         await startVrOverlay();
       }
       setVrStatus(await getVrOverlayStatus());
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handlePreviewVr = async () => {
+    setError(null);
+    try {
+      await openVrHudPreview();
     } catch (e) {
       setError(String(e));
     }
@@ -228,10 +267,22 @@ export function LivePanel() {
         )}
         {vrStatus?.active && vrStatus.hudUrl && (
           <div className="vr-hud-help panel">
-            <h3>In-headset setup (no SteamVR)</h3>
+            <div className="vr-hud-help-header">
+              <h3>In-headset setup (no SteamVR)</h3>
+              {vrHudHealthy === true && (
+                <span className="vr-health-pill vr-health-ok">HUD server ready</span>
+              )}
+              {vrHudHealthy === false && (
+                <span className="vr-health-pill vr-health-err">HUD server not responding</span>
+              )}
+            </div>
             <p className="muted small">
               Use iRacing in <strong>OpenXR</strong> mode. Add this URL as a{" "}
-              <strong>Web Dashboard</strong> tab in OpenKneeboard (same approach as RaceLab/iOverlay):
+              <strong>Web Dashboard</strong> tab in{" "}
+              <a href="https://openkneeboard.com/" target="_blank" rel="noreferrer">
+                OpenKneeboard
+              </a>{" "}
+              (same approach as RaceLab/iOverlay):
             </p>
             <div className="vr-url-row">
               <code>{vrStatus.hudUrl}</code>
@@ -241,11 +292,20 @@ export function LivePanel() {
               >
                 Copy URL
               </button>
+              <button type="button" onClick={handlePreviewVr}>
+                Preview in browser
+              </button>
             </div>
             <ol className="vr-steps muted small">
-              <li>Install OpenKneeboard from openkneeboard.com</li>
+              <li>
+                Install{" "}
+                <a href="https://openkneeboard.com/" target="_blank" rel="noreferrer">
+                  OpenKneeboard
+                </a>
+              </li>
               <li>Settings → Tabs → Add tab → Web Dashboard → paste URL above</li>
-              <li>Start iRacing in VR (OpenXR), join session, then bind recenter in OpenKneeboard</li>
+              <li>Preview in browser first to confirm data appears, then use in VR</li>
+              <li>Start iRacing in VR (OpenXR), join session, bind recenter in OpenKneeboard</li>
             </ol>
           </div>
         )}

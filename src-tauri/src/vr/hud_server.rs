@@ -18,6 +18,47 @@ pub fn hud_url() -> String {
     format!("http://127.0.0.1:{HUD_PORT}/vr")
 }
 
+/// Returns true if the HUD HTTP server is accepting connections.
+pub fn check_hud_health() -> bool {
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+
+    let addr: SocketAddr = format!("127.0.0.1:{HUD_PORT}")
+        .parse()
+        .unwrap_or_else(|_| "127.0.0.1:17342".parse().unwrap());
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(400)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(400)));
+    let req = "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 128];
+    let Ok(n) = stream.read(&mut buf) else {
+        return false;
+    };
+    String::from_utf8_lossy(&buf[..n]).contains("200 OK")
+}
+
+pub fn open_hud_preview() -> Result<(), String> {
+    let url = hud_url();
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = url;
+        Err("HUD preview is supported on Windows only".into())
+    }
+}
+
 pub fn run_hud_server(
     service: Arc<VrOverlayService>,
     live: Arc<LiveService>,
@@ -67,6 +108,7 @@ fn handle_connection(stream: &mut std::net::TcpStream, live: &LiveService) -> st
             let json = serde_json::to_string(&snap).unwrap_or_else(|_| "{}".into());
             ("200 OK", "application/json", json)
         }
+        "/api/health" => ("200 OK", "application/json", r#"{"ok":true}"#.to_string()),
         "/vr" | "/" => ("200 OK", "text/html; charset=utf-8", VR_HUD_HTML.to_string()),
         _ => (
             "404 Not Found",
@@ -99,12 +141,16 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       padding: 12px 14px;
       min-width: 280px;
     }
-    .track { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .track { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .car { font-size: 11px; color: #aab4c4; margin-bottom: 4px; }
     .lap { font-size: 22px; font-weight: 700; margin: 4px 0; }
-    .delta { font-size: 14px; margin-bottom: 6px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; margin-bottom: 4px; }
+    .delta { font-size: 13px; }
     .delta.slow { color: #ef5350; }
     .delta.fast { color: #66bb6a; }
-    .fuel { color: #aab4c4; font-size: 13px; margin-bottom: 8px; }
+    .meta { color: #aab4c4; font-size: 12px; margin-bottom: 6px; }
+    .tires { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 10px; color: #8899aa; margin-bottom: 8px; }
+    .tires span { text-align: center; }
     .sectors { display: flex; flex-direction: column; gap: 4px; }
     .sector { display: grid; grid-template-columns: 24px 1fr; gap: 6px; align-items: center; font-size: 12px; }
     .bar { height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
@@ -131,7 +177,8 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
         document.getElementById("root").innerHTML = '<p class="wait">Waiting for iRacing session…</p>';
         return;
       }
-      const deltaClass = s.deltaToBestMs != null && s.deltaToBestMs > 0 ? "slow" : "fast";
+      const deltaBestClass = s.deltaToBestMs != null && s.deltaToBestMs > 0 ? "slow" : "fast";
+      const deltaLastClass = s.deltaToLastMs != null && s.deltaToLastMs > 0 ? "slow" : "fast";
       const sectors = [1,2,3].map(n => {
         const sec = (s.sectors || []).find(x => x.sectorNum === n);
         const done = sec && sec.completed;
@@ -141,9 +188,19 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       }).join("");
       document.getElementById("root").innerHTML = `
         <div class="track">${s.track} · ${s.sessionType || ""}</div>
+        <div class="car">${s.car || ""}</div>
         <div class="lap">Lap ${s.lap} · ${fmt(s.lapTimeMs)}</div>
-        <div class="delta ${deltaClass}">Δ best ${fmtDelta(s.deltaToBestMs)}</div>
-        <div class="fuel">Fuel ${(s.fuelLevel || 0).toFixed(1)} L · ${(s.speed || 0).toFixed(0)} km/h</div>
+        <div class="row">
+          <span class="delta ${deltaBestClass}">Δ best ${fmtDelta(s.deltaToBestMs)}</span>
+          <span class="delta ${deltaLastClass}">Δ last ${fmtDelta(s.deltaToLastMs)}</span>
+        </div>
+        <div class="meta">Best ${fmt(s.bestLapMs)} · Fuel ${(s.fuelLevel || 0).toFixed(1)} L · ${(s.speed || 0).toFixed(0)} km/h</div>
+        <div class="tires">
+          <span>LF ${(s.lfTemp || 0).toFixed(0)}°</span>
+          <span>RF ${(s.rfTemp || 0).toFixed(0)}°</span>
+          <span>LR ${(s.lrTemp || 0).toFixed(0)}°</span>
+          <span>RR ${(s.rrTemp || 0).toFixed(0)}°</span>
+        </div>
         <div class="sectors">${sectors}</div>`;
     }
     async function poll() {

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { getVersion } from "@tauri-apps/api/app";
+
 import {
 
   checkIracingConfig,
@@ -73,6 +75,8 @@ type AppTab = "analyze" | "live";
 function App() {
 
   const [tab, setTab] = useState<AppTab>("analyze");
+
+  const [version, setVersion] = useState<string | null>(null);
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
 
@@ -155,6 +159,12 @@ function App() {
   }, []);
 
 
+
+  useEffect(() => {
+
+    getVersion().then(setVersion).catch(() => setVersion(null));
+
+  }, []);
 
   useEffect(() => {
 
@@ -346,7 +356,10 @@ function App() {
 
       <header className="app-header">
 
-        <h1>PitWall Desktop</h1>
+        <h1>
+          PitWall Desktop
+          {version && <span className="app-version">v{version}</span>}
+        </h1>
 
         <nav className="app-tabs">
 

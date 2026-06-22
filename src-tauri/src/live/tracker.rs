@@ -34,6 +34,22 @@ impl LiveTracker {
         }
     }
 
+    pub fn track(&self) -> &str {
+        &self.track
+    }
+
+    /// Clear per-session lap and sector state. Used when the track changes
+    /// (driver moved to a new session) so deltas and bests don't carry over.
+    pub fn reset_session(&mut self) {
+        self.current_lap = 0;
+        self.lap_start_time = 0.0;
+        self.last_lap_ms = None;
+        self.best_lap_ms = None;
+        self.sector_start_time = 0.0;
+        self.completed_sectors.clear();
+        self.last_bounds_len = 0;
+    }
+
     pub fn set_session_meta(&mut self, session: &SessionInfo) {
         self.track = if session.weekend_info.track_display_name.is_empty() {
             session.weekend_info.track_name.clone()

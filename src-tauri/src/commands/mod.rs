@@ -170,7 +170,7 @@ pub fn clear_database_cmd(state: State<'_, Arc<AppState>>) -> Result<usize, Stri
 
 #[tauri::command]
 pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.live.start(app.clone());
+    state.live.start(app.clone(), state.inner().clone());
     let settings = state.settings.lock().clone();
     if settings.vr_overlay_enabled {
         state.vr.start(state.live.clone());
@@ -204,13 +204,28 @@ pub fn get_coach_report(
     state: State<'_, Arc<AppState>>,
     session_id: i64,
 ) -> Result<crate::analysis::coach::CoachReport, String> {
-    let detail = state
-        .db
-        .lock()
+    let db = state.db.lock();
+    let detail = db
         .get_session(session_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Session not found".to_string())?;
-    Ok(build_coach_report(session_id, &detail))
+
+    let mut report = build_coach_report(session_id, &detail);
+
+    // Trace-based insights: load traces only for candidate laps, then explain
+    // where time was lost. Failures here should not break the rule-based report.
+    let lap_ids = crate::analysis::trace_coach::select_trace_lap_ids(&detail);
+    if !lap_ids.is_empty() {
+        if let Ok(traces) = db.get_lap_traces(&lap_ids) {
+            let map: std::collections::HashMap<i64, Vec<crate::storage::TracePoint>> = traces
+                .into_iter()
+                .map(|t| (t.lap_id, t.points))
+                .collect();
+            crate::analysis::trace_coach::append_trace_insights(&mut report.insights, &detail, &map);
+        }
+    }
+
+    Ok(report)
 }
 
 #[tauri::command]
@@ -278,6 +293,16 @@ pub fn stop_vr_overlay(state: State<'_, Arc<AppState>>) -> Result<(), String> {
 #[tauri::command]
 pub fn get_vr_overlay_status(state: State<'_, Arc<AppState>>) -> VrOverlayStatus {
     state.vr.status()
+}
+
+#[tauri::command]
+pub fn check_vr_hud_health() -> bool {
+    crate::vr::check_hud_health()
+}
+
+#[tauri::command]
+pub fn open_vr_hud_preview_cmd() -> Result<(), String> {
+    crate::vr::open_hud_preview()
 }
 
 #[tauri::command]

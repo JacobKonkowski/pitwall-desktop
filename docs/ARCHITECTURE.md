@@ -286,7 +286,7 @@ Sends a text prompt with lap stats + insight bullets — **not** raw IBT. POST t
 - Tauri `WebviewWindowBuilder` → label `live-overlay`, `overlay.html`.
 - Always-on-top, transparent, undecorated.
 - Subscribes to `live-telemetry` events (same as Live panel).
-- Position/size from `settings.json` (not yet persisted on close).
+- Position/size from `settings.json`; **persisted on close** via `overlay/desktop.rs` window event handler.
 
 ### VR / in-headset (Phase 3B)
 
@@ -297,9 +297,9 @@ RaceLab and similar tools inject HUDs through **OpenXR** — not SteamVR. PitWal
 - User adds the URL as a **Web Dashboard** tab in [OpenKneeboard](https://openkneeboard.com/)
 - Works with iRacing in **OpenXR** mode — no SteamVR, no CMake, no OpenVR SDK
 
-**Why not native OpenXR injection?** Third-party in-headset overlays on Windows typically require an OpenXR API layer (how OpenKneeboard and RaceLabVR work). A standalone OpenVR overlay required SteamVR. The web HUD path is the supported no-SteamVR workflow used by many sim racers today.
+**HUD content:** track, session type, car, lap time, Δ best, Δ last, best lap, fuel, speed, sector progress bars, tire temps (LF/RF/LR/RR).
 
-**Future:** Native OpenXR composition layer (API layer) could remove the OpenKneeboard dependency.
+**Why not native OpenXR injection?** See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md). Spike decision (June 2026): **no-go** on a PitWall-native OpenXR API layer for now. `XR_EXTX_overlay` is unsupported on consumer runtimes; the only native path is the same `xrEndFrame` API-layer hooking OpenKneeboard already does. OpenKneeboard + web HUD remains the official workflow.
 
 ### Audio coach (Phase 3C)
 
@@ -359,16 +359,25 @@ No optional features required for VR HUD — the HTTP server is always compiled.
 | Sub-session lap segmentation | Done (v1 fix) |
 | Sector splitter fix | Done (v1 fix) |
 
+### Implemented (v3 roadmap)
+
+| Item | Status |
+|------|--------|
+| Trace-based coach (`trace_coach.rs`) | Done — early lift, late brake, high steering |
+| Live reconnect + backoff | Done — `Reconnecting` state |
+| Post-session IBT import on live disconnect | Done — scans last 10 min |
+| GitHub Actions CI | Done — `.github/workflows/ci.yml` |
+| Overlay position persist on close | Done |
+| App version in header | Done |
+| VR native spike doc | Done — [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md), no-go on native layer |
+
 ### Gaps / limitations
 
 | Item | Detail |
 |------|--------|
-| Native OpenXR API layer | Would remove OpenKneeboard step; not started |
+| Native OpenXR API layer | Researched; **deferred** — see VR_NATIVE_SPIKE.md |
 | OpenVR / SteamVR path | Removed — user request |
-| VR position/scale persistence | Scale in settings; transform offset hardcoded |
-| Overlay position save on close | Read from settings on open; not written back |
-| Auto-import on session end | Plan mentioned; watcher only fires on file **create** |
-| Trace-based coach insights | Planned throttle/brake anomalies — not coded |
+| OpenKneeboard required for VR | By design; PitWall serves URL only |
 | MoTeC export | Out of scope, not started |
 | Multi-car analysis | Out of scope, not started |
 | Real-time LLM coaching | Out of scope |

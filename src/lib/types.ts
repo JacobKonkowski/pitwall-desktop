@@ -96,6 +96,7 @@ export interface IracingConfigCheck {
 export type LiveConnectionState =
   | "disconnected"
   | "waitingForSession"
+  | "reconnecting"
   | "connected"
   | "error";
 

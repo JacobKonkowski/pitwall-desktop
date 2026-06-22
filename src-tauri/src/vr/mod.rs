@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::live::LiveService;
 
-pub use hud_server::{hud_url, HUD_PORT};
+pub use hud_server::{check_hud_health, hud_url, open_hud_preview, HUD_PORT};
 
 pub struct VrOverlayService {
     cancel: Mutex<Option<CancellationToken>>,
