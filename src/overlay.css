@@ -1,0 +1,71 @@
+.overlay-root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: #e8eef8;
+  background: rgba(12, 16, 24, 0.88);
+  border: 1px solid rgba(79, 195, 247, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 280px;
+  -webkit-app-region: drag;
+}
+
+.overlay-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.overlay-lap {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.overlay-delta {
+  margin-bottom: 6px;
+}
+
+.overlay-fuel {
+  color: #aab4c4;
+  margin-bottom: 8px;
+}
+
+.overlay-sectors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.overlay-sector {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.overlay-sector-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.overlay-sector-fill {
+  height: 100%;
+  background: #4fc3f7;
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+.overlay-wait {
+  color: #888;
+  padding: 1rem;
+}
+
+.overlay-delta.slow {
+  color: #ef5350;
+}
+
+.overlay-delta.fast {
+  color: #66bb6a;
+}

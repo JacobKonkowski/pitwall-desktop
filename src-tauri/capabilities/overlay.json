@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Capability for the live telemetry overlay window",
+  "windows": ["live-overlay"],
+  "permissions": [
+    "core:default"
+  ]
+}

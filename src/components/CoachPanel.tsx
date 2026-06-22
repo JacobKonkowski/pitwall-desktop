@@ -1,0 +1,142 @@
+import { useEffect, useState } from "react";
+import { generateCoachSummary, getCoachReport } from "../lib/api";
+import type { CoachInsight, CoachReport } from "../lib/types";
+
+interface Props {
+  sessionId: number;
+  highlightedLaps: number[];
+  onHighlightLaps: (lapNumbers: number[]) => void;
+}
+
+function severityClass(severity: string): string {
+  switch (severity) {
+    case "warn":
+      return "coach-card coach-warn";
+    case "good":
+      return "coach-card coach-good";
+    default:
+      return "coach-card";
+  }
+}
+
+export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Props) {
+  const [report, setReport] = useState<CoachReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryModel, setSummaryModel] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setSummary(null);
+    getCoachReport(sessionId)
+      .then(setReport)
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [sessionId]);
+
+  const handleInsightClick = (insight: CoachInsight) => {
+    if (insight.lapNumbers.length > 0) {
+      onHighlightLaps(insight.lapNumbers);
+    }
+  };
+
+  const handleGenerateSummary = async () => {
+    setAiLoading(true);
+    setError(null);
+    try {
+      const result = await generateCoachSummary(sessionId);
+      setSummary(result.markdown);
+      setSummaryModel(result.model);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="panel coach-panel">
+        <p className="muted">Analyzing session…</p>
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="panel coach-panel">
+        <p className="muted">{error ?? "No coaching data available."}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel coach-panel">
+      <div className="panel-header">
+        <h2>Coach</h2>
+        <button onClick={handleGenerateSummary} disabled={aiLoading}>
+          {aiLoading ? "Generating…" : "Generate AI summary"}
+        </button>
+      </div>
+
+      <div className="coach-stats">
+        <span>{report.summary.validLapCount} valid laps</span>
+        {report.summary.bestLapMs != null && (
+          <span>Best {formatSec(report.summary.bestLapMs)}</span>
+        )}
+        {report.summary.consistencyMs != null && (
+          <span>σ {formatSec(report.summary.consistencyMs)}</span>
+        )}
+        {report.summary.weakestSector != null && (
+          <span>
+            Weakest S{report.summary.weakestSector}
+            {report.summary.weakestSectorLossMs != null &&
+              ` (+${formatSec(report.summary.weakestSectorLossMs)} avg)`}
+          </span>
+        )}
+      </div>
+
+      {error && <p className="live-error">{error}</p>}
+
+      {summary && (
+        <div className="coach-summary">
+          <h3>AI summary {summaryModel ? `(${summaryModel})` : ""}</h3>
+          <pre>{summary}</pre>
+        </div>
+      )}
+
+      {report.insights.length === 0 ? (
+        <p className="muted">No insights yet — need more valid laps.</p>
+      ) : (
+        <div className="coach-cards">
+          {report.insights.map((insight) => {
+            const active =
+              insight.lapNumbers.length > 0 &&
+              insight.lapNumbers.every((n) => highlightedLaps.includes(n));
+            return (
+              <button
+                key={`${insight.kind}-${insight.title}`}
+                type="button"
+                className={`${severityClass(insight.severity)}${active ? " coach-card-active" : ""}`}
+                onClick={() => handleInsightClick(insight)}
+              >
+                <strong>{insight.title}</strong>
+                <p>{insight.detail}</p>
+                {insight.lapNumbers.length > 0 && (
+                  <span className="muted small">Laps: {insight.lapNumbers.join(", ")}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatSec(ms: number): string {
+  return `${(ms / 1000).toFixed(3)}s`;
+}
