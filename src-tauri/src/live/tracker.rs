@@ -3,6 +3,7 @@ use pitwall::SessionInfo;
 use crate::analysis::types::SectorBoundary;
 use crate::ingest::frame::AnalysisFrame;
 
+use super::competitors::{build_roster, RosterEntry};
 use super::snapshot::{LiveSectorProgress, LiveSnapshot};
 
 pub struct LiveTracker {
@@ -16,6 +17,8 @@ pub struct LiveTracker {
     sector_start_time: f64,
     completed_sectors: Vec<(i32, f64)>,
     last_bounds_len: usize,
+    roster: Vec<RosterEntry>,
+    player_car_idx: i32,
 }
 
 impl LiveTracker {
@@ -31,11 +34,21 @@ impl LiveTracker {
             sector_start_time: 0.0,
             completed_sectors: Vec::new(),
             last_bounds_len: 0,
+            roster: Vec::new(),
+            player_car_idx: -1,
         }
     }
 
     pub fn track(&self) -> &str {
         &self.track
+    }
+
+    pub fn roster(&self) -> &[RosterEntry] {
+        &self.roster
+    }
+
+    pub fn player_car_idx(&self) -> i32 {
+        self.player_car_idx
     }
 
     /// Clear per-session lap and sector state. Used when the track changes
@@ -51,6 +64,12 @@ impl LiveTracker {
     }
 
     pub fn set_session_meta(&mut self, session: &SessionInfo) {
+        self.roster = build_roster(session);
+        if let Some(driver_info) = &session.driver_info {
+            if let Some(idx) = driver_info.driver_car_idx {
+                self.player_car_idx = idx;
+            }
+        }
         self.track = if session.weekend_info.track_display_name.is_empty() {
             session.weekend_info.track_name.clone()
         } else {
@@ -153,6 +172,10 @@ impl LiveTracker {
             rf_temp: frame.rf_temp,
             lr_temp: frame.lr_temp,
             rr_temp: frame.rr_temp,
+            on_pit_road: frame.on_pit_road,
+            // Competitor and session-wide fields are merged in by the live loop
+            // from the separate CarIdx telemetry stream.
+            ..Default::default()
         }
     }
 }

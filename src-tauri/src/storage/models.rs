@@ -100,6 +100,39 @@ pub struct TireSummary {
     pub note: String,
 }
 
+/// One competitor row captured in a post-session standings snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompetitorStanding {
+    pub position: i32,
+    pub class_position: i32,
+    pub car_number: String,
+    pub driver_name: String,
+    pub class_id: i32,
+    pub class_color: String,
+    pub best_lap_ms: Option<f64>,
+    pub is_player: bool,
+}
+
+/// Snapshot of the live leaderboard at the moment a live session ended, linked
+/// to an imported IBT session when one can be matched.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionStandings {
+    pub id: i64,
+    pub session_id: Option<i64>,
+    pub track: String,
+    pub session_type: String,
+    pub session_date: String,
+    pub session_fastest_ms: Option<f64>,
+    pub player_best_ms: Option<f64>,
+    pub player_position: Option<i32>,
+    pub player_class_position: Option<i32>,
+    pub competitors: Vec<CompetitorStanding>,
+    pub traffic_laps: Vec<i32>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportStatus {

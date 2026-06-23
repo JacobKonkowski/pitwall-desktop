@@ -55,9 +55,25 @@ CREATE TABLE IF NOT EXISTS lap_traces (
     steering REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS session_standings (
+    id INTEGER PRIMARY KEY,
+    session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+    track TEXT NOT NULL DEFAULT '',
+    session_type TEXT NOT NULL DEFAULT '',
+    session_date TEXT NOT NULL DEFAULT '',
+    session_fastest_ms REAL,
+    player_best_ms REAL,
+    player_position INTEGER,
+    player_class_position INTEGER,
+    competitors_json TEXT NOT NULL DEFAULT '[]',
+    traffic_laps_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(session_id);
 CREATE INDEX IF NOT EXISTS idx_sectors_lap ON sectors(lap_id);
 CREATE INDEX IF NOT EXISTS idx_traces_lap ON lap_traces(lap_id);
+CREATE INDEX IF NOT EXISTS idx_standings_session ON session_standings(session_id);
 ";
 
 pub struct Database {
@@ -195,9 +211,101 @@ impl Database {
             "DELETE FROM lap_traces;
              DELETE FROM sectors;
              DELETE FROM laps;
-             DELETE FROM sessions;",
+             DELETE FROM sessions;
+             DELETE FROM session_standings;",
         )?;
         Ok(count as usize)
+    }
+
+    /// Persist a post-session standings snapshot. Returns the new row id.
+    pub fn insert_standings(&self, standings: &SessionStandings) -> Result<i64> {
+        let competitors_json = serde_json::to_string(&standings.competitors)?;
+        let traffic_laps_json = serde_json::to_string(&standings.traffic_laps)?;
+        self.conn.execute(
+            "INSERT INTO session_standings (
+                session_id, track, session_type, session_date, session_fastest_ms,
+                player_best_ms, player_position, player_class_position,
+                competitors_json, traffic_laps_json, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                standings.session_id,
+                standings.track,
+                standings.session_type,
+                standings.session_date,
+                standings.session_fastest_ms,
+                standings.player_best_ms,
+                standings.player_position,
+                standings.player_class_position,
+                competitors_json,
+                traffic_laps_json,
+                standings.created_at,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Link the most recent unlinked standings snapshot for the same track to a
+    /// freshly imported IBT session, so the post-session view can show the field.
+    pub fn link_standings_to_session(&self, session_id: i64) -> Result<bool> {
+        let track: String = match self.conn.query_row(
+            "SELECT track FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        ) {
+            Ok(t) => t,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
+            Err(e) => return Err(e.into()),
+        };
+
+        let standings_id: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM session_standings
+                 WHERE session_id IS NULL AND track = ?1
+                 ORDER BY created_at DESC LIMIT 1",
+                params![track],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(id) = standings_id {
+            self.conn.execute(
+                "UPDATE session_standings SET session_id = ?1 WHERE id = ?2",
+                params![session_id, id],
+            )?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub fn get_standings_for_session(&self, session_id: i64) -> Result<Option<SessionStandings>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, track, session_type, session_date, session_fastest_ms,
+                    player_best_ms, player_position, player_class_position,
+                    competitors_json, traffic_laps_json, created_at
+             FROM session_standings WHERE session_id = ?1
+             ORDER BY created_at DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![session_id])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        let competitors_json: String = row.get(9)?;
+        let traffic_laps_json: String = row.get(10)?;
+        Ok(Some(SessionStandings {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            track: row.get(2)?,
+            session_type: row.get(3)?,
+            session_date: row.get(4)?,
+            session_fastest_ms: row.get(5)?,
+            player_best_ms: row.get(6)?,
+            player_position: row.get(7)?,
+            player_class_position: row.get(8)?,
+            competitors: serde_json::from_str(&competitors_json).unwrap_or_default(),
+            traffic_laps: serde_json::from_str(&traffic_laps_json).unwrap_or_default(),
+            created_at: row.get(11)?,
+        }))
     }
 
     pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {

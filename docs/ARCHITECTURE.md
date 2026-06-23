@@ -1,6 +1,6 @@
 # PitWall Desktop — Architecture & Audit
 
-Last audited: June 21, 2026. Version **0.1.0**.
+Last audited: June 22, 2026. Version **0.1.0**.
 
 This document describes how the project is structured, how data flows through it, and what is implemented vs planned.
 
@@ -70,7 +70,7 @@ pitwall-desktop/
 | `ingest` | `ingest/` | IBT import, watcher, `app.ini` check |
 | `analysis` | `analysis/` | Lap segmentation, sectors, fuel/tire, coach rules |
 | `storage` | `storage/` | SQLite schema, models, queries |
-| `live` | `live/` | `LiveService`, snapshots, sector tracking |
+| `live` | `live/` | `LiveService`, snapshots, sector tracking, competitor leaderboard, pack state, standings persistence |
 | `coach` | `coach/` | Ollama HTTP client for AI summaries |
 | `settings` | `settings/` | `settings.json` load/save |
 | `overlay` | `overlay/` | Desktop `live-overlay` Tauri window |
@@ -95,10 +95,13 @@ pitwall-desktop/
 ### Live pipeline
 
 1. `Pitwall::connect().await` — shared memory connection.
-2. Subscribe to `AnalysisFrame` at `UpdateRate::Max(10)`.
-3. `session_updates()` stream — track/car name, sector boundaries from session YAML.
-4. `LiveTracker` — lap boundaries, sector crossings, deltas.
-5. Emit `live-telemetry` + `live-status` every **100 ms** (10 Hz UI throttle).
+2. Subscribe to `AnalysisFrame` at `UpdateRate::Max(10)` (player) **and** `CarIdxFrame` at `UpdateRate::Max(4)` (all cars + session-wide state).
+3. `session_updates()` stream — track/car name, sector boundaries, and the driver roster (`competitors::build_roster`) from session YAML.
+4. `LiveTracker` — lap boundaries, sector crossings, deltas; holds the cached roster and player car index.
+5. `merge_car_idx` — folds the latest `CarIdxFrame` into the snapshot: leaderboard (`competitors.rs`), positions, gaps, session deltas, pack state (`pack.rs`), flags, incidents, fuel/session remain.
+6. Per-lap traffic logging — laps run side-by-side (`pack_state.is_traffic()`) are accumulated for the standings snapshot.
+7. Emit `live-telemetry` + `live-status` every **100 ms** (10 Hz UI throttle).
+8. On disconnect — `persist_standings` writes a `session_standings` row (final field + traffic laps), later linked to an imported IBT by track + recency.
 
 ---
 
@@ -119,9 +122,11 @@ pitwall-desktop/
 | `LapTable` | Laps with sectors; select 2 for compare; coach highlight |
 | `LapCompareChart` | Speed/throttle/brake traces (Recharts) |
 | `FuelTirePanel` | Fuel and tire charts |
-| `CoachPanel` | Rule insights + Ollama summary button |
+| `CoachPanel` | Rule insights (incl. field pace / traffic) + Ollama summary button |
+| `SessionStandingsPanel` | Read-only standings snapshot for the session, when a live snapshot is linked |
+| `SessionLeaderboard` | Live leaderboard with overall/class toggle |
 | `ConfigBanner` | `app.ini` warnings; "Start live monitor" CTA |
-| `LivePanel` | Live controls, metrics, overlay/VR/audio toggles |
+| `LivePanel` | Live controls, metrics, leaderboard, overlay/VR/audio toggles |
 | `OverlayView` | Minimal HUD for pop-out window |
 
 ### API layer (`src/lib/api.ts`)
@@ -136,7 +141,7 @@ TypeScript types in `src/lib/types.ts` mirror Rust `serde` structs (`camelCase`)
 
 ## IPC reference
 
-### Commands (28)
+### Commands (29)
 
 | Command | Input | Output | Notes |
 |---------|-------|--------|-------|
@@ -155,7 +160,8 @@ TypeScript types in `src/lib/types.ts` mirror Rust `serde` structs (`camelCase`)
 | `stop_live_monitor` | — | — | Stops live, VR, audio |
 | `get_live_status` | — | `LiveStatus` | |
 | `get_live_snapshot` | — | `LiveSnapshot` | |
-| `get_coach_report` | `session_id` | `CoachReport` | Rule engine |
+| `get_coach_report` | `session_id` | `CoachReport` | Rule engine; adds field/traffic insights when standings linked |
+| `get_session_standings` | `session_id` | `SessionStandings?` | Linked live standings snapshot |
 | `generate_coach_summary` | `session_id` | `CoachSummaryResult` | Ollama |
 | `get_settings` | — | `AppSettings` | |
 | `save_settings_cmd` | `settings` | — | |
@@ -239,6 +245,21 @@ TypeScript types in `src/lib/types.ts` mirror Rust `serde` structs (`camelCase`)
 
 Downsampled points for compare chart: `dist_pct`, `speed`, `throttle`, `brake`, `gear`, `steering`.
 
+#### `session_standings`
+
+Post-session snapshot of the live field, captured on live disconnect and linked to an imported IBT by track + recency.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `session_id` | FK → sessions | Nullable; `ON DELETE SET NULL` |
+| `track`, `session_type`, `session_date` | TEXT | |
+| `session_fastest_ms`, `player_best_ms` | REAL | |
+| `player_position`, `player_class_position` | INTEGER | |
+| `competitors_json` | TEXT | Leaderboard rows (position, best lap, class) |
+| `traffic_laps_json` | TEXT | iRacing lap numbers run side-by-side |
+| `created_at` | TEXT | ISO |
+
 ### Settings — `%LOCALAPPDATA%\pitwall-desktop\settings.json`
 
 ```json
@@ -252,7 +273,11 @@ Downsampled points for compare chart: `dist_pct`, `speed`, `throttle`, `brake`, 
   "vrOverlayEnabled": false,
   "vrOverlayScale": 1.0,
   "audioCoachEnabled": true,
-  "audioCoachFuelThreshold": 5.0
+  "audioCoachFuelThreshold": 5.0,
+  "audioPackAlertsEnabled": true,
+  "audioFlagsEnabled": true,
+  "audioIncidentsEnabled": true,
+  "audioFuelRaceEnabled": true
 }
 ```
 
@@ -267,6 +292,8 @@ Rule-based insights (`analysis/coach.rs`) — no GPU, runs on imported SQLite da
 | `consistency` | Std dev of valid lap times |
 | `sector_weakness` | Per sub-session: avg sector loss vs best lap (>50 ms), per S1–S3 |
 | `fuel` | Last lap fuel > 115% of session average |
+| `session_pace` | Your best lap vs the session's fastest (from a linked standings snapshot) |
+| `traffic_pace` | Slow laps (>500 ms off best) that were also run in traffic |
 
 **Not yet implemented** (listed in v2 plan but absent from code):
 
@@ -297,7 +324,7 @@ RaceLab and similar tools inject HUDs through **OpenXR** — not SteamVR. PitWal
 - User adds the URL as a **Web Dashboard** tab in [OpenKneeboard](https://openkneeboard.com/)
 - Works with iRacing in **OpenXR** mode — no SteamVR, no CMake, no OpenVR SDK
 
-**HUD content:** track, session type, car, lap time, Δ best, Δ last, best lap, fuel, speed, sector progress bars, tire temps (LF/RF/LR/RR).
+**HUD content:** track, session type, car, position (class · overall), gap ahead/behind, spotter pack indicator, lap time, Δ best, Δ last, Δ field (session best), best lap, fuel, speed, sector progress bars, tire temps (LF/RF/LR/RR).
 
 **Why not native OpenXR injection?** See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md). Spike decision (June 2026): **no-go** on a PitWall-native OpenXR API layer for now. `XR_EXTX_overlay` is unsupported on consumer runtimes; the only native path is the same `xrEndFrame` API-layer hooking OpenKneeboard already does. OpenKneeboard + web HUD remains the official workflow.
 
@@ -306,10 +333,16 @@ RaceLab and similar tools inject HUDs through **OpenXR** — not SteamVR. PitWal
 Implemented in `audio/coach.rs` + `audio/mod.rs`:
 
 - Windows TTS via `tts` crate; polls live snapshot every **250 ms**
+- **Priority model** — at most one alert per tick, highest priority wins; lower-priority alerts are deferred (not dropped). Order: Critical (red/checkered) → Safety (yellow/green/blue/incident) → Pack → Race (fuel) → Pace (sector/lap)
+- **Pit/off-track suppression** — Pack/Race/Pace alerts are muted on pit road or when off track; flags and incidents still announce
 - **Session intro** — track and session type when telemetry connects
+- **Flags** — edge-triggered yellow, green, blue ("faster car"), checkered, red, white
+- **Incidents** — announced when `PlayerCarMyIncidentCount` increases
+- **Spotter pack** — car left/right, three-wide, two cars left/right (`CarLeftRight`), 4 s cooldown
 - **Sector complete** — time, delta vs personal-best sector, live pace hint
-- **Lap complete** — lap time, PB callout, delta to best/previous lap, fuel + laps remaining estimate
-- **Fuel low** — configurable threshold (`audioCoachFuelThreshold`, default 5 L)
+- **Lap complete** — lap time, PB callout, delta to best/previous lap, class position, fuel + laps remaining estimate
+- **Fuel** — low-fuel threshold (`audioCoachFuelThreshold`, default 5 L) and race fuel-to-finish calls from `SessionLapsRemain`
+- Per-category toggles: `audioPackAlertsEnabled`, `audioFlagsEnabled`, `audioIncidentsEnabled`, `audioFuelRaceEnabled`
 - Commands: `start_audio_coach`, `stop_audio_coach`, `get_audio_coach_status`, `get_audio_coach_message`
 - Auto-start when `audioCoachEnabled` is true and live monitor starts
 
@@ -370,6 +403,22 @@ No optional features required for VR HUD — the HTTP server is always compiled.
 | Overlay position persist on close | Done |
 | App version in header | Done |
 | VR native spike doc | Done — [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md), no-go on native layer |
+
+### Implemented (v4 — multi-driver comparison)
+
+| Item | Status |
+|------|--------|
+| Live leaderboard (overall/class) | Done — `competitors.rs`, `SessionLeaderboard.tsx` |
+| Session best/optimal deltas | Done — `LapDeltaToSessionBestLap` / `…OptimalLap` |
+| Gaps ahead/behind | Done — `CarIdxF2Time` differences (validate vs live) |
+| Spotter pack state | Done — `pack.rs` from `CarLeftRight` |
+| VR HUD field context | Done — position, gaps, field delta, pack line |
+| Audio priority queue + suppression | Done — `audio/coach.rs` |
+| Flags / incidents / race-fuel audio | Done — edge-triggered, per-category toggles |
+| Standings snapshot on disconnect | Done — `session_standings` table, IBT link |
+| `session_pace` / `traffic_pace` coach | Done — `analysis/coach.rs` |
+| Post-session standings UI | Done — `SessionStandingsPanel.tsx` |
+| Multi-driver docs | Done — [COMPARISON.md](COMPARISON.md) |
 
 ### Gaps / limitations
 

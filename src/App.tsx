@@ -51,6 +51,7 @@ import type {
 } from "./lib/types";
 
 import { CoachPanel } from "./components/CoachPanel";
+import { SessionStandingsPanel } from "./components/SessionStandingsPanel";
 
 import { ConfigBanner } from "./components/ConfigBanner";
 
@@ -508,6 +509,8 @@ function App() {
                   onHighlightLaps={setHighlightedLaps}
 
                 />
+
+                <SessionStandingsPanel sessionId={detail.session.id} />
 
                 <LapCompareChart traces={traces} />
 

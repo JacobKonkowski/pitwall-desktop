@@ -26,6 +26,8 @@ const KIND_META: Record<string, { icon: string; label: string }> = {
   sector_weakness: { icon: "⏱️", label: "Sector" },
   consistency: { icon: "📊", label: "Consistency" },
   fuel: { icon: "⛽", label: "Fuel" },
+  session_pace: { icon: "🏁", label: "Field pace" },
+  traffic_pace: { icon: "🚗", label: "Traffic" },
 };
 
 function kindMeta(kind: string): { icon: string; label: string } {

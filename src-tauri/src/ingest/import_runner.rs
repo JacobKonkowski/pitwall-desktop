@@ -81,6 +81,10 @@ pub async fn run_import(app: &AppHandle, state: &Arc<AppState>, path: PathBuf) -
 
     finish_status(app, state, &result);
     if !result.skipped {
+        // Best-effort: attach a matching live standings snapshot to this session.
+        if let Err(e) = state.db.lock().link_standings_to_session(result.session_id) {
+            info!("Standings link skipped: {e:#}");
+        }
         let _ = app.emit("import-complete", result.session_id);
     }
     Ok(result)

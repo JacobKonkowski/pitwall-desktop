@@ -46,15 +46,24 @@ Record telemetry in-car with **Alt+L**. Files are saved to `Documents\iRacing\te
 - Session browser, lap table with P/Q/R grouping, S1/S2/S3, delta to best
 - Two-lap trace compare (speed, throttle, brake)
 - Fuel and tire charts
-- **Coach panel** — rule-based insights
+- **Coach panel** — rule-based insights, including pace vs the field and time lost in traffic
+- **Session standings** — read-only snapshot of who you raced, linked from the live session
 - **AI summary** — optional Ollama brief (structured data only, not raw IBT)
 
 ### Live (in-session)
 
 - Real-time telemetry at 10 Hz via `pitwall::Pitwall::connect()`
+- **Live leaderboard** — overall/class positions, best/last laps, gap to your pace
+- **Session deltas** — delta to the session's best and optimal laps
 - **Desktop overlay** — always-on-top pop-out for a companion monitor
-- **In-headset HUD** — `http://127.0.0.1:17342/vr` for OpenKneeboard (OpenXR, no SteamVR)
-- **Audio coach** — spoken lap/sector summaries, fuel and pit alerts (Windows TTS)
+- **In-headset HUD** — `http://127.0.0.1:17342/vr` for OpenKneeboard (OpenXR, no SteamVR); shows position, gap ahead/behind, field delta, and a spotter pack indicator
+- **Audio coach** — priority-ranked spoken alerts: flags (incl. blue), incident counts, spotter pack calls (car left/right, three-wide), race fuel-to-finish, and lap/sector summaries (Windows TTS)
+
+### Multi-driver comparison
+
+Live field awareness and post-session standings/coaching that compare you against the
+rest of the grid. See [docs/COMPARISON.md](docs/COMPARISON.md) for the full capabilities
+matrix, audio priority order, and the iRacing SDK fields used.
 
 ## Build & run
 
@@ -68,7 +77,7 @@ Record telemetry in-car with **Alt+L**. Files are saved to `Documents\iRacing\te
 
 | Path | Contents |
 |------|----------|
-| `%LOCALAPPDATA%\pitwall-desktop\pitwall.db` | SQLite sessions, laps, sectors, traces |
+| `%LOCALAPPDATA%\pitwall-desktop\pitwall.db` | SQLite sessions, laps, sectors, traces, standings snapshots |
 | `%LOCALAPPDATA%\pitwall-desktop\settings.json` | Ollama, overlay, VR/audio preferences |
 
 ## Documentation
@@ -77,6 +86,7 @@ Record telemetry in-car with **Alt+L**. Files are saved to `Documents\iRacing\te
 |-----|-------------|
 | [docs/SETUP.md](docs/SETUP.md) | Step-by-step install, iRacing, live, VR, Ollama, troubleshooting |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical audit — modules, IPC, schema, data flow |
+| [docs/COMPARISON.md](docs/COMPARISON.md) | Multi-driver comparison — live vs post-session capabilities, audio priority, SDK fields |
 | [docs/VR_NATIVE_SPIKE.md](docs/VR_NATIVE_SPIKE.md) | Native OpenXR in-headset HUD research & decision (no-go; OpenKneeboard is the path) |
 
 ## Stack
@@ -85,7 +95,7 @@ Tauri 2 · React 19 · TypeScript · [pitwall](https://crates.io/crates/pitwall)
 
 ## Out of scope (future)
 
-- MoTeC export, multi-car analysis, real-time LLM coaching, community lap percentiles
+- MoTeC export, other drivers' sector/trace analysis, real-time LLM coaching, community lap percentiles
 - Native OpenXR API layer (today: OpenKneeboard web dashboard path)
 
 ## License

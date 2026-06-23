@@ -618,3 +618,59 @@ button.btn-danger:hover:not(:disabled) {
     grid-template-columns: 1fr;
   }
 }
+
+.session-leaderboard .leaderboard-header,
+.session-standings .leaderboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.leaderboard-table th {
+  text-align: left;
+  color: #888;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #2a2d35;
+}
+
+.leaderboard-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #1a1f28;
+}
+
+.leaderboard-table tr.leaderboard-you {
+  background: #1d2633;
+  font-weight: 600;
+}
+
+.leaderboard-driver {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.class-chip {
+  display: inline-block;
+  min-width: 1.6rem;
+  text-align: center;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: #2a2d35;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pit-tag {
+  color: #ffb74d;
+  font-size: 0.7rem;
+  font-weight: 600;
+}

@@ -23,6 +23,7 @@ import {
   stopVrOverlay,
 } from "../lib/api";
 import type { AppSettings, AudioCoachStatus, LiveSnapshot, LiveStatus, VrOverlayStatus } from "../lib/types";
+import { SessionLeaderboard } from "./SessionLeaderboard";
 
 function stateClass(state: LiveStatus["state"]): string {
   switch (state) {
@@ -51,6 +52,15 @@ function stateLabel(state: LiveStatus["state"]): string {
     default:
       return "Disconnected";
   }
+}
+
+function formatPosition(snap: LiveSnapshot): string {
+  const cls = snap.playerClassPosition;
+  const overall = snap.playerPosition;
+  if (cls != null && overall != null && cls !== overall) {
+    return `P${cls} (P${overall})`;
+  }
+  return `P${cls ?? overall}`;
 }
 
 export function LivePanel() {
@@ -350,6 +360,38 @@ export function LivePanel() {
             />
             <span>Auto-start audio coach with live monitor</span>
           </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioPackAlertsEnabled}
+              onChange={(e) => handleSaveSettings({ audioPackAlertsEnabled: e.target.checked })}
+            />
+            <span>Spotter pack alerts (car left/right, 3-wide)</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioFlagsEnabled}
+              onChange={(e) => handleSaveSettings({ audioFlagsEnabled: e.target.checked })}
+            />
+            <span>Flag callouts (yellow, green, blue, checkered)</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioIncidentsEnabled}
+              onChange={(e) => handleSaveSettings({ audioIncidentsEnabled: e.target.checked })}
+            />
+            <span>Incident count callouts</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioFuelRaceEnabled}
+              onChange={(e) => handleSaveSettings({ audioFuelRaceEnabled: e.target.checked })}
+            />
+            <span>Race fuel-to-finish calls</span>
+          </label>
           <label className="settings-row">
             <span>Fuel warning (liters)</span>
             <input
@@ -398,6 +440,28 @@ export function LivePanel() {
                 {formatDelta(snap.deltaToBestMs)}
               </span>
             </div>
+            {(snap.playerPosition != null || snap.playerClassPosition != null) && (
+              <div className="live-metric-card">
+                <span className="label">Position</span>
+                <span className="value">{formatPosition(snap)}</span>
+              </div>
+            )}
+            {snap.deltaToSessionBestMs != null && (
+              <div className="live-metric-card">
+                <span className="label">Δ session best</span>
+                <span className={`value ${snap.deltaToSessionBestMs > 0 ? "slow" : "fast"}`}>
+                  {formatDelta(snap.deltaToSessionBestMs)}
+                </span>
+              </div>
+            )}
+            {snap.deltaToSessionOptimalMs != null && (
+              <div className="live-metric-card">
+                <span className="label">Δ session optimal</span>
+                <span className={`value ${snap.deltaToSessionOptimalMs > 0 ? "slow" : "fast"}`}>
+                  {formatDelta(snap.deltaToSessionOptimalMs)}
+                </span>
+              </div>
+            )}
             <div className="live-metric-card">
               <span className="label">Last lap</span>
               <span className="value">{formatLapTime(snap.lastLapMs)}</span>
@@ -411,6 +475,8 @@ export function LivePanel() {
               <span className="value">{snap.speed.toFixed(0)}</span>
             </div>
           </div>
+
+          <SessionLeaderboard competitors={snap.competitors} />
 
           <div className="panel">
             <h3>Sector progress</h3>

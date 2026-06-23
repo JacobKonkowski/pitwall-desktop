@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
-use crate::storage::{LapSummary, SessionDetail};
+use crate::storage::{LapSummary, SessionDetail, SessionStandings};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -218,5 +220,177 @@ pub fn build_coach_report(session_id: i64, detail: &SessionDetail) -> CoachRepor
             weakest_sector,
             weakest_sector_loss_ms: weakest_loss,
         },
+    }
+}
+
+/// Add insights derived from a linked live standings snapshot: how the player's
+/// pace compared to the field, and which slow laps were likely traffic.
+pub fn append_standings_insights(
+    insights: &mut Vec<CoachInsight>,
+    detail: &SessionDetail,
+    standings: &SessionStandings,
+) {
+    let player_best = detail
+        .laps
+        .iter()
+        .filter(|l| l.valid)
+        .filter_map(|l| l.lap_time_ms)
+        .filter(|t| *t > 0.0)
+        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    if let (Some(best), Some(fastest)) = (player_best, standings.session_fastest_ms) {
+        if fastest > 0.0 {
+            let gap = best - fastest;
+            if gap > 50.0 {
+                insights.push(CoachInsight {
+                    kind: "session_pace".into(),
+                    title: "Pace vs the field".into(),
+                    detail: format!(
+                        "Your best lap was {:.3}s off the session's fastest lap.",
+                        gap / 1000.0
+                    ),
+                    severity: if gap > 1000.0 { "warn".into() } else { "info".into() },
+                    lap_numbers: Vec::new(),
+                    sector_num: None,
+                    delta_ms: Some(gap),
+                });
+            } else {
+                insights.push(CoachInsight {
+                    kind: "session_pace".into(),
+                    title: "Pace vs the field".into(),
+                    detail: "You set the fastest lap of the session.".into(),
+                    severity: "good".into(),
+                    lap_numbers: Vec::new(),
+                    sector_num: None,
+                    delta_ms: Some(gap),
+                });
+            }
+        }
+    }
+
+    if !standings.traffic_laps.is_empty() {
+        let traffic: HashSet<i32> = standings.traffic_laps.iter().copied().collect();
+        let mut lost: Vec<i32> = detail
+            .laps
+            .iter()
+            .filter(|l| l.valid && traffic.contains(&l.iracing_lap))
+            .filter(|l| l.delta_to_best_ms.map(|d| d > 500.0).unwrap_or(false))
+            .map(|l| l.lap_number)
+            .collect();
+        lost.sort_unstable();
+        lost.dedup();
+
+        if !lost.is_empty() {
+            let lap_list = lost
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            insights.push(CoachInsight {
+                kind: "traffic_pace".into(),
+                title: "Time lost in traffic".into(),
+                detail: format!(
+                    "Lap(s) {lap_list} were slow and run side-by-side with other cars — likely traffic, not a pace problem."
+                ),
+                severity: "info".into(),
+                lap_numbers: lost,
+                sector_num: None,
+                delta_ms: None,
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::SessionSummary;
+
+    fn lap(lap_number: i32, iracing_lap: i32, lap_time_ms: f64, delta_to_best_ms: f64) -> LapSummary {
+        LapSummary {
+            id: lap_number as i64,
+            session_num: 0,
+            session_type: "Race".into(),
+            iracing_lap,
+            lap_number,
+            lap_time_ms: Some(lap_time_ms),
+            valid: true,
+            fuel_start: None,
+            fuel_used: None,
+            avg_speed: None,
+            lf_temp: None,
+            rf_temp: None,
+            lr_temp: None,
+            rr_temp: None,
+            sectors: Vec::new(),
+            delta_to_best_ms: Some(delta_to_best_ms),
+        }
+    }
+
+    fn detail(laps: Vec<LapSummary>) -> SessionDetail {
+        SessionDetail {
+            session: SessionSummary {
+                id: 1,
+                ibt_path: String::new(),
+                track: "Test".into(),
+                car: "Car".into(),
+                session_date: String::new(),
+                lap_count: laps.len() as i32,
+                best_lap_ms: None,
+                imported_at: String::new(),
+            },
+            laps,
+        }
+    }
+
+    fn standings(fastest: Option<f64>, traffic: Vec<i32>) -> SessionStandings {
+        SessionStandings {
+            id: 1,
+            session_id: Some(1),
+            track: "Test".into(),
+            session_type: "Race".into(),
+            session_date: String::new(),
+            session_fastest_ms: fastest,
+            player_best_ms: None,
+            player_position: Some(3),
+            player_class_position: Some(2),
+            competitors: Vec::new(),
+            traffic_laps: traffic,
+            created_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn session_pace_reports_gap_to_field() {
+        let d = detail(vec![lap(1, 1, 90_500.0, 0.0)]);
+        let s = standings(Some(90_000.0), Vec::new());
+        let mut insights = Vec::new();
+        append_standings_insights(&mut insights, &d, &s);
+        let pace = insights.iter().find(|i| i.kind == "session_pace").unwrap();
+        assert!(pace.detail.contains("0.500s off"));
+    }
+
+    #[test]
+    fn session_pace_credits_fastest_lap() {
+        let d = detail(vec![lap(1, 1, 90_000.0, 0.0)]);
+        let s = standings(Some(90_000.0), Vec::new());
+        let mut insights = Vec::new();
+        append_standings_insights(&mut insights, &d, &s);
+        let pace = insights.iter().find(|i| i.kind == "session_pace").unwrap();
+        assert_eq!(pace.severity, "good");
+    }
+
+    #[test]
+    fn traffic_pace_flags_slow_traffic_laps() {
+        let d = detail(vec![
+            lap(1, 5, 91_000.0, 1_000.0), // slow and in traffic -> flagged
+            lap(2, 6, 90_100.0, 100.0),   // in traffic but fast -> ignored
+            lap(3, 7, 92_000.0, 2_000.0), // slow but not in traffic -> ignored
+        ]);
+        let s = standings(Some(90_000.0), vec![5, 6]);
+        let mut insights = Vec::new();
+        append_standings_insights(&mut insights, &d, &s);
+        let traffic = insights.iter().find(|i| i.kind == "traffic_pace").unwrap();
+        assert_eq!(traffic.lap_numbers, vec![1]);
     }
 }

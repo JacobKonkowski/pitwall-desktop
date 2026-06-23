@@ -12,6 +12,7 @@ import type {
   LiveSnapshot,
   LiveStatus,
   SessionDetail,
+  SessionStandings,
   SessionSummary,
   TireSummary,
   VrOverlayStatus,
@@ -79,6 +80,12 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
 
 export async function getCoachReport(sessionId: number): Promise<CoachReport> {
   return invoke("get_coach_report", { sessionId });
+}
+
+export async function getSessionStandings(
+  sessionId: number,
+): Promise<SessionStandings | null> {
+  return invoke("get_session_standings", { sessionId });
 }
 
 export async function generateCoachSummary(sessionId: number): Promise<CoachSummaryResult> {

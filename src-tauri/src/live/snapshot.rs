@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+use super::competitors::CompetitorEntry;
+use super::pack::PackState;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum LiveConnectionState {
@@ -47,4 +50,24 @@ pub struct LiveSnapshot {
     pub rf_temp: f32,
     pub lr_temp: f32,
     pub rr_temp: f32,
+    pub on_pit_road: bool,
+
+    // Multi-driver field awareness (populated from the CarIdx telemetry stream).
+    pub competitors: Vec<CompetitorEntry>,
+    pub player_position: Option<i32>,
+    pub player_class_position: Option<i32>,
+    pub session_fastest_lap_ms: Option<f64>,
+    pub delta_to_session_best_ms: Option<f64>,
+    pub delta_to_session_optimal_ms: Option<f64>,
+    pub gap_to_car_ahead_s: Option<f32>,
+    pub gap_to_car_behind_s: Option<f32>,
+    pub pack_state: PackState,
+
+    // Session-wide state consumed by the audio coach and HUD.
+    pub session_flags: u32,
+    pub incident_count: i32,
+    pub session_laps_remain: Option<i32>,
+    pub session_time_remain_s: Option<f64>,
+    pub pits_open: bool,
+    pub on_track: bool,
 }

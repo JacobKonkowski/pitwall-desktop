@@ -111,6 +111,29 @@ export interface LiveSectorProgress {
   completed: boolean;
 }
 
+export type PackState =
+  | "off"
+  | "clear"
+  | "carLeft"
+  | "carRight"
+  | "threeWide"
+  | "twoCarsLeft"
+  | "twoCarsRight";
+
+export interface CompetitorEntry {
+  carIdx: number;
+  driverName: string;
+  carNumber: string;
+  classId: number;
+  classColor: string;
+  position: number;
+  classPosition: number;
+  bestLapMs: number | null;
+  lastLapMs: number | null;
+  onPitRoad: boolean;
+  isPlayer: boolean;
+}
+
 export interface LiveSnapshot {
   track: string;
   car: string;
@@ -130,6 +153,22 @@ export interface LiveSnapshot {
   rfTemp: number;
   lrTemp: number;
   rrTemp: number;
+  onPitRoad: boolean;
+  competitors: CompetitorEntry[];
+  playerPosition: number | null;
+  playerClassPosition: number | null;
+  sessionFastestLapMs: number | null;
+  deltaToSessionBestMs: number | null;
+  deltaToSessionOptimalMs: number | null;
+  gapToCarAheadS: number | null;
+  gapToCarBehindS: number | null;
+  packState: PackState;
+  sessionFlags: number;
+  incidentCount: number;
+  sessionLapsRemain: number | null;
+  sessionTimeRemainS: number | null;
+  pitsOpen: boolean;
+  onTrack: boolean;
 }
 
 export interface CoachInsight {
@@ -157,6 +196,32 @@ export interface CoachReport {
   summary: SessionCoachStats;
 }
 
+export interface CompetitorStanding {
+  position: number;
+  classPosition: number;
+  carNumber: string;
+  driverName: string;
+  classId: number;
+  classColor: string;
+  bestLapMs: number | null;
+  isPlayer: boolean;
+}
+
+export interface SessionStandings {
+  id: number;
+  sessionId: number | null;
+  track: string;
+  sessionType: string;
+  sessionDate: string;
+  sessionFastestMs: number | null;
+  playerBestMs: number | null;
+  playerPosition: number | null;
+  playerClassPosition: number | null;
+  competitors: CompetitorStanding[];
+  trafficLaps: number[];
+  createdAt: string;
+}
+
 export interface CoachSummaryResult {
   markdown: string;
   model: string;
@@ -173,6 +238,10 @@ export interface AppSettings {
   vrOverlayScale: number;
   audioCoachEnabled: boolean;
   audioCoachFuelThreshold: number;
+  audioPackAlertsEnabled: boolean;
+  audioFlagsEnabled: boolean;
+  audioIncidentsEnabled: boolean;
+  audioFuelRaceEnabled: boolean;
 }
 
 export interface AudioCoachStatus {

@@ -148,6 +148,12 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
     .delta { font-size: 13px; }
     .delta.slow { color: #ef5350; }
     .delta.fast { color: #66bb6a; }
+    .pos { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .gaps { display: flex; gap: 12px; font-size: 12px; margin-bottom: 4px; }
+    .gaps .lead { color: #8899aa; }
+    .pack { font-size: 12px; font-weight: 700; margin-bottom: 6px; letter-spacing: 0.5px; }
+    .pack.clear { color: #66bb6a; }
+    .pack.alert { color: #ffb74d; }
     .meta { color: #aab4c4; font-size: 12px; margin-bottom: 6px; }
     .tires { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 10px; color: #8899aa; margin-bottom: 8px; }
     .tires span { text-align: center; }
@@ -172,6 +178,21 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       if (ms == null) return "—";
       return (ms >= 0 ? "+" : "") + (ms / 1000).toFixed(3);
     }
+    function fmtGap(sec) {
+      if (sec == null) return "—";
+      return sec.toFixed(1) + "s";
+    }
+    function position(s) {
+      const cls = s.playerClassPosition, all = s.playerPosition;
+      if (cls != null && all != null && cls !== all) return `P${cls} · P${all} overall`;
+      if (cls != null) return `P${cls}`;
+      if (all != null) return `P${all}`;
+      return null;
+    }
+    const PACK_LABEL = {
+      clear: "CLEAR", carLeft: "CAR LEFT", carRight: "CAR RIGHT",
+      threeWide: "3-WIDE", twoCarsLeft: "2 LEFT", twoCarsRight: "2 RIGHT",
+    };
     function render(s) {
       if (!s || !s.track) {
         document.getElementById("root").innerHTML = '<p class="wait">Waiting for iRacing session…</p>';
@@ -186,13 +207,29 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
         const pct = done ? 100 : active ? Math.min(100, (s.lapDistPct || 0) * 100) : 0;
         return `<div class="sector"><span>S${n}</span><div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>`;
       }).join("");
+      const pos = position(s);
+      const posHtml = pos ? `<div class="pos">${pos}</div>` : "";
+      const gapsHtml = (s.gapToCarAheadS != null || s.gapToCarBehindS != null)
+        ? `<div class="gaps"><span><span class="lead">ahead</span> ${fmtGap(s.gapToCarAheadS)}</span><span><span class="lead">behind</span> ${fmtGap(s.gapToCarBehindS)}</span></div>`
+        : "";
+      const packLabel = PACK_LABEL[s.packState];
+      const packHtml = packLabel
+        ? `<div class="pack ${s.packState === "clear" ? "clear" : "alert"}">${packLabel}</div>`
+        : "";
+      const sessBestHtml = s.deltaToSessionBestMs != null
+        ? `<span class="delta ${s.deltaToSessionBestMs > 0 ? "slow" : "fast"}">Δ field ${fmtDelta(s.deltaToSessionBestMs)}</span>`
+        : "";
       document.getElementById("root").innerHTML = `
         <div class="track">${s.track} · ${s.sessionType || ""}</div>
         <div class="car">${s.car || ""}</div>
+        ${posHtml}
+        ${gapsHtml}
+        ${packHtml}
         <div class="lap">Lap ${s.lap} · ${fmt(s.lapTimeMs)}</div>
         <div class="row">
           <span class="delta ${deltaBestClass}">Δ best ${fmtDelta(s.deltaToBestMs)}</span>
           <span class="delta ${deltaLastClass}">Δ last ${fmtDelta(s.deltaToLastMs)}</span>
+          ${sessBestHtml}
         </div>
         <div class="meta">Best ${fmt(s.bestLapMs)} · Fuel ${(s.fuelLevel || 0).toFixed(1)} L · ${(s.speed || 0).toFixed(0)} km/h</div>
         <div class="tires">

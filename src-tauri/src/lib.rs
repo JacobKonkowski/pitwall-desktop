@@ -49,6 +49,7 @@ pub fn run() {
             commands::get_live_status,
             commands::get_live_snapshot,
             commands::get_coach_report,
+            commands::get_session_standings,
             commands::generate_coach_summary,
             commands::get_settings,
             commands::save_settings_cmd,

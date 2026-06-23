@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     pub ollama_url: String,
     pub ollama_model: String,
@@ -16,6 +16,10 @@ pub struct AppSettings {
     pub vr_overlay_scale: f32,
     pub audio_coach_enabled: bool,
     pub audio_coach_fuel_threshold: f32,
+    pub audio_pack_alerts_enabled: bool,
+    pub audio_flags_enabled: bool,
+    pub audio_incidents_enabled: bool,
+    pub audio_fuel_race_enabled: bool,
 }
 
 impl Default for AppSettings {
@@ -31,6 +35,10 @@ impl Default for AppSettings {
             vr_overlay_scale: 1.0,
             audio_coach_enabled: true,
             audio_coach_fuel_threshold: 5.0,
+            audio_pack_alerts_enabled: true,
+            audio_flags_enabled: true,
+            audio_incidents_enabled: true,
+            audio_fuel_race_enabled: true,
         }
     }
 }

@@ -225,7 +225,24 @@ pub fn get_coach_report(
         }
     }
 
+    // Standings-based insights when a live snapshot is linked to this session.
+    if let Ok(Some(standings)) = db.get_standings_for_session(session_id) {
+        crate::analysis::coach::append_standings_insights(&mut report.insights, &detail, &standings);
+    }
+
     Ok(report)
+}
+
+#[tauri::command]
+pub fn get_session_standings(
+    state: State<'_, Arc<AppState>>,
+    session_id: i64,
+) -> Result<Option<crate::storage::SessionStandings>, String> {
+    state
+        .db
+        .lock()
+        .get_standings_for_session(session_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
