@@ -103,16 +103,17 @@ Tauri 2 · React 19 · TypeScript · [pitwall](https://crates.io/crates/pitwall)
 
 ## Native VR layer (release builds)
 
-The OpenXR DLL is built separately and staged before packaging:
+The OpenXR DLL is built separately and staged before dev or packaging:
 
 ```powershell
 cmake -S openxr-layer -B openxr-layer/build -A x64
 cmake --build openxr-layer/build --config Release
 copy openxr-layer\build\Release\pitwall-openxr-layer.dll  src-tauri\resources\openxr-layer\
 copy openxr-layer\manifest\pitwall_openxr_layer.json      src-tauri\resources\openxr-layer\
+npm run tauri dev          # or: npm run tauri build
 ```
 
-See [docs/NATIVE_VR.md](docs/NATIVE_VR.md) for install, Quest Link setup, and RaceLab migration.
+See [docs/NATIVE_VR.md](docs/NATIVE_VR.md) for install, Quest Link setup, overlay widgets, and RaceLab migration.
 
 ## License
 

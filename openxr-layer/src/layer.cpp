@@ -15,11 +15,9 @@
 #include <cstring>
 #include <vector>
 
-#define XR_USE_GRAPHICS_API_D3D11
-#define XR_USE_PLATFORM_WIN32
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
-#include <openxr/loader_interfaces.h>
+#include <openxr/openxr_loader_negotiation.h>
 
 #include "hud_renderer.h"
 #include "pitwall_vr_shm.h"

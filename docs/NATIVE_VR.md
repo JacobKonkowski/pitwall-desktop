@@ -46,19 +46,55 @@ OpenXR loader. See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md) for the full rationa
 
 ## Build the layer
 
-Requires CMake 3.22+, an MSVC C++17 toolchain, and the Windows SDK. The OpenXR
-SDK headers are fetched automatically.
+Requires **CMake 3.22+**, **Visual Studio 2022 Build Tools** (Desktop C++ workload),
+and the **Windows SDK**. The OpenXR SDK headers are fetched automatically on first
+configure.
+
+From the repo root:
 
 ```powershell
 cmake -S openxr-layer -B openxr-layer/build -A x64
 cmake --build openxr-layer/build --config Release
 ```
 
-For a packaged release, stage the artifacts so the installer bundles them:
+Output: `openxr-layer/build/Release/pitwall-openxr-layer.dll`
+
+**Stage for PitWall** (required before **Install VR layer** or `npm run tauri build`):
 
 ```powershell
 copy openxr-layer\build\Release\pitwall-openxr-layer.dll  src-tauri\resources\openxr-layer\
 copy openxr-layer\manifest\pitwall_openxr_layer.json      src-tauri\resources\openxr-layer\
+```
+
+The DLL is a local build artifact (gitignored). The manifest JSON is copied beside
+it so the OpenXR loader can find the layer when PitWall registers it.
+
+If the build fails with `Cannot open include file: 'openxr/loader_interfaces.h'`,
+update to a current checkout — the layer uses `openxr_loader_negotiation.h`
+(OpenXR SDK 1.0.33+).
+
+### Full dev workflow (native VR)
+
+```powershell
+# 1. Build + stage the OpenXR layer (once per layer code change)
+cmake -S openxr-layer -B openxr-layer/build -A x64
+cmake --build openxr-layer/build --config Release
+copy openxr-layer\build\Release\pitwall-openxr-layer.dll  src-tauri\resources\openxr-layer\
+copy openxr-layer\manifest\pitwall_openxr_layer.json      src-tauri\resources\openxr-layer\
+
+# 2. Run PitWall
+npm run tauri dev
+
+# 3. In the app: Start live monitor → Settings → VR mode Native → Install VR layer
+# 4. Start in-headset HUD, restart iRacing (OpenXR), enable widgets under Overlay widgets
+```
+
+### Release installer
+
+After staging the DLL + manifest, build the MSI:
+
+```powershell
+npm run tauri build
 ```
 
 ## Install and enable
