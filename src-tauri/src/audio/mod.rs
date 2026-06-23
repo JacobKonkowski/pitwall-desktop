@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use tts::Tts;
 
 use crate::live::LiveService;
-use crate::settings::load_settings;
+use crate::settings::{load_settings, AppSettings};
 
 pub struct AudioCoachService {
     cancel: Mutex<Option<CancellationToken>>,
@@ -81,12 +81,14 @@ fn run_audio_loop(
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
     let mut tts = Tts::default()?;
-    let _ = tts.set_rate(2.0);
+    let mut applied_rate = f32::NAN;
+    let mut applied_volume = f32::NAN;
 
     let mut engine = coach::CoachEngine::new();
 
     while !cancel.is_cancelled() {
         let settings = load_settings();
+        apply_tts_settings(&mut tts, &settings, &mut applied_rate, &mut applied_volume);
         let snap = live.snapshot.lock().clone();
         let messages = engine.poll(&snap, &settings);
 
@@ -101,6 +103,31 @@ fn run_audio_loop(
         thread::sleep(Duration::from_millis(250));
     }
     Ok(())
+}
+
+fn apply_tts_settings(
+    tts: &mut Tts,
+    settings: &AppSettings,
+    applied_rate: &mut f32,
+    applied_volume: &mut f32,
+) {
+    let rate = settings
+        .audio_coach_rate
+        .clamp(tts.min_rate(), tts.max_rate());
+    if (rate - *applied_rate).abs() > f32::EPSILON {
+        if tts.set_rate(rate).is_ok() {
+            *applied_rate = rate;
+        }
+    }
+
+    let volume = settings
+        .audio_coach_volume
+        .clamp(tts.min_volume(), tts.max_volume());
+    if (volume - *applied_volume).abs() > f32::EPSILON {
+        if tts.set_volume(volume).is_ok() {
+            *applied_volume = volume;
+        }
+    }
 }
 
 fn speak(tts: &mut Tts, service: &AudioCoachService, msg: &str) -> anyhow::Result<()> {

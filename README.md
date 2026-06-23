@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/JacobKonkowski/pitwall-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobKonkowski/pitwall-desktop/actions/workflows/ci.yml)
 
-iRacing telemetry analysis for Windows — post-session IBT import, live shared-memory telemetry, rule-based coaching, optional local AI summaries, and in-race HUD overlays (desktop + VR via OpenKneeboard).
+iRacing telemetry analysis for Windows — post-session IBT import, live shared-memory telemetry, rule-based coaching, optional local AI summaries, and in-race HUD overlays (desktop + native in-headset VR, with an OpenKneeboard fallback).
 
 **Repository:** [github.com/JacobKonkowski/pitwall-desktop](https://github.com/JacobKonkowski/pitwall-desktop)
 
@@ -25,7 +25,8 @@ npm run tauri dev
 | [Node.js](https://nodejs.org/) 18+ | Frontend build and Tauri CLI |
 | iRacing | Disk telemetry for IBT import; shared memory for live monitor |
 | [Ollama](https://ollama.com/) (optional) | Local LLM summaries — default `http://localhost:11434` |
-| [OpenKneeboard](https://openkneeboard.com/) (optional) | In-headset HUD via Web Dashboard — OpenXR, no SteamVR |
+| OpenXR VR runtime (optional) | Native in-headset HUD via PitWall's own OpenXR layer (Meta Quest Link, SteamVR, VDXR) |
+| [OpenKneeboard](https://openkneeboard.com/) (optional) | Web Dashboard fallback for the in-headset HUD |
 
 ### iRacing configuration
 
@@ -55,8 +56,9 @@ Record telemetry in-car with **Alt+L**. Files are saved to `Documents\iRacing\te
 - Real-time telemetry at 10 Hz via `pitwall::Pitwall::connect()`
 - **Live leaderboard** — overall/class positions, best/last laps, gap to your pace
 - **Session deltas** — delta to the session's best and optimal laps
-- **Desktop overlay** — always-on-top pop-out for a companion monitor
-- **In-headset HUD** — `http://127.0.0.1:17342/vr` for OpenKneeboard (OpenXR, no SteamVR); shows position, gap ahead/behind, field delta, and a spotter pack indicator
+- **Overlay widgets** — coach, standings, relative, and radar share one config for the desktop pop-out and native VR; enable/disable and field pace in Settings, drag/resize on the monitor, per-widget VR height/scale/opacity in-headset
+- **Desktop overlay** — transparent always-on-top window with draggable widget panels for a companion monitor
+- **Native in-headset HUD** — PitWall's own OpenXR layer composites the same widgets directly in VR (no OpenKneeboard or RaceLab). OpenKneeboard web fallback at `http://127.0.0.1:17342/vr` remains available. See [docs/NATIVE_VR.md](docs/NATIVE_VR.md)
 - **Audio coach** — priority-ranked spoken alerts: flags (incl. blue), incident counts, spotter pack calls (car left/right, three-wide), race fuel-to-finish, and lap/sector summaries (Windows TTS)
 
 ### Multi-driver comparison
@@ -87,16 +89,30 @@ matrix, audio priority order, and the iRacing SDK fields used.
 | [docs/SETUP.md](docs/SETUP.md) | Step-by-step install, iRacing, live, VR, Ollama, troubleshooting |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical audit — modules, IPC, schema, data flow |
 | [docs/COMPARISON.md](docs/COMPARISON.md) | Multi-driver comparison — live vs post-session capabilities, audio priority, SDK fields |
-| [docs/VR_NATIVE_SPIKE.md](docs/VR_NATIVE_SPIKE.md) | Native OpenXR in-headset HUD research & decision (no-go; OpenKneeboard is the path) |
+| [docs/NATIVE_VR.md](docs/NATIVE_VR.md) | Native in-headset VR — architecture, build, install, Quest 3 setup, migrating off RaceLab |
+| [docs/VR_NATIVE_SPIKE.md](docs/VR_NATIVE_SPIKE.md) | Original OpenXR API-layer research spike (now in progress — see NATIVE_VR.md) |
 
 ## Stack
 
-Tauri 2 · React 19 · TypeScript · [pitwall](https://crates.io/crates/pitwall) · SQLite · Recharts · Ollama (optional) · OpenKneeboard (optional VR)
+Tauri 2 · React 19 · TypeScript · [pitwall](https://crates.io/crates/pitwall) · SQLite · Recharts · OpenXR API layer (C++/D3D11/Direct2D) · Ollama (optional) · OpenKneeboard (optional VR fallback)
 
 ## Out of scope (future)
 
 - MoTeC export, other drivers' sector/trace analysis, real-time LLM coaching, community lap percentiles
-- Native OpenXR API layer (today: OpenKneeboard web dashboard path)
+- In-VR drag-to-position, named layout presets, track map overlay, gaze fade — see [docs/NATIVE_VR.md](docs/NATIVE_VR.md)
+
+## Native VR layer (release builds)
+
+The OpenXR DLL is built separately and staged before packaging:
+
+```powershell
+cmake -S openxr-layer -B openxr-layer/build -A x64
+cmake --build openxr-layer/build --config Release
+copy openxr-layer\build\Release\pitwall-openxr-layer.dll  src-tauri\resources\openxr-layer\
+copy openxr-layer\manifest\pitwall_openxr_layer.json      src-tauri\resources\openxr-layer\
+```
+
+See [docs/NATIVE_VR.md](docs/NATIVE_VR.md) for install, Quest Link setup, and RaceLab migration.
 
 ## License
 

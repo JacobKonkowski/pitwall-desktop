@@ -1,8 +1,15 @@
 # VR Native In-Headset HUD — Spike & Decision
 
-**Status:** Decision made — **No-go for a native layer right now. OpenKneeboard remains the official VR HUD path.**
-**Phase:** v3 Phase 4 (research spike)
-**Last updated:** June 21, 2026
+> **Update (June 2026):** This no-go was **reversed** on explicit product
+> direction — PitWall now ships a native OpenXR API layer to replace RaceLab VR.
+> The analysis below remains accurate about *why* the work is hard and is kept as
+> background. For the implementation, build, and setup, see
+> [NATIVE_VR.md](NATIVE_VR.md).
+
+**Original status:** Decision made — No-go for a native layer right now; OpenKneeboard was the official VR HUD path.
+**Current status:** In progress — native layer is the primary VR path; OpenKneeboard is the fallback.
+**Phase:** v3 Phase 4 (research spike), superseded by native VR work
+**Last updated:** June 23, 2026
 
 ## Goal
 

@@ -223,6 +223,13 @@ impl LiveService {
         // Fresh connection: clear any traffic laps from a previous session.
         self.traffic_laps.lock().clear();
 
+        // Session YAML may already be parsed before we subscribe; pick it up now
+        // so track/car/roster are populated on the first frame.
+        if let Some(session) = connection.current_session() {
+            sector_bounds = extract_sector_boundaries(&session);
+            tracker.set_session_meta(&session);
+        }
+
         let mut emit_tick = tokio::time::interval(Duration::from_millis(100));
         emit_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -259,6 +266,12 @@ impl LiveService {
                         Some(f) => {
                             got_frame = true;
                             ever_got_frame = true;
+                            if tracker.track().is_empty() {
+                                if let Some(session) = connection.current_session() {
+                                    sector_bounds = extract_sector_boundaries(&session);
+                                    tracker.set_session_meta(&session);
+                                }
+                            }
                             self.set_status(LiveConnectionState::Connected, "Receiving telemetry");
                             let bounds = normalize_sector_boundaries(&sector_bounds);
                             let mut snap = tracker.snapshot_from_frame(&f, &bounds);

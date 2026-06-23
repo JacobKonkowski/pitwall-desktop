@@ -15,9 +15,10 @@ Complete setup for development and daily use on Windows with iRacing.
 | [Node.js](https://nodejs.org/) | 18+ | Frontend + Tauri CLI |
 | [iRacing](https://www.iracing.com/) | — | Telemetry source |
 | [Ollama](https://ollama.com/) | optional | Local AI coach summaries |
-| [OpenKneeboard](https://openkneeboard.com/) | optional | In-headset HUD (OpenXR, no SteamVR) |
+| OpenXR VR runtime | optional | Native in-headset HUD (Meta Quest Link, SteamVR, VDXR) |
+| [OpenKneeboard](https://openkneeboard.com/) | optional | Web Dashboard fallback for the in-headset HUD |
 
-**Not required:** SteamVR, CMake, or a GPU for coaching (rules + TTS run on CPU).
+**Not required:** SteamVR for the HUD, or a GPU for coaching (rules + TTS run on CPU). Building the native VR layer from source needs CMake + an MSVC C++ toolchain — see [NATIVE_VR.md](NATIVE_VR.md).
 
 ---
 
@@ -122,9 +123,15 @@ The Live panel shows lap time, deltas, sector bars, fuel, and tire temps at 10 H
 
 ### Desktop overlay (companion monitor)
 
-With live monitor running:
+With live monitor running, click **Pop out overlay (desktop)** for a transparent
+always-on-top window on a second monitor. It renders the same widgets as the VR
+HUD — coach, standings, relative, and radar.
 
-**Pop out overlay (desktop)** — small always-on-top HUD for a second monitor.
+- Enable or disable widgets under Settings → **Overlay widgets** (this also
+  controls which widgets show in VR).
+- Drag a widget by its top edge to move it; drag the bottom-right corner to
+  resize it. Positions persist per widget.
+- Drag an empty part of the window to move the whole overlay.
 
 ### Audio coach (TTS)
 
@@ -151,15 +158,30 @@ Uses Windows built-in TTS — no extra voice software required.
 
 Use iRacing in **OpenXR** mode (not SteamVR-only).
 
-1. PitWall **Live** → **Start live monitor** → **Start in-headset HUD**
-2. Click **Preview in browser** to confirm the HUD shows live data
-3. Copy the URL shown: `http://127.0.0.1:17342/vr`
-4. Install [OpenKneeboard](https://openkneeboard.com/)
-5. OpenKneeboard → **Settings** → **Tabs** → **Add tab** → **Web Dashboard**
-6. Paste the PitWall URL
-7. Start iRacing in VR, join a session, use OpenKneeboard recenter binding
+### Native (recommended — no OpenKneeboard)
 
-Same approach used by many iRacing VR overlays (iOverlay, RaceLab, etc.) — OpenXR via OpenKneeboard, not SteamVR.
+PitWall composites the HUD in the headset through its own OpenXR layer. Full
+build/install details are in [NATIVE_VR.md](NATIVE_VR.md).
+
+1. Settings → **VR mode: Native**
+2. PitWall **Live** → **Start live monitor** → **Start in-headset HUD**
+3. If prompted, click **Install VR layer**, then restart iRacing
+4. Under Settings → **Overlay widgets**, enable the widgets you want (coach,
+   standings, relative, radar) and tune each one's **VR height / scale /
+   opacity**; set **Field pace** for the coach. The head-locked widgets update
+   live. The same enabled set also appears on the desktop pop-out.
+
+### OpenKneeboard fallback
+
+If you prefer the web path or the native layer is unavailable:
+
+1. Settings → **VR mode: Web fallback**
+2. PitWall **Live** → **Start live monitor** → **Start in-headset HUD**
+3. Click **Preview in browser** to confirm the HUD shows live data
+4. Copy the URL shown: `http://127.0.0.1:17342/vr`
+5. Install [OpenKneeboard](https://openkneeboard.com/) → **Settings** → **Tabs**
+   → **Add tab** → **Web Dashboard** → paste the URL
+6. Start iRacing in VR, join a session, use OpenKneeboard recenter binding
 
 ---
 
@@ -212,9 +234,13 @@ Only structured lap/insight JSON is sent to Ollama — not raw IBT files.
 
 ### VR HUD not visible
 
-- OpenKneeboard must be running with the Web Dashboard tab
-- iRacing display mode: **OpenXR** (recommended)
-- Do not add `iRacingUI.exe` to OpenKneeboard's games list — use the sim exe or leave games list empty for OpenXR
+- iRacing display mode: **OpenXR** (required for both native and OpenKneeboard)
+- **Native mode:** install the VR layer and restart iRacing; confirm the panel
+  reads "VR layer installed" and the compositor is active. Ensure
+  `PITWALL_VR_DISABLE` is not set. See [NATIVE_VR.md](NATIVE_VR.md)
+- **Web fallback:** OpenKneeboard must be running with the Web Dashboard tab; do
+  not add `iRacingUI.exe` to OpenKneeboard's games list — use the sim exe or
+  leave the games list empty for OpenXR
 
 ### Build errors
 

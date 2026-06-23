@@ -2737,6 +2737,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tts",
+ "windows 0.58.0",
 ]
 
 [[package]]

@@ -17,7 +17,7 @@ use crate::storage::{
     Database, FuelSummary, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail,
     SessionSummary, TireSummary,
 };
-use crate::vr::{VrOverlayService, VrOverlayStatus};
+use crate::vr::{NativeVrStatus, VrOverlayService, VrOverlayStatus};
 
 pub struct AppState {
     pub db: Mutex<Database>,
@@ -173,7 +173,7 @@ pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Re
     state.live.start(app.clone(), state.inner().clone());
     let settings = state.settings.lock().clone();
     if settings.vr_overlay_enabled {
-        state.vr.start(state.live.clone());
+        state.vr.start(state.live.clone(), settings.clone());
     }
     if settings.audio_coach_enabled {
         state.audio.start(state.live.clone());
@@ -297,7 +297,8 @@ pub fn start_vr_overlay(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     if !state.live.is_running() {
         return Err("Start live monitor first".into());
     }
-    state.vr.start(state.live.clone());
+    let settings = state.settings.lock().clone();
+    state.vr.start(state.live.clone(), settings);
     Ok(())
 }
 
@@ -310,6 +311,48 @@ pub fn stop_vr_overlay(state: State<'_, Arc<AppState>>) -> Result<(), String> {
 #[tauri::command]
 pub fn get_vr_overlay_status(state: State<'_, Arc<AppState>>) -> VrOverlayStatus {
     state.vr.status()
+}
+
+#[tauri::command]
+pub fn get_native_vr_status(state: State<'_, Arc<AppState>>) -> NativeVrStatus {
+    state.vr.native_status()
+}
+
+/// Resolve the bundled OpenXR layer manifest path (next to the app resources).
+fn vr_layer_manifest_path(app: &AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    // Bundled under <resources>/resources/openxr-layer/ (see tauri.conf.json).
+    let rel = ["resources", "openxr-layer", crate::vr::MANIFEST_FILE];
+    let candidate = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| rel.iter().fold(dir, |acc, p| acc.join(p)))
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|exe| {
+                exe.parent()
+                    .map(|d| rel.iter().fold(d.to_path_buf(), |acc, p| acc.join(p)))
+            })
+        })
+        .ok_or_else(|| "Could not resolve VR layer manifest path".to_string())?;
+    Ok(candidate.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn is_vr_layer_installed() -> bool {
+    crate::vr::is_layer_installed()
+}
+
+#[tauri::command]
+pub fn install_vr_layer(app: AppHandle) -> Result<(), String> {
+    let path = vr_layer_manifest_path(&app)?;
+    crate::vr::install_layer(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn uninstall_vr_layer(app: AppHandle) -> Result<(), String> {
+    let path = vr_layer_manifest_path(&app)?;
+    crate::vr::uninstall_layer(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

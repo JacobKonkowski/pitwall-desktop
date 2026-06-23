@@ -1,0 +1,140 @@
+/* Shared overlay widget styling for the desktop pop-out and in-app previews.
+   Mirrors the Iron Man / board / radar wireframes the VR layer renders, using
+   the same cyan-green helmet-HUD palette. */
+
+.pw-widget {
+  --pw-glow: #5dffa8;
+  --pw-glow-dim: rgba(93, 255, 168, 0.55);
+  --pw-hero: #e8fff3;
+  --pw-fast: #5dffa8;
+  --pw-slow: #ff6b6b;
+  --pw-warn: #ffb347;
+  font-family: "Consolas", "Cascadia Mono", "Segoe UI Mono", monospace;
+  color: var(--pw-glow);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95), 0 0 2px #000;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pw-widget .fast { color: var(--pw-fast); }
+.pw-widget .slow { color: var(--pw-slow); }
+.pw-widget .neutral { color: var(--pw-glow-dim); }
+.pw-widget .warn { color: var(--pw-warn); }
+
+.pw-badge {
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+/* ---- Coach (Iron Man) ---- */
+.pw-coach {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 6px 10px;
+  gap: 4px;
+}
+.pw-coach-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.pw-coach-pos { color: var(--pw-glow); }
+.pw-coach-hero { text-align: center; line-height: 1.05; }
+.pw-coach-lapnum { font-size: 11px; letter-spacing: 0.22em; color: var(--pw-glow-dim); }
+.pw-coach-laptime { font-size: 44px; font-weight: 700; color: var(--pw-hero); }
+.pw-coach-gaps {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+}
+.pw-gap { display: flex; flex-direction: column; align-items: center; }
+.pw-gap-lbl { font-size: 10px; letter-spacing: 0.18em; color: var(--pw-glow-dim); }
+.pw-gap-val { font-size: 20px; }
+.pw-coach-deltas {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pw-coach-pack {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.pw-coach-sectors {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: auto;
+}
+.pw-sector { height: 4px; background: rgba(93, 255, 168, 0.15); position: relative; }
+.pw-sector-fill { position: absolute; inset: 0 auto 0 0; background: var(--pw-glow); }
+.pw-coach-footer {
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--pw-glow-dim);
+}
+
+/* ---- Standings / Relative boards ---- */
+.pw-board { font-size: 14px; padding: 6px 8px; }
+.pw-board h1 {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--pw-glow-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.pw-board-empty { color: var(--pw-glow-dim); font-size: 12px; }
+.pw-board-row {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 0;
+}
+.pw-board-row.standings { grid-template-columns: 28px 40px 1fr auto; }
+.pw-board-row.relative { grid-template-columns: 40px 1fr auto; }
+.pw-board-row.you { color: var(--pw-hero); font-weight: 700; }
+.pw-board-pos { color: var(--pw-glow-dim); }
+.pw-board-num {
+  display: inline-block;
+  min-width: 32px;
+  text-align: center;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: #06140d;
+  background: var(--pw-glow);
+  font-weight: 700;
+}
+.pw-board-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pw-board-lap { color: var(--pw-glow); }
+
+/* ---- Radar ---- */
+.pw-radar { position: relative; width: 100%; height: 100%; min-height: 120px; }
+.pw-radar-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 80%;
+  height: 80%;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(93, 255, 168, 0.2);
+  border-radius: 50%;
+}
+.pw-radar-me,
+.pw-radar-car {
+  position: absolute;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.pw-radar-me { width: 14px; height: 14px; background: var(--pw-hero); top: 50%; }
+.pw-radar-car { width: 11px; height: 11px; background: var(--pw-warn); }

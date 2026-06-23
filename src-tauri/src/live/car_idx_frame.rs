@@ -22,6 +22,8 @@ pub struct CarIdxFrame {
     pub on_pit_road: Vec<bool>,
     #[field_name = "CarIdxF2Time"]
     pub f2_time: Vec<f32>,
+    #[field_name = "CarIdxLapDistPct"]
+    pub lap_dist_pct: Vec<f32>,
 
     // Player session deltas (valid only when the matching `_OK` flag is set).
     #[field_name = "LapDeltaToSessionBestLap"]
@@ -36,8 +38,11 @@ pub struct CarIdxFrame {
     // Session-wide state used by the audio coach and HUD.
     #[field_name = "SessionFlags"]
     pub session_flags: Option<BitField>,
+    // iRacing reports `CarLeftRight` as an Int32 enum (irsdk_CarLeftRight), not a
+    // bitfield. Decoding it as `BitField` silently failed (always None -> Off),
+    // breaking spotter pack alerts; read it as the int it actually is.
     #[field_name = "CarLeftRight"]
-    pub car_left_right: Option<BitField>,
+    pub car_left_right: i32,
     #[field_name = "PlayerCarMyIncidentCount"]
     pub incident_count: i32,
     #[field_name = "SessionTimeRemain"]
@@ -58,6 +63,6 @@ impl CarIdxFrame {
 
     /// Raw `CarLeftRight` enum value (0 / Off when unavailable).
     pub fn car_left_right_value(&self) -> u32 {
-        self.car_left_right.map(|b| b.value()).unwrap_or(0)
+        self.car_left_right.max(0) as u32
     }
 }

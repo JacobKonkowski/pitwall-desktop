@@ -26,6 +26,9 @@ dist-ssr
 # Rust / Tauri
 src-tauri/target/
 
+# OpenXR layer (CMake build output; stage Release DLL manually — see docs/NATIVE_VR.md)
+openxr-layer/build/
+
 # Local env
 .env
 .env.*

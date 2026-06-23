@@ -11,6 +11,7 @@ import type {
   LapTrace,
   LiveSnapshot,
   LiveStatus,
+  NativeVrStatus,
   SessionDetail,
   SessionStandings,
   SessionSummary,
@@ -122,6 +123,22 @@ export async function stopVrOverlay(): Promise<void> {
 
 export async function getVrOverlayStatus(): Promise<VrOverlayStatus> {
   return invoke("get_vr_overlay_status");
+}
+
+export async function getNativeVrStatus(): Promise<NativeVrStatus> {
+  return invoke("get_native_vr_status");
+}
+
+export async function isVrLayerInstalled(): Promise<boolean> {
+  return invoke("is_vr_layer_installed");
+}
+
+export async function installVrLayer(): Promise<void> {
+  return invoke("install_vr_layer");
+}
+
+export async function uninstallVrLayer(): Promise<void> {
+  return invoke("uninstall_vr_layer");
 }
 
 export async function checkVrHudHealth(): Promise<boolean> {

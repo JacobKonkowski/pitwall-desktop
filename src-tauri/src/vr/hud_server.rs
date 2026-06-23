@@ -96,11 +96,13 @@ fn handle_connection(stream: &mut std::net::TcpStream, live: &LiveService) -> st
     let mut buf = [0u8; 1024];
     let n = stream.read(&mut buf)?;
     let req = String::from_utf8_lossy(&buf[..n]);
-    let path = req
+    let raw_path = req
         .lines()
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or("/");
+    // The layout is selected client-side from the query string; route on path only.
+    let path = raw_path.split('?').next().unwrap_or("/");
 
     let (status, content_type, body) = match path {
         "/api/live" => {
@@ -126,6 +128,11 @@ fn handle_connection(stream: &mut std::net::TcpStream, live: &LiveService) -> st
     Ok(())
 }
 
+// Single page that renders any overlay layout client-side, selected by the
+// `?layout=` query (ironman | standings | relative | radar) and the optional
+// `?pace=` query (best | optimal | both). The native OpenXR layer
+// mirrors the `ironman` coach layout in Direct2D; this page is the browser
+// preview and the visual reference. `?layout=ironman` is the default.
 const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -133,118 +140,161 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PitWall VR HUD</title>
   <style>
-    * { box-sizing: border-box; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; min-height: 100%; background: transparent; overflow: hidden; }
     body {
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: rgba(12, 16, 24, 0.92);
-      color: #e8eef8;
-      padding: 12px 14px;
-      min-width: 280px;
+      font-family: "Consolas", "Cascadia Mono", "Segoe UI Mono", monospace;
+      color: #5dffa8;
+      display: flex; align-items: center; justify-content: center;
+      padding: 8px;
+      text-shadow: 0 0 6px rgba(0,0,0,0.95), 0 0 2px #000;
     }
-    .track { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
-    .car { font-size: 11px; color: #aab4c4; margin-bottom: 4px; }
-    .lap { font-size: 22px; font-weight: 700; margin: 4px 0; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; margin-bottom: 4px; }
-    .delta { font-size: 13px; }
-    .delta.slow { color: #ef5350; }
-    .delta.fast { color: #66bb6a; }
-    .pos { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-    .gaps { display: flex; gap: 12px; font-size: 12px; margin-bottom: 4px; }
-    .gaps .lead { color: #8899aa; }
-    .pack { font-size: 12px; font-weight: 700; margin-bottom: 6px; letter-spacing: 0.5px; }
-    .pack.clear { color: #66bb6a; }
-    .pack.alert { color: #ffb74d; }
-    .meta { color: #aab4c4; font-size: 12px; margin-bottom: 6px; }
-    .tires { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 10px; color: #8899aa; margin-bottom: 8px; }
-    .tires span { text-align: center; }
-    .sectors { display: flex; flex-direction: column; gap: 4px; }
-    .sector { display: grid; grid-template-columns: 24px 1fr; gap: 6px; align-items: center; font-size: 12px; }
-    .bar { height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
-    .fill { height: 100%; background: #4fc3f7; border-radius: 3px; transition: width 0.1s linear; }
-    .wait { color: #888; font-size: 14px; }
+    .wait {
+      color: rgba(93,255,168,0.7); font-size: 14px; letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .slow { color: #ff6b6b; } .fast { color: #5dffa8; } .neutral { color: rgba(93,255,168,0.75); }
+    .warn { color: #ffb347; }
+
+    /* Iron Man coach HUD: distributed across the upper windshield, transparent. */
+    .ironman { position: relative; width: min(94vw, 880px); height: 260px; pointer-events: none; user-select: none; }
+    .ironman .corner { position: absolute; font-size: 18px; font-weight: 700; letter-spacing: 0.12em; }
+    .ironman .pos { top: 0; left: 0; }
+    .ironman .flag { top: 0; right: 0; }
+    .ironman .hero { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); text-align: center; }
+    .ironman .lapnum { font-size: 12px; letter-spacing: 0.24em; color: rgba(93,255,168,0.7); }
+    .ironman .laptime { font-size: 64px; font-weight: 700; line-height: 1.05; color: #e8fff3; }
+    .ironman .gap { position: absolute; top: 96px; text-align: center; }
+    .ironman .gap.ahead { left: 0; } .ironman .gap.behind { right: 0; }
+    .ironman .gap .lbl { display: block; font-size: 11px; letter-spacing: 0.18em; color: rgba(93,255,168,0.55); }
+    .ironman .gap .val { font-size: 26px; font-weight: 700; }
+    .ironman .deltas { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); display: flex; gap: 24px; font-size: 22px; font-weight: 700; white-space: nowrap; }
+    .ironman .pack { position: absolute; top: 188px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: 700; letter-spacing: 0.12em; }
+    .ironman .sectors { position: absolute; bottom: 26px; left: 0; right: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .ironman .sector { height: 4px; background: rgba(93,255,168,0.15); position: relative; }
+    .ironman .sector .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #5dffa8; }
+    .ironman .footer { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); font-size: 14px; letter-spacing: 0.1em; color: rgba(93,255,168,0.7); }
+
+    /* Phase C list/board layouts. */
+    .board { width: min(94vw, 520px); font-size: 16px; }
+    .board h1 { font-size: 12px; letter-spacing: 0.22em; color: rgba(93,255,168,0.6); margin-bottom: 8px; text-transform: uppercase; }
+    .board .row { display: grid; grid-template-columns: 36px 48px 1fr auto; gap: 10px; padding: 3px 0; }
+    .board .row.you { color: #e8fff3; font-weight: 700; }
+    .board .num { color: #d8ffe9; }
+    .relative .row { grid-template-columns: 48px 1fr auto; }
+    .radar { position: relative; width: 320px; height: 320px; }
+    .radar .me, .radar .car { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); }
+    .radar .me { width: 16px; height: 16px; background: #e8fff3; left: 50%; top: 50%; }
+    .radar .car { width: 12px; height: 12px; background: #ffb347; left: 50%; }
   </style>
 </head>
 <body>
-  <div id="root"><p class="wait">Waiting for PitWall live telemetry…</p></div>
+  <div id="root"><p class="wait">Awaiting telemetry</p></div>
   <script>
+    const params = new URLSearchParams(location.search);
+    const LAYOUT = params.get("layout") || "ironman";
+    const PACE = params.get("pace") || "both";
+
     function fmt(ms) {
-      if (ms == null || ms <= 0) return "—";
-      const s = ms / 1000;
-      const m = Math.floor(s / 60);
-      const sec = s - m * 60;
+      if (ms == null || ms <= 0) return "\u2014";
+      const s = ms / 1000, m = Math.floor(s / 60), sec = s - m * 60;
       return m > 0 ? m + ":" + sec.toFixed(3).padStart(6, "0") : sec.toFixed(3);
     }
-    function fmtDelta(ms) {
-      if (ms == null) return "—";
-      return (ms >= 0 ? "+" : "") + (ms / 1000).toFixed(3);
-    }
-    function fmtGap(sec) {
-      if (sec == null) return "—";
-      return sec.toFixed(1) + "s";
-    }
+    function fmtDelta(ms) { return ms == null ? "\u2014" : (ms >= 0 ? "+" : "") + (ms / 1000).toFixed(3); }
+    function fmtGap(sec) { return sec == null ? "\u2014" : sec.toFixed(1) + "s"; }
+    function deltaClass(ms) { return ms == null ? "neutral" : ms > 0 ? "slow" : ms < 0 ? "fast" : "neutral"; }
     function position(s) {
-      const cls = s.playerClassPosition, all = s.playerPosition;
-      if (cls != null && all != null && cls !== all) return `P${cls} · P${all} overall`;
-      if (cls != null) return `P${cls}`;
-      if (all != null) return `P${all}`;
-      return null;
+      const c = s.playerClassPosition, a = s.playerPosition;
+      if (c != null && a != null && c !== a) return "P" + c + " \u00b7 P" + a;
+      if (c != null) return "P" + c;
+      if (a != null) return "P" + a;
+      return "";
     }
-    const PACK_LABEL = {
-      clear: "CLEAR", carLeft: "CAR LEFT", carRight: "CAR RIGHT",
-      threeWide: "3-WIDE", twoCarsLeft: "2 LEFT", twoCarsRight: "2 RIGHT",
-    };
-    function render(s) {
-      if (!s || !s.track) {
-        document.getElementById("root").innerHTML = '<p class="wait">Waiting for iRacing session…</p>';
-        return;
+    const PACK = { clear: "CLEAR", carLeft: "\u25C0 CAR", carRight: "CAR \u25B6", threeWide: "3-WIDE", twoCarsLeft: "2 LEFT", twoCarsRight: "2 RIGHT", off: "" };
+    function hasLiveData(s) { return s && (s.track || s.lap > 0 || (s.fuelLevel != null && s.fuelLevel > 0)); }
+
+    function fieldPace(s) {
+      const b = s.deltaToSessionBestMs, o = s.deltaToSessionOptimalMs;
+      if (PACE === "optimal" && o != null) return '<span class="' + deltaClass(o) + '">OPT ' + fmtDelta(o) + '</span>';
+      if (PACE === "both") {
+        let out = "";
+        if (b != null) out += '<span class="' + deltaClass(b) + '">FLD ' + fmtDelta(b) + '</span>';
+        if (o != null) out += '<span class="' + deltaClass(o) + '">OPT ' + fmtDelta(o) + '</span>';
+        return out;
       }
-      const deltaBestClass = s.deltaToBestMs != null && s.deltaToBestMs > 0 ? "slow" : "fast";
-      const deltaLastClass = s.deltaToLastMs != null && s.deltaToLastMs > 0 ? "slow" : "fast";
-      const sectors = [1,2,3].map(n => {
+      return b != null ? '<span class="' + deltaClass(b) + '">FLD ' + fmtDelta(b) + '</span>' : "";
+    }
+
+    function renderIronman(s) {
+      const packLabel = PACK[s.packState] || "";
+      const packClass = s.packState === "clear" ? "fast" : "warn";
+      const sectors = [1, 2, 3].map(n => {
         const sec = (s.sectors || []).find(x => x.sectorNum === n);
-        const done = sec && sec.completed;
-        const active = s.currentSector === n;
+        const done = sec && sec.completed, active = s.currentSector === n;
         const pct = done ? 100 : active ? Math.min(100, (s.lapDistPct || 0) * 100) : 0;
-        return `<div class="sector"><span>S${n}</span><div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>`;
+        return '<div class="sector"><div class="fill" style="width:' + pct + '%"></div></div>';
       }).join("");
-      const pos = position(s);
-      const posHtml = pos ? `<div class="pos">${pos}</div>` : "";
-      const gapsHtml = (s.gapToCarAheadS != null || s.gapToCarBehindS != null)
-        ? `<div class="gaps"><span><span class="lead">ahead</span> ${fmtGap(s.gapToCarAheadS)}</span><span><span class="lead">behind</span> ${fmtGap(s.gapToCarBehindS)}</span></div>`
-        : "";
-      const packLabel = PACK_LABEL[s.packState];
-      const packHtml = packLabel
-        ? `<div class="pack ${s.packState === "clear" ? "clear" : "alert"}">${packLabel}</div>`
-        : "";
-      const sessBestHtml = s.deltaToSessionBestMs != null
-        ? `<span class="delta ${s.deltaToSessionBestMs > 0 ? "slow" : "fast"}">Δ field ${fmtDelta(s.deltaToSessionBestMs)}</span>`
-        : "";
-      document.getElementById("root").innerHTML = `
-        <div class="track">${s.track} · ${s.sessionType || ""}</div>
-        <div class="car">${s.car || ""}</div>
-        ${posHtml}
-        ${gapsHtml}
-        ${packHtml}
-        <div class="lap">Lap ${s.lap} · ${fmt(s.lapTimeMs)}</div>
-        <div class="row">
-          <span class="delta ${deltaBestClass}">Δ best ${fmtDelta(s.deltaToBestMs)}</span>
-          <span class="delta ${deltaLastClass}">Δ last ${fmtDelta(s.deltaToLastMs)}</span>
-          ${sessBestHtml}
-        </div>
-        <div class="meta">Best ${fmt(s.bestLapMs)} · Fuel ${(s.fuelLevel || 0).toFixed(1)} L · ${(s.speed || 0).toFixed(0)} km/h</div>
-        <div class="tires">
-          <span>LF ${(s.lfTemp || 0).toFixed(0)}°</span>
-          <span>RF ${(s.rfTemp || 0).toFixed(0)}°</span>
-          <span>LR ${(s.lrTemp || 0).toFixed(0)}°</span>
-          <span>RR ${(s.rrTemp || 0).toFixed(0)}°</span>
-        </div>
-        <div class="sectors">${sectors}</div>`;
+      return '<div class="ironman">' +
+        '<div class="corner pos">' + position(s) + '</div>' +
+        (s.sessionFlags ? '<div class="corner flag warn">FLAG</div>' : '') +
+        '<div class="hero"><div class="lapnum">LAP ' + (s.lap || 0) + '</div>' +
+          '<div class="laptime">' + fmt(s.lapTimeMs) + '</div></div>' +
+        '<div class="gap ahead"><span class="lbl">AHEAD</span><span class="val">' + fmtGap(s.gapToCarAheadS) + '</span></div>' +
+        '<div class="gap behind"><span class="lbl">BEHIND</span><span class="val">' + fmtGap(s.gapToCarBehindS) + '</span></div>' +
+        '<div class="deltas">' +
+          '<span class="' + deltaClass(s.deltaToBestMs) + '">\u0394B ' + fmtDelta(s.deltaToBestMs) + '</span>' +
+          '<span class="' + deltaClass(s.deltaToLastMs) + '">\u0394L ' + fmtDelta(s.deltaToLastMs) + '</span>' +
+          fieldPace(s) +
+        '</div>' +
+        (packLabel ? '<div class="pack ' + packClass + '">' + packLabel + '</div>' : '') +
+        '<div class="sectors">' + sectors + '</div>' +
+        '<div class="footer">' + (s.fuelLevel || 0).toFixed(1) + ' L \u00b7 ' + Math.round(s.speed || 0) + '</div>' +
+      '</div>';
+    }
+
+    function sortByPos(list) {
+      return (list || []).slice().sort((a, b) => (a.position > 0 ? a.position : 1e9) - (b.position > 0 ? b.position : 1e9));
+    }
+    function renderStandings(s) {
+      const rows = sortByPos(s.competitors).slice(0, 12).map(c =>
+        '<div class="row' + (c.isPlayer ? ' you' : '') + '">' +
+          '<span>' + (c.position > 0 ? c.position : "\u2014") + '</span>' +
+          '<span class="num">#' + (c.carNumber || c.carIdx) + '</span>' +
+          '<span>' + c.driverName + (c.onPitRoad ? ' <span class="warn">PIT</span>' : '') + '</span>' +
+          '<span>' + fmt(c.bestLapMs) + '</span>' +
+        '</div>').join("");
+      return '<div class="board"><h1>Standings</h1>' + rows + '</div>';
+    }
+    function renderRelative(s) {
+      const near = (s.competitors || [])
+        .filter(c => !c.isPlayer && c.gapToPlayerS != null && Math.abs(c.gapToPlayerS) <= 8)
+        .sort((a, b) => b.gapToPlayerS - a.gapToPlayerS)
+        .map(c =>
+          '<div class="row">' +
+            '<span class="num">#' + (c.carNumber || c.carIdx) + '</span>' +
+            '<span>' + c.driverName + '</span>' +
+            '<span class="' + (c.gapToPlayerS >= 0 ? 'fast' : 'slow') + '">' + (c.gapToPlayerS >= 0 ? '+' : '') + c.gapToPlayerS.toFixed(1) + 's</span>' +
+          '</div>').join("");
+      return '<div class="board relative"><h1>Relative</h1>' + near +
+        '<div class="row you"><span class="num">YOU</span><span>' + position(s) + '</span><span></span></div></div>';
+    }
+    function renderRadar(s) {
+      const cars = (s.competitors || [])
+        .filter(c => !c.isPlayer && c.gapToPlayerS != null && Math.abs(c.gapToPlayerS) <= 3)
+        .map(c => '<div class="car" style="top:' + (50 - c.gapToPlayerS * 14) + '%"></div>').join("");
+      return '<div class="radar"><div class="me"></div>' + cars + '</div>';
+    }
+
+    const RENDERERS = { ironman: renderIronman, standings: renderStandings, relative: renderRelative, radar: renderRadar };
+
+    function render(s) {
+      const root = document.getElementById("root");
+      if (!hasLiveData(s)) { root.innerHTML = '<p class="wait">Awaiting telemetry</p>'; return; }
+      const fn = RENDERERS[LAYOUT] || renderIronman;
+      root.innerHTML = fn(s);
     }
     async function poll() {
-      try {
-        const r = await fetch("/api/live");
-        render(await r.json());
-      } catch (_) {}
+      try { const r = await fetch("/api/live"); render(await r.json()); } catch (_) {}
     }
     poll();
     setInterval(poll, 100);

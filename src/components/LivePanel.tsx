@@ -7,8 +7,10 @@ import {
   getAudioCoachStatus,
   getLiveSnapshot,
   getLiveStatus,
+  getNativeVrStatus,
   getSettings,
   getVrOverlayStatus,
+  installVrLayer,
   isDesktopOverlayOpen,
   onLiveStatus,
   onLiveTelemetry,
@@ -22,7 +24,16 @@ import {
   stopLiveMonitor,
   stopVrOverlay,
 } from "../lib/api";
-import type { AppSettings, AudioCoachStatus, LiveSnapshot, LiveStatus, VrOverlayStatus } from "../lib/types";
+import type {
+  AppSettings,
+  AudioCoachStatus,
+  LiveSnapshot,
+  LiveStatus,
+  NativeVrStatus,
+  VrOverlayStatus,
+  WidgetPlacement,
+} from "../lib/types";
+import { defaultOverlayLayout, WIDGET_KINDS, WIDGET_LABELS } from "../lib/types";
 import { SessionLeaderboard } from "./SessionLeaderboard";
 
 function stateClass(state: LiveStatus["state"]): string {
@@ -72,6 +83,7 @@ export function LivePanel() {
   const [running, setRunning] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [vrStatus, setVrStatus] = useState<VrOverlayStatus | null>(null);
+  const [nativeVr, setNativeVr] = useState<NativeVrStatus | null>(null);
   const [vrHudHealthy, setVrHudHealthy] = useState<boolean | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioCoachStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -88,7 +100,7 @@ export function LivePanel() {
       getSettings(),
     ]);
     setStatus(liveStatus);
-    setSnap(snapshot.track ? snapshot : null);
+    setSnap(liveStatus.state === "connected" ? snapshot : null);
     setRunning(liveStatus.state !== "disconnected");
     setOverlayOpen(overlay);
     setVrStatus(vr);
@@ -119,7 +131,7 @@ export function LivePanel() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!vrStatus?.active) {
+    if (!vrStatus?.active || vrStatus.mode === "native") {
       setVrHudHealthy(null);
       return;
     }
@@ -139,7 +151,28 @@ export function LivePanel() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [vrStatus?.active]);
+  }, [vrStatus?.active, vrStatus?.mode]);
+
+  useEffect(() => {
+    if (!vrStatus?.active || vrStatus.mode !== "native") {
+      setNativeVr(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = () => {
+      getNativeVrStatus()
+        .then((s) => {
+          if (!cancelled) setNativeVr(s);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [vrStatus?.active, vrStatus?.mode]);
 
   const handleStart = async () => {
     setError(null);
@@ -200,6 +233,17 @@ export function LivePanel() {
     }
   };
 
+  const handleInstallLayer = async () => {
+    setError(null);
+    try {
+      await installVrLayer();
+      setVrStatus(await getVrOverlayStatus());
+      setNativeVr(await getNativeVrStatus());
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const handleToggleAudio = async () => {
     setError(null);
     try {
@@ -221,6 +265,23 @@ export function LivePanel() {
     const next = { ...settings, ...patch };
     await saveSettings(next);
     setSettings(next);
+  };
+
+  const handlePatchWidget = async (index: number, patch: Partial<WidgetPlacement>) => {
+    if (!settings) return;
+    const widgets = settings.overlayLayout.widgets.map((w, i) =>
+      i === index ? { ...w, ...patch } : w,
+    );
+    await handleSaveSettings({ overlayLayout: { ...settings.overlayLayout, widgets } });
+  };
+
+  const handlePatchLayout = async (patch: Partial<AppSettings["overlayLayout"]>) => {
+    if (!settings) return;
+    await handleSaveSettings({ overlayLayout: { ...settings.overlayLayout, ...patch } });
+  };
+
+  const handleResetLayout = async () => {
+    await handleSaveSettings({ overlayLayout: defaultOverlayLayout() });
   };
 
   const sectorProgress = (sectorNum: number): number => {
@@ -275,10 +336,54 @@ export function LivePanel() {
             {vrStatus.runtime || "VR"} — {vrStatus.message}
           </p>
         )}
-        {vrStatus?.active && vrStatus.hudUrl && (
+        {vrStatus?.active && vrStatus.mode === "native" && (
           <div className="vr-hud-help panel">
             <div className="vr-hud-help-header">
-              <h3>In-headset setup (no SteamVR)</h3>
+              <h3>In-headset HUD (native)</h3>
+              {vrStatus.layerInstalled ? (
+                <span className="vr-health-pill vr-health-ok">VR layer installed</span>
+              ) : (
+                <span className="vr-health-pill vr-health-err">VR layer not installed</span>
+              )}
+            </div>
+            {!vrStatus.layerInstalled ? (
+              <>
+                <p className="muted small">
+                  PitWall composites the HUD directly in the headset through its own OpenXR
+                  layer — no OpenKneeboard or RaceLab needed. Install the layer once, then
+                  restart iRacing.
+                </p>
+                <div className="btn-row">
+                  <button type="button" onClick={handleInstallLayer}>
+                    Install VR layer
+                  </button>
+                  <button type="button" onClick={handlePreviewVr}>
+                    Preview in browser
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted small">
+                  {nativeVr?.compositorActive
+                    ? "Compositor active — the HUD is live in your headset."
+                    : "Waiting for the in-headset compositor. Launch iRacing in OpenXR mode and get on track."}
+                  {" "}The HUD is head-locked to the upper windshield; adjust height, scale, and
+                  opacity in Settings.
+                </p>
+                <div className="btn-row">
+                  <button type="button" onClick={handlePreviewVr}>
+                    Preview in browser
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {vrStatus?.active && vrStatus.mode !== "native" && vrStatus.hudUrl && (
+          <div className="vr-hud-help panel">
+            <div className="vr-hud-help-header">
+              <h3>In-headset setup (OpenKneeboard fallback)</h3>
               {vrHudHealthy === true && (
                 <span className="vr-health-pill vr-health-ok">HUD server ready</span>
               )}
@@ -287,12 +392,12 @@ export function LivePanel() {
               )}
             </div>
             <p className="muted small">
-              Use iRacing in <strong>OpenXR</strong> mode. Add this URL as a{" "}
+              Web fallback mode. Use iRacing in <strong>OpenXR</strong> mode and add this URL as a{" "}
               <strong>Web Dashboard</strong> tab in{" "}
               <a href="https://openkneeboard.com/" target="_blank" rel="noreferrer">
                 OpenKneeboard
-              </a>{" "}
-              (same approach as RaceLab/iOverlay):
+              </a>
+              . Switch to native mode in Settings to drop the OpenKneeboard dependency.
             </p>
             <div className="vr-url-row">
               <code>{vrStatus.hudUrl}</code>
@@ -314,8 +419,13 @@ export function LivePanel() {
                 </a>
               </li>
               <li>Settings → Tabs → Add tab → Web Dashboard → paste URL above</li>
-              <li>Preview in browser first to confirm data appears, then use in VR</li>
-              <li>Start iRacing in VR (OpenXR), join session, bind recenter in OpenKneeboard</li>
+              <li>
+                OpenKneeboard → <strong>Advanced</strong> → turn off header/footer (cleaner HUD)
+              </li>
+              <li>
+                Join iRacing, get <strong>in the car</strong>, toggle OpenKneeboard, then{" "}
+                <strong>Recenter</strong> while seated — loading-screen position is usually too low
+              </li>
             </ol>
           </div>
         )}
@@ -350,8 +460,97 @@ export function LivePanel() {
               checked={settings.vrOverlayEnabled}
               onChange={(e) => handleSaveSettings({ vrOverlayEnabled: e.target.checked })}
             />
-            <span>Auto-start in-headset HUD server with live monitor</span>
+            <span>Auto-start in-headset HUD with live monitor</span>
           </label>
+          <label className="settings-row">
+            <span>VR mode</span>
+            <select
+              value={settings.vrMode}
+              onChange={(e) => handleSaveSettings({ vrMode: e.target.value })}
+            >
+              <option value="native">Native (in-headset, no OpenKneeboard)</option>
+              <option value="web">Web fallback (OpenKneeboard)</option>
+            </select>
+          </label>
+          <label className="settings-row">
+            <span>Field pace (coach)</span>
+            <select
+              value={settings.overlayLayout.fieldPaceMode}
+              onChange={(e) => handlePatchLayout({ fieldPaceMode: e.target.value })}
+            >
+              <option value="best">Session best (FLD)</option>
+              <option value="optimal">Session optimal (OPT)</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+
+          <div className="overlay-widgets-settings">
+            <div className="overlay-widgets-header">
+              <h4>Overlay widgets</h4>
+              <button type="button" className="tab" onClick={handleResetLayout}>
+                Reset layout
+              </button>
+            </div>
+            <p className="muted small">
+              Enable widgets to show them on both the desktop pop-out and the in-headset HUD.
+              Drag and resize them on the desktop overlay; tune VR height, scale, and opacity here.
+            </p>
+            {settings.overlayLayout.widgets.map((w, i) => (
+              <div key={WIDGET_KINDS[i]} className="overlay-widget-settings">
+                <label className="settings-row checkbox">
+                  <input
+                    type="checkbox"
+                    checked={w.enabled}
+                    onChange={(e) => handlePatchWidget(i, { enabled: e.target.checked })}
+                  />
+                  <span>{WIDGET_LABELS[WIDGET_KINDS[i]]}</span>
+                </label>
+                {w.enabled && (
+                  <div className="overlay-widget-vr">
+                    <label className="settings-row">
+                      <span>VR height ({w.vrOffsetY.toFixed(2)} m)</span>
+                      <input
+                        type="range"
+                        min={-0.5}
+                        max={0.5}
+                        step={0.02}
+                        value={w.vrOffsetY}
+                        onChange={(e) =>
+                          handlePatchWidget(i, { vrOffsetY: parseFloat(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label className="settings-row">
+                      <span>VR scale ({w.vrScale.toFixed(1)}×)</span>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={2}
+                        step={0.1}
+                        value={w.vrScale}
+                        onChange={(e) =>
+                          handlePatchWidget(i, { vrScale: parseFloat(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label className="settings-row">
+                      <span>VR opacity ({Math.round(w.vrOpacity * 100)}%)</span>
+                      <input
+                        type="range"
+                        min={0.2}
+                        max={1}
+                        step={0.05}
+                        value={w.vrOpacity}
+                        onChange={(e) =>
+                          handlePatchWidget(i, { vrOpacity: parseFloat(e.target.value) })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
           <label className="settings-row checkbox">
             <input
               type="checkbox"
@@ -393,6 +592,32 @@ export function LivePanel() {
             <span>Race fuel-to-finish calls</span>
           </label>
           <label className="settings-row">
+            <span>Speech rate ({settings.audioCoachRate.toFixed(1)}×)</span>
+            <input
+              type="range"
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={settings.audioCoachRate}
+              onChange={(e) =>
+                handleSaveSettings({ audioCoachRate: parseFloat(e.target.value) })
+              }
+            />
+          </label>
+          <label className="settings-row">
+            <span>Speech volume ({Math.round(settings.audioCoachVolume * 100)}%)</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={settings.audioCoachVolume}
+              onChange={(e) =>
+                handleSaveSettings({ audioCoachVolume: parseFloat(e.target.value) })
+              }
+            />
+          </label>
+          <label className="settings-row">
             <span>Fuel warning (liters)</span>
             <input
               type="number"
@@ -419,8 +644,8 @@ export function LivePanel() {
         <>
           <div className="panel live-meta">
             <div>
-              <strong>{snap.track || "Unknown track"}</strong>
-              <span className="muted"> · {snap.car}</span>
+              <strong>{snap.track || "Live session"}</strong>
+              <span className="muted"> · {snap.car || "—"}</span>
             </div>
             <span className="muted">{snap.sessionType}</span>
           </div>

@@ -22,8 +22,10 @@ flowchart TB
     LiveSvc --> Events[live-telemetry events]
     Events --> LiveUI[LivePanel]
     Events --> Overlay[Desktop overlay]
+    LiveSvc --> ShmWriter[VR shared memory]
+    ShmWriter --> OpenXRLayer[pitwall-openxr-layer.dll]
     LiveSvc --> HudServer[HUD server :17342]
-    HudServer --> OpenKneeboard[OpenKneeboard Web Dashboard]
+    HudServer --> OpenKneeboard[OpenKneeboard fallback]
     LiveSvc --> Audio[Audio coach TTS]
   end
   subgraph analyze [Analyze]
@@ -74,7 +76,7 @@ pitwall-desktop/
 | `coach` | `coach/` | Ollama HTTP client for AI summaries |
 | `settings` | `settings/` | `settings.json` load/save |
 | `overlay` | `overlay/` | Desktop `live-overlay` Tauri window |
-| `vr` | `vr/` | In-headset HUD via local HTTP server (OpenKneeboard / OpenXR) |
+| `vr` | `vr/` | In-headset HUD: native OpenXR layer (`shm.rs`, `layer_install.rs`, `openxr-layer/`) + HTTP server fallback (`hud_server.rs`) |
 | `audio` | `audio/` | TTS audio coach from live snapshot |
 
 ### Ingest pipeline
@@ -127,7 +129,8 @@ pitwall-desktop/
 | `SessionLeaderboard` | Live leaderboard with overall/class toggle |
 | `ConfigBanner` | `app.ini` warnings; "Start live monitor" CTA |
 | `LivePanel` | Live controls, metrics, leaderboard, overlay/VR/audio toggles |
-| `OverlayView` | Minimal HUD for pop-out window |
+| `OverlayView` | Draggable multi-widget shell for the pop-out window (`src/widgets/`) |
+| `CoachWidget`, `StandingsWidget`, `RelativeWidget`, `RadarWidget` | Shared overlay renderers in `src/widgets/` (desktop + visual reference for VR) |
 
 ### API layer (`src/lib/api.ts`)
 
@@ -171,6 +174,12 @@ TypeScript types in `src/lib/types.ts` mirror Rust `serde` structs (`camelCase`)
 | `start_vr_overlay` | — | — | Requires live monitor |
 | `stop_vr_overlay` | — | — | |
 | `get_vr_overlay_status` | — | `VrOverlayStatus` | |
+| `get_native_vr_status` | — | `NativeVrStatus` | SHM compositor health |
+| `is_vr_layer_installed` | — | `bool` | OpenXR registry check |
+| `install_vr_layer` | — | — | Registers implicit API layer |
+| `uninstall_vr_layer` | — | — | Removes layer registration |
+| `check_vr_hud_health` | — | `bool` | Web fallback HTTP probe |
+| `open_vr_hud_preview_cmd` | — | — | Opens browser preview |
 | `start_audio_coach` | — | — | Requires live monitor |
 | `stop_audio_coach` | — | — | |
 | `get_audio_coach_status` | — | `AudioCoachStatus` | Active + last message |
@@ -268,10 +277,23 @@ Post-session snapshot of the live field, captured on live disconnect and linked 
   "ollamaModel": "llama3.2",
   "overlayX": 100,
   "overlayY": 100,
-  "overlayWidth": 320,
-  "overlayHeight": 180,
+  "overlayWidth": 720,
+  "overlayHeight": 520,
   "vrOverlayEnabled": false,
+  "vrMode": "native",
   "vrOverlayScale": 1.0,
+  "vrHudOffset": 0.0,
+  "vrHudOpacity": 1.0,
+  "vrFieldPaceMode": "best",
+  "overlayLayout": {
+    "fieldPaceMode": "best",
+    "widgets": [
+      { "enabled": true, "desktopX": 24, "desktopY": 24, "desktopW": 360, "desktopH": 200, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 },
+      { "enabled": false, "desktopX": 24, "desktopY": 244, "desktopW": 320, "desktopH": 300, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 },
+      { "enabled": false, "desktopX": 360, "desktopY": 244, "desktopW": 300, "desktopH": 240, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 },
+      { "enabled": false, "desktopX": 404, "desktopY": 24, "desktopW": 200, "desktopH": 200, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 }
+    ]
+  },
   "audioCoachEnabled": true,
   "audioCoachFuelThreshold": 5.0,
   "audioPackAlertsEnabled": true,
@@ -313,20 +335,44 @@ Sends a text prompt with lap stats + insight bullets — **not** raw IBT. POST t
 - Tauri `WebviewWindowBuilder` → label `live-overlay`, `overlay.html`.
 - Always-on-top, transparent, undecorated.
 - Subscribes to `live-telemetry` events (same as Live panel).
-- Position/size from `settings.json`; **persisted on close** via `overlay/desktop.rs` window event handler.
+- Window position/size from `settings.json`; **persisted on close** via `overlay/desktop.rs` window event handler.
+- Renders the shared widget catalog (`src/widgets/`): the enabled set and field
+  pace come from `settings.overlay_layout` — the same config the VR compositor
+  reads. Each widget is dragged/resized in-window and its desktop pixel
+  placement persists per widget; VR placement (height/scale/opacity) is stored
+  separately on the same widget.
 
-### VR / in-headset (Phase 3B)
+### VR / in-headset (Phase 3B + native VR)
 
-RaceLab and similar tools inject HUDs through **OpenXR** — not SteamVR. PitWall uses the same pattern as iOverlay + OpenKneeboard:
+PitWall renders in VR two ways, selected by `settings.vr_mode`:
 
-- Local HTTP server on `http://127.0.0.1:17342/vr` (`vr/hud_server.rs`)
-- Serves a self-contained HTML HUD that polls `/api/live` at 10 Hz
-- User adds the URL as a **Web Dashboard** tab in [OpenKneeboard](https://openkneeboard.com/)
-- Works with iRacing in **OpenXR** mode — no SteamVR, no CMake, no OpenVR SDK
+**Native (default).** PitWall's own OpenXR API layer composites the HUD in the
+headset — no OpenKneeboard, RaceLab, or SteamVR overlay.
 
-**HUD content:** track, session type, car, position (class · overall), gap ahead/behind, spotter pack indicator, lap time, Δ best, Δ last, Δ field (session best), best lap, fuel, speed, sector progress bars, tire temps (LF/RF/LR/RR).
+- `vr/shm.rs` writes a compact `LiveSnapshot` mirror + per-overlay placement into
+  the named shared-memory block `Local\PitWallVR` at ~30 Hz under a seqlock.
+- The C++ layer in `openxr-layer/` hooks `xrEndFrame`, reads the block, draws each
+  enabled widget (coach, standings, relative, radar) with Direct2D/DirectWrite,
+  and appends one `XrCompositionLayerQuad` per slot.
+- `vr/layer_install.rs` registers the layer manifest under
+  `HKCU\Software\Khronos\OpenXR\1\ApiLayers\Implicit`.
+- Four fixed overlay slots (index = widget kind) share one `overlay_layout` in
+  settings with the desktop pop-out.
+- Full details: [NATIVE_VR.md](NATIVE_VR.md).
 
-**Why not native OpenXR injection?** See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md). Spike decision (June 2026): **no-go** on a PitWall-native OpenXR API layer for now. `XR_EXTX_overlay` is unsupported on consumer runtimes; the only native path is the same `xrEndFrame` API-layer hooking OpenKneeboard already does. OpenKneeboard + web HUD remains the official workflow.
+**Web fallback.** Local HTTP server on `http://127.0.0.1:17342/vr`
+(`vr/hud_server.rs`) serves a self-contained HTML HUD that polls `/api/live`;
+the user adds the URL as a **Web Dashboard** tab in OpenKneeboard. The same page
+is the browser preview and the visual reference the Direct2D renderer mirrors.
+
+**HUD content:** position (class · overall), gap ahead/behind, spotter pack
+indicator, lap time, Δ best, Δ last, field pace (session best / optimal, per
+setting), sector progress, fuel, speed, and a flag badge when a flag is raised.
+
+**Why a native layer?** See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md) for the
+research. `XR_EXTX_overlay` is unsupported on consumer runtimes, so the native
+path is an implicit OpenXR API layer hooking `xrEndFrame` — the June 2026 no-go
+was reversed on product direction to replace RaceLab VR.
 
 ### Audio coach (Phase 3C)
 
@@ -352,7 +398,9 @@ Implemented in `audio/coach.rs` + `audio/mod.rs`:
 
 ### Cargo features
 
-No optional features required for VR HUD — the HTTP server is always compiled.
+Native VR uses shared memory (`vr/shm.rs`); the web fallback HTTP server
+(`vr/hud_server.rs`) is compiled in all builds but only started when
+`vrMode` is `"web"`.
 
 ### Vite (`vite.config.ts`)
 
@@ -386,7 +434,7 @@ No optional features required for VR HUD — the HTTP server is always compiled.
 | Rule-based coach + UI | Done |
 | Ollama summary | Done |
 | Desktop overlay | Done |
-| VR in-headset HUD | Done (OpenKneeboard web URL, no SteamVR) |
+| VR in-headset HUD | Done — native OpenXR layer (default) + OpenKneeboard web fallback |
 | Audio TTS coach | Done |
 | Config banner live CTA | Done |
 | Sub-session lap segmentation | Done (v1 fix) |
@@ -402,7 +450,9 @@ No optional features required for VR HUD — the HTTP server is always compiled.
 | GitHub Actions CI | Done — `.github/workflows/ci.yml` |
 | Overlay position persist on close | Done |
 | App version in header | Done |
-| VR native spike doc | Done — [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md), no-go on native layer |
+| VR native spike doc | Done — [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md); no-go later reversed |
+| Native OpenXR layer (coach HUD) | Done — `openxr-layer/`, `vr/shm.rs`, [NATIVE_VR.md](NATIVE_VR.md) |
+| Spotter pack `CarLeftRight` Int32 fix | Done — `car_idx_frame.rs` reads Int32, not BitField |
 
 ### Implemented (v4 — multi-driver comparison)
 
@@ -424,9 +474,10 @@ No optional features required for VR HUD — the HTTP server is always compiled.
 
 | Item | Detail |
 |------|--------|
-| Native OpenXR API layer | Researched; **deferred** — see VR_NATIVE_SPIKE.md |
+| Native OpenXR API layer | Coach + standings + relative + radar widgets — see [NATIVE_VR.md](NATIVE_VR.md) |
+| Unified overlay widgets (desktop + VR) | Done — `overlay_layout` in settings, `src/widgets/` |
 | OpenVR / SteamVR path | Removed — user request |
-| OpenKneeboard required for VR | By design; PitWall serves URL only |
+| OpenKneeboard for VR | Now optional fallback only; native layer is the default |
 | MoTeC export | Out of scope, not started |
 | Multi-car analysis | Out of scope, not started |
 | Real-time LLM coaching | Out of scope |

@@ -1,71 +1,72 @@
-.overlay-root {
-  font-family: "Segoe UI", system-ui, sans-serif;
-  font-size: 13px;
-  color: #e8eef8;
-  background: rgba(12, 16, 24, 0.88);
-  border: 1px solid rgba(79, 195, 247, 0.35);
-  border-radius: 10px;
-  padding: 10px 12px;
-  min-width: 280px;
-  -webkit-app-region: drag;
-}
+/* Desktop pop-out overlay: a transparent full-window shell holding draggable
+   widget panels. Empty areas drag the OS window; panels are interactive. */
 
-.overlay-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.overlay-lap {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.overlay-delta {
-  margin-bottom: 6px;
-}
-
-.overlay-fuel {
-  color: #aab4c4;
-  margin-bottom: 8px;
-}
-
-.overlay-sectors {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.overlay-sector {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 6px;
-  align-items: center;
-}
-
-.overlay-sector-bar {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
   overflow: hidden;
 }
 
-.overlay-sector-fill {
-  height: 100%;
-  background: #4fc3f7;
-  border-radius: 3px;
-  transition: width 0.1s linear;
+.overlay-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  -webkit-app-region: drag;
+  font-family: "Segoe UI", system-ui, sans-serif;
 }
 
 .overlay-wait {
-  color: #888;
-  padding: 1rem;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  color: rgba(232, 255, 243, 0.75);
+  background: rgba(12, 16, 24, 0.7);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
-.overlay-delta.slow {
-  color: #ef5350;
+.overlay-widget {
+  position: absolute;
+  -webkit-app-region: no-drag;
+  background: rgba(8, 12, 18, 0.72);
+  border: 1px solid rgba(93, 255, 168, 0.28);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 }
 
-.overlay-delta.fast {
-  color: #66bb6a;
+.overlay-widget-grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 14px;
+  cursor: move;
+  background: linear-gradient(rgba(93, 255, 168, 0.12), transparent);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.overlay-widget:hover .overlay-widget-grip {
+  opacity: 1;
+}
+
+.overlay-widget-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    rgba(93, 255, 168, 0.5) 50%
+  );
 }

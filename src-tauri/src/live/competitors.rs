@@ -29,6 +29,10 @@ pub struct CompetitorEntry {
     pub last_lap_ms: Option<f64>,
     pub on_pit_road: bool,
     pub is_player: bool,
+    /// Position around the lap (0..1), used by the VR relative/radar overlays.
+    pub lap_dist_pct: f32,
+    /// Signed time gap to the player in seconds (+ = ahead of the player).
+    pub gap_to_player_s: Option<f32>,
 }
 
 /// Result of merging the session roster with a live `CarIdxFrame`.
@@ -85,11 +89,17 @@ fn lap_seconds_to_ms(secs: Option<f32>) -> Option<f64> {
 }
 
 pub fn build(roster: &[RosterEntry], player_car_idx: i32, frame: &CarIdxFrame) -> CompetitorSnapshot {
+    let player_f2 = array_get(&frame.f2_time, player_car_idx).filter(|t| *t >= 0.0);
     let mut competitors: Vec<CompetitorEntry> = roster
         .iter()
         .map(|r| {
             let position = array_get(&frame.position, r.car_idx).unwrap_or(0);
             let class_position = array_get(&frame.class_position, r.car_idx).unwrap_or(0);
+            let other_f2 = array_get(&frame.f2_time, r.car_idx).filter(|t| *t >= 0.0);
+            let gap_to_player_s = match (player_f2, other_f2) {
+                (Some(p), Some(o)) if r.car_idx != player_car_idx => Some(p - o),
+                _ => None,
+            };
             CompetitorEntry {
                 car_idx: r.car_idx,
                 driver_name: r.driver_name.clone(),
@@ -102,6 +112,8 @@ pub fn build(roster: &[RosterEntry], player_car_idx: i32, frame: &CarIdxFrame) -
                 last_lap_ms: lap_seconds_to_ms(array_get(&frame.last_lap_time, r.car_idx)),
                 on_pit_road: array_get(&frame.on_pit_road, r.car_idx).unwrap_or(false),
                 is_player: r.car_idx == player_car_idx,
+                lap_dist_pct: array_get(&frame.lap_dist_pct, r.car_idx).unwrap_or(0.0),
+                gap_to_player_s,
             }
         })
         .collect();
@@ -195,12 +207,13 @@ mod tests {
             class_position: vec![2, 1, 3],
             on_pit_road: vec![false, false, true],
             f2_time: vec![1.5, 0.0, 3.0],
+            lap_dist_pct: vec![0.10, 0.12, 0.05],
             delta_session_best: 0.0,
             delta_session_best_ok: false,
             delta_session_optimal: 0.0,
             delta_session_optimal_ok: false,
             session_flags: None,
-            car_left_right: None,
+            car_left_right: 0,
             incident_count: 0,
             session_time_remain: 0.0,
             session_laps_remain: 0,

@@ -476,6 +476,33 @@ button.btn-danger:hover:not(:disabled) {
   grid-template-columns: auto 1fr;
 }
 
+.overlay-widgets-settings {
+  margin: 0.75rem 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid #2a2f3a;
+}
+
+.overlay-widgets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.overlay-widgets-header h4 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.overlay-widget-settings {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #20242e;
+}
+
+.overlay-widget-vr {
+  padding-left: 1.5rem;
+}
+
 .coach-panel .coach-stats {
   display: flex;
   flex-wrap: wrap;

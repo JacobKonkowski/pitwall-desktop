@@ -132,6 +132,8 @@ export interface CompetitorEntry {
   lastLapMs: number | null;
   onPitRoad: boolean;
   isPlayer: boolean;
+  lapDistPct: number;
+  gapToPlayerS: number | null;
 }
 
 export interface LiveSnapshot {
@@ -227,6 +229,59 @@ export interface CoachSummaryResult {
   model: string;
 }
 
+export type WidgetKind = "coach" | "standings" | "relative" | "radar";
+
+/** Index of each widget in {@link OverlayLayout.widgets}; matches the Rust order
+ *  and the VR overlay slot / kind. */
+export const WIDGET_KINDS: WidgetKind[] = ["coach", "standings", "relative", "radar"];
+
+export const WIDGET_LABELS: Record<WidgetKind, string> = {
+  coach: "Coach HUD",
+  standings: "Standings",
+  relative: "Relative",
+  radar: "Radar",
+};
+
+export interface WidgetPlacement {
+  enabled: boolean;
+  desktopX: number;
+  desktopY: number;
+  desktopW: number;
+  desktopH: number;
+  vrOffsetY: number;
+  vrScale: number;
+  vrOpacity: number;
+}
+
+export interface OverlayLayout {
+  widgets: WidgetPlacement[];
+  fieldPaceMode: string;
+}
+
+/** Default layout, mirroring `OverlayLayout::default()` in the Rust settings. */
+export function defaultOverlayLayout(): OverlayLayout {
+  const base = (over: Partial<WidgetPlacement>): WidgetPlacement => ({
+    enabled: false,
+    desktopX: 24,
+    desktopY: 24,
+    desktopW: 320,
+    desktopH: 180,
+    vrOffsetY: 0,
+    vrScale: 1,
+    vrOpacity: 1,
+    ...over,
+  });
+  return {
+    widgets: [
+      base({ enabled: true, desktopX: 24, desktopY: 24, desktopW: 360, desktopH: 200 }),
+      base({ desktopX: 24, desktopY: 244, desktopW: 320, desktopH: 300 }),
+      base({ desktopX: 360, desktopY: 244, desktopW: 300, desktopH: 240 }),
+      base({ desktopX: 404, desktopY: 24, desktopW: 200, desktopH: 200 }),
+    ],
+    fieldPaceMode: "best",
+  };
+}
+
 export interface AppSettings {
   ollamaUrl: string;
   ollamaModel: string;
@@ -236,7 +291,15 @@ export interface AppSettings {
   overlayHeight: number;
   vrOverlayEnabled: boolean;
   vrOverlayScale: number;
+  vrMode: string;
+  vrHudOffset: number;
+  vrHudOpacity: number;
+  vrRecenterHotkey: string;
+  vrFieldPaceMode: string;
+  overlayLayout: OverlayLayout;
   audioCoachEnabled: boolean;
+  audioCoachRate: number;
+  audioCoachVolume: number;
   audioCoachFuelThreshold: number;
   audioPackAlertsEnabled: boolean;
   audioFlagsEnabled: boolean;
@@ -254,4 +317,13 @@ export interface VrOverlayStatus {
   runtime: string;
   message: string;
   hudUrl: string;
+  mode: string;
+  layerInstalled: boolean;
+}
+
+export interface NativeVrStatus {
+  active: boolean;
+  layerInstalled: boolean;
+  compositorActive: boolean;
+  lastFrameAgeMs: number | null;
 }
