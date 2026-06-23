@@ -38,6 +38,8 @@ pub struct LiveSnapshot {
     pub lap: i32,
     pub lap_time_ms: f64,
     pub last_lap_ms: Option<f64>,
+    /// Whether the most recently completed lap passed validity checks.
+    pub last_lap_valid: bool,
     pub best_lap_ms: Option<f64>,
     pub delta_to_best_ms: Option<f64>,
     pub delta_to_last_ms: Option<f64>,

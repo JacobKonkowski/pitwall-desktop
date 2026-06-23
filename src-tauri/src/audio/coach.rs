@@ -166,9 +166,15 @@ impl CoachEngine {
             if lap_ms > 10_000.0 && self.last_lap_seen != Some(lap_ms) {
                 self.last_lap_seen = Some(lap_ms);
                 let completed_lap = snap.lap.saturating_sub(1).max(1);
-                self.pending_lap_msg = Some(self.lap_complete_message(snap, completed_lap, lap_ms));
-                self.record_fuel_use(snap);
-                self.best_lap_ms = Some(self.best_lap_ms.map(|b| b.min(lap_ms)).unwrap_or(lap_ms));
+                if snap.last_lap_valid {
+                    self.pending_lap_msg = Some(self.lap_complete_message(snap, completed_lap, lap_ms));
+                    self.record_fuel_use(snap);
+                    self.best_lap_ms = Some(self.best_lap_ms.map(|b| b.min(lap_ms)).unwrap_or(lap_ms));
+                } else {
+                    let time_str = format_duration_long(lap_ms);
+                    self.pending_lap_msg =
+                        Some(format!("Lap {completed_lap}. {time_str}. Out lap."));
+                }
                 self.fuel_at_lap_start = Some(snap.fuel_level);
             }
         }

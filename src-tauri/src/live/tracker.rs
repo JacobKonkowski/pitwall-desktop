@@ -1,10 +1,19 @@
 use pitwall::SessionInfo;
 
+use crate::analysis::lap_segmenter::is_valid_lap_metrics;
 use crate::analysis::types::SectorBoundary;
 use crate::ingest::frame::AnalysisFrame;
 
 use super::competitors::{build_roster, RosterEntry};
 use super::snapshot::{LiveSectorProgress, LiveSnapshot};
+
+#[derive(Default)]
+struct LapAccum {
+    frames: u32,
+    pit_frames: u32,
+    min_dist_pct: f32,
+    max_dist_pct: f32,
+}
 
 pub struct LiveTracker {
     track: String,
@@ -13,12 +22,16 @@ pub struct LiveTracker {
     current_lap: i32,
     lap_start_time: f64,
     last_lap_ms: Option<f64>,
+    last_lap_valid: bool,
     best_lap_ms: Option<f64>,
     sector_start_time: f64,
     completed_sectors: Vec<(i32, f64)>,
     last_bounds_len: usize,
     roster: Vec<RosterEntry>,
     player_car_idx: i32,
+    lap_accum: LapAccum,
+    /// Latest iRacing `LapDeltaTo*_OK` flags; sampled each frame and read at lap finish.
+    latest_iracing_lap_ok: bool,
 }
 
 impl LiveTracker {
@@ -30,12 +43,15 @@ impl LiveTracker {
             current_lap: 0,
             lap_start_time: 0.0,
             last_lap_ms: None,
+            last_lap_valid: false,
             best_lap_ms: None,
             sector_start_time: 0.0,
             completed_sectors: Vec::new(),
             last_bounds_len: 0,
             roster: Vec::new(),
             player_car_idx: -1,
+            lap_accum: LapAccum::default(),
+            latest_iracing_lap_ok: true,
         }
     }
 
@@ -51,16 +67,24 @@ impl LiveTracker {
         self.player_car_idx
     }
 
+    /// Update the latest iRacing lap-validity signal from the CarIdx stream.
+    pub fn note_iracing_lap_ok(&mut self, ok: bool) {
+        self.latest_iracing_lap_ok = ok;
+    }
+
     /// Clear per-session lap and sector state. Used when the track changes
     /// (driver moved to a new session) so deltas and bests don't carry over.
     pub fn reset_session(&mut self) {
         self.current_lap = 0;
         self.lap_start_time = 0.0;
         self.last_lap_ms = None;
+        self.last_lap_valid = false;
         self.best_lap_ms = None;
         self.sector_start_time = 0.0;
         self.completed_sectors.clear();
         self.last_bounds_len = 0;
+        self.lap_accum = LapAccum::default();
+        self.latest_iracing_lap_ok = true;
     }
 
     pub fn set_session_meta(&mut self, session: &SessionInfo) {
@@ -96,7 +120,16 @@ impl LiveTracker {
         if frame.lap != self.current_lap {
             if self.current_lap > 0 && frame.lap > self.current_lap {
                 let lap_ms = (frame.session_time - self.lap_start_time) * 1000.0;
-                if lap_ms > 10_000.0 {
+                let valid = is_valid_lap_metrics(
+                    self.lap_accum.frames as usize,
+                    self.lap_accum.pit_frames as usize,
+                    Some(lap_ms),
+                    self.lap_accum.min_dist_pct,
+                    self.lap_accum.max_dist_pct,
+                ) && self.latest_iracing_lap_ok;
+
+                self.last_lap_valid = valid;
+                if valid && lap_ms > 10_000.0 {
                     self.last_lap_ms = Some(lap_ms);
                     self.best_lap_ms = Some(
                         self.best_lap_ms
@@ -109,7 +142,10 @@ impl LiveTracker {
             self.lap_start_time = frame.session_time;
             self.sector_start_time = frame.session_time;
             self.completed_sectors.clear();
+            self.lap_accum = LapAccum::default();
         }
+
+        self.record_lap_frame(frame);
 
         // Detect sector boundary crossings within current lap
         if bounds.len() != self.last_bounds_len {
@@ -127,6 +163,20 @@ impl LiveTracker {
                 self.completed_sectors.push((boundary.sector_num, sector_ms));
                 self.sector_start_time = frame.session_time;
             }
+        }
+    }
+
+    fn record_lap_frame(&mut self, frame: &AnalysisFrame) {
+        self.lap_accum.frames += 1;
+        if frame.on_pit_road {
+            self.lap_accum.pit_frames += 1;
+        }
+        if self.lap_accum.frames == 1 {
+            self.lap_accum.min_dist_pct = frame.lap_dist_pct;
+            self.lap_accum.max_dist_pct = frame.lap_dist_pct;
+        } else {
+            self.lap_accum.min_dist_pct = self.lap_accum.min_dist_pct.min(frame.lap_dist_pct);
+            self.lap_accum.max_dist_pct = self.lap_accum.max_dist_pct.max(frame.lap_dist_pct);
         }
     }
 
@@ -151,6 +201,7 @@ impl LiveTracker {
             lap: self.current_lap,
             lap_time_ms,
             last_lap_ms: self.last_lap_ms,
+            last_lap_valid: self.last_lap_valid,
             best_lap_ms: self.best_lap_ms,
             delta_to_best_ms: delta_to_best,
             delta_to_last_ms: delta_to_last,

@@ -403,8 +403,10 @@ impl Database {
         }
 
         for lap in &mut laps {
-            lap.delta_to_best_ms = match (lap.lap_time_ms, best_by_subsession.get(&lap.session_num)) {
-                (Some(lt), Some(best)) if lt > 0.0 && *best > 0.0 => Some(lt - best),
+            // Only valid laps get a delta to best; invalid out/pit/partial laps
+            // would otherwise show a misleading gap against the valid-only baseline.
+            lap.delta_to_best_ms = match (lap.valid, lap.lap_time_ms, best_by_subsession.get(&lap.session_num)) {
+                (true, Some(lt), Some(best)) if lt > 0.0 && *best > 0.0 => Some(lt - best),
                 _ => None,
             };
             lap.sectors = self.get_sectors(lap.id)?;
@@ -466,6 +468,9 @@ impl Database {
         let mut prev_remaining: Option<f64> = None;
 
         for lap in &detail.laps {
+            if !lap.valid {
+                continue;
+            }
             if let (Some(fuel_start), Some(fuel_used)) = (lap.fuel_start, lap.fuel_used) {
                 let fuel_remaining = fuel_start - fuel_used;
                 let laps_remaining_estimate = if fuel_used > 0.01 {
@@ -496,6 +501,7 @@ impl Database {
         let laps = detail
             .laps
             .iter()
+            .filter(|lap| lap.valid)
             .filter_map(|lap| {
                 Some(TireLapSummary {
                     lap_number: lap.lap_number,

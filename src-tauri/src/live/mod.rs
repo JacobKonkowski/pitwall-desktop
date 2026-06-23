@@ -274,6 +274,9 @@ impl LiveService {
                             }
                             self.set_status(LiveConnectionState::Connected, "Receiving telemetry");
                             let bounds = normalize_sector_boundaries(&sector_bounds);
+                            if let Some(car_idx) = &latest_car_idx {
+                                tracker.note_iracing_lap_ok(car_idx.completed_lap_ok());
+                            }
                             let mut snap = tracker.snapshot_from_frame(&f, &bounds);
                             if let Some(car_idx) = &latest_car_idx {
                                 merge_car_idx(&mut snap, &tracker, car_idx);

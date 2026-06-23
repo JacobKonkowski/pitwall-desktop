@@ -244,6 +244,10 @@ button.btn-danger:hover:not(:disabled) {
   background: rgba(255, 193, 7, 0.08);
 }
 
+.data-table tbody tr.invalid-lap {
+  opacity: 0.55;
+}
+
 .data-table.compact td,
 .data-table.compact th {
   padding: 0.35rem 0.4rem;

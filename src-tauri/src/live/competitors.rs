@@ -208,6 +208,7 @@ mod tests {
             on_pit_road: vec![false, false, true],
             f2_time: vec![1.5, 0.0, 3.0],
             lap_dist_pct: vec![0.10, 0.12, 0.05],
+            delta_best_ok: true,
             delta_session_best: 0.0,
             delta_session_best_ok: false,
             delta_session_optimal: 0.0,

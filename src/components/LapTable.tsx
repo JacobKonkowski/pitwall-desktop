@@ -49,7 +49,7 @@ export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap
                     </td>
                   </tr>
                 )}
-                <tr className={[selected ? "selected" : "", highlighted ? "highlighted" : ""].filter(Boolean).join(" ")}>
+                <tr className={[selected ? "selected" : "", highlighted ? "highlighted" : "", !lap.valid ? "invalid-lap" : ""].filter(Boolean).join(" ")}>
                   <td>
                     <input
                       type="checkbox"
@@ -61,12 +61,12 @@ export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap
                   <td className="muted stage-label">{lap.sessionType}</td>
                   <td>{lap.lapNumber}</td>
                   <td>{formatLapTime(lap.lapTimeMs)}</td>
-                  <td className={lap.deltaToBestMs != null && lap.deltaToBestMs > 0 ? "slow" : "fast"}>
-                    {formatDelta(lap.deltaToBestMs)}
+                  <td className={lap.valid && lap.deltaToBestMs != null && lap.deltaToBestMs > 0 ? "slow" : lap.valid ? "fast" : "muted"}>
+                    {lap.valid ? formatDelta(lap.deltaToBestMs) : "—"}
                   </td>
-                  <td>{formatLapTime(s1)}</td>
-                  <td>{formatLapTime(s2)}</td>
-                  <td>{formatLapTime(s3)}</td>
+                  <td className={lap.valid ? "" : "muted"}>{lap.valid ? formatLapTime(s1) : "—"}</td>
+                  <td className={lap.valid ? "" : "muted"}>{lap.valid ? formatLapTime(s2) : "—"}</td>
+                  <td className={lap.valid ? "" : "muted"}>{lap.valid ? formatLapTime(s3) : "—"}</td>
                   <td>{lap.fuelUsed != null ? lap.fuelUsed.toFixed(2) : "—"}</td>
                   <td>{lap.valid ? "✓" : "—"}</td>
                 </tr>

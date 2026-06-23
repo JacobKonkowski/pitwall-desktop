@@ -143,6 +143,7 @@ export interface LiveSnapshot {
   lap: number;
   lapTimeMs: number;
   lastLapMs: number | null;
+  lastLapValid: boolean;
   bestLapMs: number | null;
   deltaToBestMs: number | null;
   deltaToLastMs: number | null;

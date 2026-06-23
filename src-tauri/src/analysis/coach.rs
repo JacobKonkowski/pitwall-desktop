@@ -185,7 +185,7 @@ pub fn build_coach_report(session_id: i64, detail: &SessionDetail) -> CoachRepor
     let fuel_laps: Vec<_> = detail
         .laps
         .iter()
-        .filter(|l| l.fuel_used.unwrap_or(0.0) > 0.01)
+        .filter(|l| l.valid && l.fuel_used.unwrap_or(0.0) > 0.01)
         .collect();
     if fuel_laps.len() >= 3 {
         let avg_fuel: f64 = fuel_laps.iter().filter_map(|l| l.fuel_used).sum::<f64>()

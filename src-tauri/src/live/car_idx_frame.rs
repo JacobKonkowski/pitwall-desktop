@@ -26,6 +26,8 @@ pub struct CarIdxFrame {
     pub lap_dist_pct: Vec<f32>,
 
     // Player session deltas (valid only when the matching `_OK` flag is set).
+    #[field_name = "LapDeltaToBestLap_OK"]
+    pub delta_best_ok: bool,
     #[field_name = "LapDeltaToSessionBestLap"]
     pub delta_session_best: f32,
     #[field_name = "LapDeltaToSessionBestLap_OK"]
@@ -64,5 +66,11 @@ impl CarIdxFrame {
     /// Raw `CarLeftRight` enum value (0 / Off when unavailable).
     pub fn car_left_right_value(&self) -> u32 {
         self.car_left_right.max(0) as u32
+    }
+
+    /// iRacing's assessment of whether the just-completed lap is valid. Any
+    /// `_OK` flag flipping false means the lap was invalidated (track limits, etc.).
+    pub fn completed_lap_ok(&self) -> bool {
+        self.delta_best_ok && self.delta_session_best_ok
     }
 }
