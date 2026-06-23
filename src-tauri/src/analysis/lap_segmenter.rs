@@ -72,10 +72,14 @@ fn assign_lap_numbers(laps: &mut [LapFrames]) {
     }
 }
 
-/// Minimum fraction of the circuit a lap must cover to count as complete. Partial
-/// out-laps (e.g. pit exit before the lap counter ticks) span only part of the
-/// track and would otherwise become a bogus session best.
-const MIN_LAP_COVERAGE: f64 = 0.85;
+/// Minimum `lap_dist_pct` a completed lap must reach (start/finish line). Telemetry
+/// is sampled at finite Hz so legitimate laps peak around 0.998 rather than 1.0.
+pub const MIN_LAP_MAX_PCT: f32 = 0.95;
+
+/// Some IBT sessions never sample past ~0.87 even on complete laps (e.g. Okayama).
+/// Fallback requires both reaching this distance and spanning most of the lap.
+const MIN_LAP_MAX_PCT_FALLBACK: f32 = 0.87;
+const MIN_LAP_SPAN_FALLBACK: f32 = 0.85;
 
 /// Shared validity check for IBT import and live telemetry (same thresholds).
 pub fn is_valid_lap_metrics(
@@ -96,7 +100,7 @@ pub fn is_valid_lap_metrics(
         Some(ms) if ms >= 10_000.0 && ms <= 600_000.0 => {}
         _ => return false,
     }
-    if lap_coverage_from_range(min_dist_pct, max_dist_pct) < MIN_LAP_COVERAGE {
+    if !lap_completed(min_dist_pct, max_dist_pct) {
         return false;
     }
     true
@@ -104,24 +108,35 @@ pub fn is_valid_lap_metrics(
 
 pub fn is_valid_lap(frames: &[RawFrame], lap_time_ms: Option<f64>) -> bool {
     let pit_frames = frames.iter().filter(|f| f.on_pit_road).count();
-    let (min_pct, max_pct) = frames.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), f| {
-        (lo.min(f.lap_dist_pct), hi.max(f.lap_dist_pct))
-    });
+    let (min_pct, max_pct) = lap_dist_range(frames);
     is_valid_lap_metrics(frames.len(), pit_frames, lap_time_ms, min_pct, max_pct)
 }
 
-/// Fraction of the lap distance the car actually travelled, as `max - min` of
-/// `lap_dist_pct`. Laps that wrap across the start/finish line (min near 0,
-/// max near 1) are treated as full coverage.
-pub fn lap_coverage_from_range(min_pct: f32, max_pct: f32) -> f64 {
+/// Whether the car reached the start/finish line on this lap.
+pub fn lap_completed(min_pct: f32, max_pct: f32) -> bool {
     if !min_pct.is_finite() || !max_pct.is_finite() {
-        return 0.0;
+        return false;
     }
-    // Lap straddling the start/finish line: distance ran on both ends of the loop.
+    // Race lap straddling the start/finish line: distance ran on both ends of the loop.
     if min_pct < 0.1 && max_pct > 0.9 {
-        return 1.0;
+        return true;
     }
-    (max_pct - min_pct) as f64
+    if max_pct >= MIN_LAP_MAX_PCT {
+        return true;
+    }
+    // Fallback for sessions where telemetry peaks below 0.95 on legitimate laps.
+    let span = max_pct - min_pct;
+    max_pct >= MIN_LAP_MAX_PCT_FALLBACK && span >= MIN_LAP_SPAN_FALLBACK
+}
+
+pub fn lap_dist_range(frames: &[RawFrame]) -> (f32, f32) {
+    frames.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), f| {
+        (lo.min(f.lap_dist_pct), hi.max(f.lap_dist_pct))
+    })
+}
+
+pub fn max_lap_dist_pct(frames: &[RawFrame]) -> f32 {
+    lap_dist_range(frames).1
 }
 
 pub fn downsample_traces(frames: &[RawFrame]) -> Vec<crate::storage::TracePoint> {
@@ -200,6 +215,13 @@ mod tests {
     }
 
     #[test]
+    fn near_complete_lap_without_finish_is_invalid() {
+        // Barcelona lap 12: reaches ~85% but never crosses the finish line.
+        let frames = lap_frames(855, 0.0, 0.852, false);
+        assert!(!is_valid_lap(&frames, Some(85_433.0)));
+    }
+
+    #[test]
     fn full_lap_is_valid() {
         let frames = lap_frames(900, 0.0, 0.98, false);
         assert!(is_valid_lap(&frames, Some(91_700.0)));
@@ -211,5 +233,14 @@ mod tests {
         let mut frames = lap_frames(450, 0.97, 1.0, false);
         frames.extend(lap_frames(450, 0.0, 0.95, false));
         assert!(is_valid_lap(&frames, Some(90_000.0)));
+    }
+
+    #[test]
+    fn lap_completed_requires_max_pct() {
+        assert!(!lap_completed(0.0, 0.852));
+        assert!(lap_completed(0.0, 0.98));
+        assert!(lap_completed(0.05, 0.97));
+        // Okayama-style: telemetry peaks below 0.95 but spans most of the lap.
+        assert!(lap_completed(0.0, 0.873));
     }
 }

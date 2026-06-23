@@ -32,6 +32,21 @@ fn main() -> anyhow::Result<()> {
         trace_points,
         elapsed
     );
+    for lap in &parsed.laps {
+        let max_pct = lap
+            .traces
+            .iter()
+            .map(|p| p.dist_pct)
+            .fold(0.0_f64, f64::max);
+        let time_s = lap
+            .lap_time_ms
+            .map(|ms| format!("{:.3}s", ms / 1000.0))
+            .unwrap_or_else(|| "—".into());
+        println!(
+            "  lap {:>2}: valid={} time={} max_pct~{:.3}",
+            lap.lap_number, lap.valid, time_s, max_pct
+        );
+    }
 
     let save_start = Instant::now();
     let db = Database::open()?;
