@@ -20,6 +20,40 @@ pub struct SectorTime {
     pub time_ms: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum LapKind {
+    #[default]
+    Flying,
+    PitOut,
+    PitIn,
+    PitLane,
+    Partial,
+}
+
+impl LapKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LapKind::Flying => "flying",
+            LapKind::PitOut => "pit_out",
+            LapKind::PitIn => "pit_in",
+            LapKind::PitLane => "pit_lane",
+            LapKind::Partial => "partial",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "flying" => Some(LapKind::Flying),
+            "pit_out" => Some(LapKind::PitOut),
+            "pit_in" => Some(LapKind::PitIn),
+            "pit_lane" => Some(LapKind::PitLane),
+            "partial" => Some(LapKind::Partial),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LapSummary {
@@ -30,6 +64,7 @@ pub struct LapSummary {
     pub lap_number: i32,
     pub lap_time_ms: Option<f64>,
     pub valid: bool,
+    pub lap_kind: LapKind,
     pub fuel_start: Option<f64>,
     pub fuel_used: Option<f64>,
     pub avg_speed: Option<f64>,
@@ -164,6 +199,7 @@ pub struct StoredLap {
     pub lap_number: i32,
     pub lap_time_ms: Option<f64>,
     pub valid: bool,
+    pub lap_kind: LapKind,
     pub fuel_start: Option<f64>,
     pub fuel_used: Option<f64>,
     pub avg_speed: Option<f64>,

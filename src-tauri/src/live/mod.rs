@@ -1,3 +1,4 @@
+//! Live iRacing telemetry: connection loop, snapshot, sectors, competitors.
 mod car_idx_frame;
 mod competitors;
 mod pack;

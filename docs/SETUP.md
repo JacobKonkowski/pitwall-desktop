@@ -18,7 +18,7 @@ Complete setup for development and daily use on Windows with iRacing.
 | OpenXR VR runtime | optional | Native in-headset HUD (Meta Quest Link, SteamVR, VDXR) |
 | [OpenKneeboard](https://openkneeboard.com/) | optional | Web Dashboard fallback for the in-headset HUD |
 
-**Not required:** SteamVR for the HUD, or a GPU for coaching (rules + TTS run on CPU). Building the native VR layer from source needs CMake + an MSVC C++ toolchain — see [NATIVE_VR.md](NATIVE_VR.md).
+**Not required:** SteamVR for the HUD, or a GPU for coaching (rules + hybrid audio run on CPU). Building the native VR layer from source needs CMake + an MSVC C++ toolchain — see [NATIVE_VR.md](NATIVE_VR.md).
 
 ---
 
@@ -133,24 +133,61 @@ HUD — coach, standings, relative, and radar.
   resize it. Positions persist per widget.
 - Drag an empty part of the window to move the whole overlay.
 
-### Audio coach (TTS)
+### Audio coach (hybrid WAV + WinRT)
 
 With live monitor running:
 
 1. Click **Start audio coach**
 2. Or enable **Auto-start audio coach with live monitor** in Settings
 
+**Runtime:** Pre-recorded WAV clips for flags, pack calls, and fuel phrases;
+Windows WinRT speech for dynamic lap times, gaps, position, and deltas. No ML
+models run while iRacing is open.
+
 Spoken alerts include:
 
 - Session intro (track name)
-- Sector times and deltas vs your best sectors
-- Lap summaries with personal-best callouts
-- Fuel level and estimated laps remaining
-- Low-fuel pit warnings
+- Flags, spotter pack, optional clear callout
+- Sector and lap pace with personal-best and session-best deltas (qual/practice)
+- Gap ahead/behind on lap complete and when closing
+- Race fuel strategy, race clock milestones, pits open (race/qual)
+- Incident count (Nx style)
+
+Tune under Settings → **Radio chatter level** and per-category toggles (pace,
+strategy, gaps, race clock).
+
+**Regenerating voice clips (maintainers only — dev machine, not while racing):**
+
+Neural WinRT synthesis runs **only** in the export tool. The shipped app plays the
+resulting WAV files; it does not load any neural model.
+
+```powershell
+# List installed Windows neural voices
+.\scripts\generate-audio-clips.ps1 -ListVoices
+
+# Export all phrases with default en-US neural voice
+.\scripts\generate-audio-clips.ps1
+
+# Pick a voice by substring (e.g. Jenny, Guy, Aria)
+.\scripts\generate-audio-clips.ps1 -Voice "Jenny"
+
+# Silence placeholders (CI / quick layout tests)
+.\scripts\generate-audio-clips.ps1 -Engine Placeholder
+```
+
+Equivalent Cargo commands (from repo root):
+
+```powershell
+cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --list-voices
+cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine winrt
+cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine placeholder
+```
+
+Phrases live in `scripts/audio-phrases.txt`. Output goes to
+`src-tauri/resources/audio/coach/default/` (`*.wav` + `manifest.json`). Commit
+those files so builds bundle your chosen voice.
 
 Adjust **Fuel warning (liters)** in Settings (default `5`; set `0` to disable).
-
-Uses Windows built-in TTS — no extra voice software required.
 
 ---
 
@@ -208,7 +245,7 @@ Only structured lap/insight JSON is sent to Ollama — not raw IBT files.
 
 ## 8. Troubleshooting
 
-### Live panel stays on "Waiting for iRacing"
+See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** for consolidated fixes. Quick checks:
 
 - Confirm `irsdkEnableMem=1` in `app.ini`
 - iRacing must be running with an active session (not just the UI)
@@ -264,10 +301,13 @@ Sidebar → **Clear database** (debug builds only).
 | `npm run build` | TypeScript + Vite production build |
 | `npm run tauri build` | Release `.msi` / installer |
 | `cargo test` (in `src-tauri/`) | Run Rust unit tests |
+| `npm run docs:api` | Generate local rustdoc + TypeDoc |
 
 ---
 
 ## 10. Further reading
 
+- [docs/README.md](README.md) — documentation hub
 - [README](../README.md) — feature overview
-- [ARCHITECTURE.md](ARCHITECTURE.md) — technical audit, IPC, schema
+- [ARCHITECTURE.md](ARCHITECTURE.md) — technical audit
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — consolidated troubleshooting

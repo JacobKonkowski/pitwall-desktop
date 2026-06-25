@@ -28,7 +28,7 @@ pub struct LapFrames {
     pub frames: Vec<RawFrame>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SectorBoundary {
     pub sector_num: i32,
     pub start_pct: f64,

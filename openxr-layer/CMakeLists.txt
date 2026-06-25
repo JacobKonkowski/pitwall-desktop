@@ -28,6 +28,7 @@ FetchContent_MakeAvailable(OpenXR)
 add_library(pitwall-openxr-layer SHARED
     src/layer.cpp
     src/hud_renderer.cpp
+    pitwall-openxr-layer.def
 )
 
 target_include_directories(pitwall-openxr-layer PRIVATE

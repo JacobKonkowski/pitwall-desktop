@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS laps (
     lap_number INTEGER NOT NULL,
     lap_time_ms REAL,
     valid INTEGER NOT NULL DEFAULT 1,
+    lap_kind TEXT NOT NULL DEFAULT 'flying',
     fuel_start REAL,
     fuel_used REAL,
     avg_speed REAL,
@@ -148,8 +149,8 @@ impl Database {
         let session_id = tx.last_insert_rowid();
 
         let mut lap_stmt = tx.prepare(
-            "INSERT INTO laps (session_id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            "INSERT INTO laps (session_id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
         let mut sector_stmt = tx.prepare(
             "INSERT INTO sectors (lap_id, sector_num, time_ms) VALUES (?1, ?2, ?3)",
@@ -168,6 +169,7 @@ impl Database {
                 lap.lap_number,
                 lap.lap_time_ms,
                 lap.valid as i32,
+                lap.lap_kind.as_str(),
                 lap.fuel_start,
                 lap.fuel_used,
                 lap.avg_speed,
@@ -361,10 +363,11 @@ impl Database {
 
     fn get_laps_for_session(&self, session_id: i64, _best_lap_ms: Option<f64>) -> Result<Vec<LapSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp
+            "SELECT id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp
              FROM laps WHERE session_id = ?1 ORDER BY session_num, lap_number",
         )?;
         let rows = stmt.query_map(params![session_id], |row| {
+            let lap_kind_str: String = row.get(7)?;
             Ok(LapSummary {
                 id: row.get(0)?,
                 session_num: row.get(1)?,
@@ -373,13 +376,14 @@ impl Database {
                 lap_number: row.get(4)?,
                 lap_time_ms: row.get(5)?,
                 valid: row.get::<_, i32>(6)? != 0,
-                fuel_start: row.get(7)?,
-                fuel_used: row.get(8)?,
-                avg_speed: row.get(9)?,
-                lf_temp: row.get(10)?,
-                rf_temp: row.get(11)?,
-                lr_temp: row.get(12)?,
-                rr_temp: row.get(13)?,
+                lap_kind: LapKind::from_str(&lap_kind_str).unwrap_or(LapKind::Flying),
+                fuel_start: row.get(8)?,
+                fuel_used: row.get(9)?,
+                avg_speed: row.get(10)?,
+                lf_temp: row.get(11)?,
+                rf_temp: row.get(12)?,
+                lr_temp: row.get(13)?,
+                rr_temp: row.get(14)?,
                 sectors: Vec::new(),
                 delta_to_best_ms: None,
             })
@@ -528,12 +532,9 @@ pub fn db_path() -> PathBuf {
 }
 
 fn migrate_schema(conn: &Connection) -> Result<()> {
-    if Database::table_has_column(conn, "laps", "session_num")? {
-        return Ok(());
-    }
-
-    conn.execute_batch(
-        "
+    if !Database::table_has_column(conn, "laps", "session_num")? {
+        conn.execute_batch(
+            "
         CREATE TABLE laps_migrated (
             id INTEGER PRIMARY KEY,
             session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -543,6 +544,7 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
             lap_number INTEGER NOT NULL,
             lap_time_ms REAL,
             valid INTEGER NOT NULL DEFAULT 1,
+            lap_kind TEXT NOT NULL DEFAULT 'flying',
             fuel_start REAL,
             fuel_used REAL,
             avg_speed REAL,
@@ -566,6 +568,14 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         ALTER TABLE laps_migrated RENAME TO laps;
         CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(session_id);
         ",
-    )?;
+        )?;
+    }
+
+    if !Database::table_has_column(conn, "laps", "lap_kind")? {
+        conn.execute_batch(
+            "ALTER TABLE laps ADD COLUMN lap_kind TEXT NOT NULL DEFAULT 'flying';",
+        )?;
+    }
+
     Ok(())
 }

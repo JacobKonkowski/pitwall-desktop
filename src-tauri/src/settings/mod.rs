@@ -3,6 +3,16 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// How much non-critical radio traffic the coach produces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ChatterLevel {
+    Minimal,
+    #[default]
+    Normal,
+    Verbose,
+}
+
 /// Overlay widget slots, shared by the desktop pop-out and the VR compositor.
 /// The index of each widget in [`OverlayLayout::widgets`] equals its VR overlay
 /// slot and kind (0 = coach, 1 = standings, 2 = relative, 3 = radar), so the
@@ -146,6 +156,14 @@ pub struct AppSettings {
     pub audio_flags_enabled: bool,
     pub audio_incidents_enabled: bool,
     pub audio_fuel_race_enabled: bool,
+    pub audio_gap_alerts_enabled: bool,
+    pub audio_pace_enabled: bool,
+    pub audio_strategy_enabled: bool,
+    pub audio_race_clock_enabled: bool,
+    pub audio_pits_open_enabled: bool,
+    pub audio_pack_clear_enabled: bool,
+    #[serde(default)]
+    pub audio_coach_chatter_level: ChatterLevel,
 }
 
 impl Default for AppSettings {
@@ -173,6 +191,13 @@ impl Default for AppSettings {
             audio_flags_enabled: true,
             audio_incidents_enabled: true,
             audio_fuel_race_enabled: true,
+            audio_gap_alerts_enabled: true,
+            audio_pace_enabled: true,
+            audio_strategy_enabled: true,
+            audio_race_clock_enabled: true,
+            audio_pits_open_enabled: true,
+            audio_pack_clear_enabled: false,
+            audio_coach_chatter_level: ChatterLevel::Normal,
         }
     }
 }

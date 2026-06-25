@@ -68,6 +68,8 @@ pub struct LiveSnapshot {
     // Session-wide state consumed by the audio coach and HUD.
     pub session_flags: u32,
     pub incident_count: i32,
+    /// Session incident limit when available from session info.
+    pub incident_limit: Option<i32>,
     pub session_laps_remain: Option<i32>,
     pub session_time_remain_s: Option<f64>,
     pub pits_open: bool,

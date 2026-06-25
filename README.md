@@ -59,7 +59,7 @@ Record telemetry in-car with **Alt+L**. Files are saved to `Documents\iRacing\te
 - **Overlay widgets** — coach, standings, relative, and radar share one config for the desktop pop-out and native VR; enable/disable and field pace in Settings, drag/resize on the monitor, per-widget VR height/scale/opacity in-headset
 - **Desktop overlay** — transparent always-on-top window with draggable widget panels for a companion monitor
 - **Native in-headset HUD** — PitWall's own OpenXR layer composites the same widgets directly in VR (no OpenKneeboard or RaceLab). OpenKneeboard web fallback at `http://127.0.0.1:17342/vr` remains available. See [docs/NATIVE_VR.md](docs/NATIVE_VR.md)
-- **Audio coach** — priority-ranked spoken alerts: flags (incl. blue), incident counts, spotter pack calls (car left/right, three-wide), race fuel-to-finish, and lap/sector summaries (Windows TTS)
+- **Audio coach** — priority-ranked spoken alerts: hybrid WAV clips + Windows speech for lap times, gaps, flags, pack, race fuel, and sector summaries. See [docs/AUDIO_COACH.md](docs/AUDIO_COACH.md)
 
 ### Multi-driver comparison
 
@@ -74,6 +74,7 @@ matrix, audio priority order, and the iRacing SDK fields used.
 | `npm run tauri dev` | Dev mode |
 | `npm run build` | Frontend only |
 | `npm run tauri build` | Release installer |
+| `npm run docs:api` | Generate local rustdoc + TypeDoc (see [docs/API.md](docs/API.md)) |
 
 ## Data storage
 
@@ -84,13 +85,21 @@ matrix, audio priority order, and the iRacing SDK fields used.
 
 ## Documentation
 
+**Start here:** [docs/README.md](docs/README.md) — documentation hub for users and contributors.
+
 | Doc | Description |
 |-----|-------------|
-| [docs/SETUP.md](docs/SETUP.md) | Step-by-step install, iRacing, live, VR, Ollama, troubleshooting |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical audit — modules, IPC, schema, data flow |
-| [docs/COMPARISON.md](docs/COMPARISON.md) | Multi-driver comparison — live vs post-session capabilities, audio priority, SDK fields |
-| [docs/NATIVE_VR.md](docs/NATIVE_VR.md) | Native in-headset VR — architecture, build, install, Quest 3 setup, migrating off RaceLab |
-| [docs/VR_NATIVE_SPIKE.md](docs/VR_NATIVE_SPIKE.md) | Original OpenXR API-layer research spike (now in progress — see NATIVE_VR.md) |
+| [docs/SETUP.md](docs/SETUP.md) | Install, iRacing, live, VR, Ollama |
+| [docs/FEATURES.md](docs/FEATURES.md) | User-facing feature guide |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
+| [docs/API.md](docs/API.md) | Tauri IPC reference (`npm run docs:api` for generated docs) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System map and audit |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Contributor guide |
+| [docs/AUDIO_COACH.md](docs/AUDIO_COACH.md) | Path B audio pipeline |
+| [docs/LIVE_TELEMETRY.md](docs/LIVE_TELEMETRY.md) | Live loop and sectors |
+| [docs/COMPARISON.md](docs/COMPARISON.md) | Multi-driver comparison matrix |
+| [docs/NATIVE_VR.md](docs/NATIVE_VR.md) | Native in-headset VR |
+| [docs/VR_NATIVE_SPIKE.md](docs/VR_NATIVE_SPIKE.md) | Historical OpenXR spike |
 
 ## Stack
 

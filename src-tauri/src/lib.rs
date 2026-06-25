@@ -1,3 +1,6 @@
+//! PitWall Desktop — Tauri backend library.
+//!
+//! Modules: [`commands`] (IPC), [`ingest`], [`analysis`], [`live`], [`audio`], [`vr`], [`storage`], [`settings`].
 pub mod analysis;
 pub mod audio;
 pub mod coach;
@@ -63,6 +66,7 @@ pub fn run() {
             commands::is_vr_layer_installed,
             commands::install_vr_layer,
             commands::uninstall_vr_layer,
+            commands::get_vr_layer_diagnostics,
             commands::check_vr_hud_health,
             commands::open_vr_hud_preview_cmd,
             commands::start_audio_coach,

@@ -2,7 +2,14 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crate::live::{LiveSnapshot, PackState};
-use crate::settings::AppSettings;
+use crate::settings::{AppSettings, ChatterLevel};
+
+use super::phrasing::{
+    format_delta_phrase, format_duration_long, format_gap_seconds, lap_time_tts, sector_time_tts,
+};
+use super::queue::SpeechPriority;
+use super::session_mode::SessionMode;
+use super::speech::{SpeechPlan, SpeechUnit};
 
 /// iRacing `SessionFlags` bit masks (irsdk_Flags) used for edge detection.
 mod flags {
@@ -12,25 +19,15 @@ mod flags {
     pub const YELLOW: u32 = 0x0000_0008;
     pub const RED: u32 = 0x0000_0010;
     pub const BLUE: u32 = 0x0000_0020;
+    pub const BLACK: u32 = 0x0000_0040;
     pub const YELLOW_WAVING: u32 = 0x0000_0100;
     pub const GREEN_HELD: u32 = 0x0000_0400;
 }
 
-/// How long to wait before repeating the same side-by-side alert.
 const PACK_COOLDOWN: Duration = Duration::from_secs(4);
+const GAP_CHANGE_THRESHOLD_S: f32 = 0.3;
+const GAP_COOLDOWN: Duration = Duration::from_secs(9);
 
-/// Alert priority. When several alerts are eligible in one tick we speak only the
-/// highest-priority one; the rest are reconsidered next tick (natural deferral).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Priority {
-    Pace = 0,
-    Race = 1,
-    Pack = 2,
-    Safety = 3,
-    Critical = 4,
-}
-
-/// What state to update once an alert is actually spoken.
 enum Mark {
     Intro,
     Sector { num: i32, is_pb: bool, ms: f64 },
@@ -38,19 +35,23 @@ enum Mark {
     Flags,
     Incident,
     Pack,
+    PackClear,
     FuelLow,
     FuelToEnd,
     PitToFinish,
+    GapChange,
+    RaceClock,
+    PitsOpen,
 }
 
 struct Candidate {
-    priority: Priority,
-    text: String,
+    priority: SpeechPriority,
+    plan: SpeechPlan,
     mark: Mark,
 }
 
-/// Tracks what we've already spoken so alerts stay useful, not repetitive.
 pub struct CoachEngine {
+    session_key: String,
     tracked_lap: i32,
     announced_sectors: HashSet<i32>,
     best_sector_ms: HashMap<i32, f64>,
@@ -59,11 +60,8 @@ pub struct CoachEngine {
     fuel_per_lap: Vec<f32>,
     spoke_session_intro: bool,
     spoke_fuel_low: bool,
-    // New-lap bookkeeping is done once per lap regardless of whether the callout
-    // gets spoken, so fuel/best tracking never drifts.
     last_lap_seen: Option<f64>,
-    pending_lap_msg: Option<String>,
-    // Edge-detection baselines for session-wide alerts.
+    pending_lap_plan: Option<SpeechPlan>,
     last_flags: u32,
     flags_baseline_set: bool,
     last_incident_count: i32,
@@ -72,11 +70,23 @@ pub struct CoachEngine {
     last_pack_spoken: Option<Instant>,
     spoke_fuel_to_end: bool,
     spoke_pit_to_finish: bool,
+    last_announced_gap_ahead: Option<f32>,
+    last_announced_gap_behind: Option<f32>,
+    last_gap_spoken: Option<Instant>,
+    last_announced_position: Option<i32>,
+    spoke_five_laps: bool,
+    spoke_final_lap: bool,
+    spoke_five_minutes: bool,
+    spoke_one_minute: bool,
+    last_time_remain_s: Option<f64>,
+    prev_pits_open: bool,
+    pits_open_announced: bool,
 }
 
 impl CoachEngine {
     pub fn new() -> Self {
         Self {
+            session_key: String::new(),
             tracked_lap: 0,
             announced_sectors: HashSet::new(),
             best_sector_ms: HashMap::new(),
@@ -86,7 +96,7 @@ impl CoachEngine {
             spoke_session_intro: false,
             spoke_fuel_low: false,
             last_lap_seen: None,
-            pending_lap_msg: None,
+            pending_lap_plan: None,
             last_flags: 0,
             flags_baseline_set: false,
             last_incident_count: 0,
@@ -95,44 +105,73 @@ impl CoachEngine {
             last_pack_spoken: None,
             spoke_fuel_to_end: false,
             spoke_pit_to_finish: false,
+            last_announced_gap_ahead: None,
+            last_announced_gap_behind: None,
+            last_gap_spoken: None,
+            last_announced_position: None,
+            spoke_five_laps: false,
+            spoke_final_lap: false,
+            spoke_five_minutes: false,
+            spoke_one_minute: false,
+            last_time_remain_s: None,
+            prev_pits_open: false,
+            pits_open_announced: false,
         }
     }
 
-    pub fn poll(&mut self, snap: &LiveSnapshot, settings: &AppSettings) -> Vec<String> {
+    pub fn reset_session(&mut self) {
+        *self = Self::new();
+    }
+
+    /// Poll for at most one new speech plan; caller enqueues into `SpeechQueue`.
+    pub fn poll(&mut self, snap: &LiveSnapshot, settings: &AppSettings) -> Option<(SpeechPriority, SpeechPlan)> {
         if snap.lap <= 0 && snap.track.is_empty() {
-            return Vec::new();
+            return None;
         }
 
-        self.maintenance(snap);
+        self.maybe_reset_session(snap);
+        let pack_before_maintenance = self.last_pack_state;
+        self.maintenance(snap, settings);
 
         let mut candidates: Vec<Candidate> = Vec::new();
         self.gather_intro(snap, &mut candidates);
         self.gather_flags(snap, settings, &mut candidates);
         self.gather_incident(snap, settings, &mut candidates);
         self.gather_pack(snap, settings, &mut candidates);
+        self.gather_pack_clear(snap, settings, pack_before_maintenance, &mut candidates);
         self.gather_race_fuel(snap, settings, &mut candidates);
+        self.gather_race_clock(snap, settings, &mut candidates);
+        self.gather_pits_open(snap, settings, &mut candidates);
+        self.gather_gap_change(snap, settings, &mut candidates);
         self.gather_lap(&mut candidates);
-        self.gather_sectors(snap, &mut candidates);
+        self.gather_sectors(snap, settings, &mut candidates);
         self.gather_fuel_low(snap, settings, &mut candidates);
 
-        // Suppress low-priority chatter in the pits or when off track. Flags and
-        // incidents (Safety/Critical) still come through.
         let suppressed = snap.on_pit_road || !snap.on_track;
         if suppressed {
-            candidates.retain(|c| c.priority >= Priority::Safety);
+            candidates.retain(|c| c.priority >= SpeechPriority::SAFETY);
         }
 
-        // Speak only the single highest-priority alert this tick.
-        let Some(idx) = pick_highest(&candidates) else {
-            return Vec::new();
-        };
+        let idx = pick_highest(&candidates)?;
         let chosen = candidates.swap_remove(idx);
         self.apply_mark(snap, chosen.mark);
-        vec![chosen.text]
+        self.prev_pits_open = snap.pits_open;
+        Some((chosen.priority, chosen.plan))
     }
 
-    /// Per-tick bookkeeping that must happen whether or not we speak.
-    fn maintenance(&mut self, snap: &LiveSnapshot) {
+    fn maybe_reset_session(&mut self, snap: &LiveSnapshot) {
+        let key = format!("{}|{}", snap.track, snap.session_type);
+        if self.session_key.is_empty() {
+            self.session_key = key;
+            return;
+        }
+        if key != self.session_key {
+            self.reset_session();
+            self.session_key = key;
+        }
+    }
+
+    fn maintenance(&mut self, snap: &LiveSnapshot, settings: &AppSettings) {
         if !self.flags_baseline_set {
             self.last_flags = snap.session_flags;
             self.flags_baseline_set = true;
@@ -150,8 +189,6 @@ impl CoachEngine {
             }
         }
 
-        // Mark completed sectors with no usable time as announced so they never
-        // surface as candidates.
         for sector in &snap.sectors {
             if sector.completed
                 && !self.announced_sectors.contains(&sector.sector_num)
@@ -161,45 +198,54 @@ impl CoachEngine {
             }
         }
 
-        // New lap time: record fuel use, update best lap, and queue the callout.
         if let Some(lap_ms) = snap.last_lap_ms {
             if lap_ms > 10_000.0 && self.last_lap_seen != Some(lap_ms) {
                 self.last_lap_seen = Some(lap_ms);
                 let completed_lap = snap.lap.saturating_sub(1).max(1);
                 if snap.last_lap_valid {
-                    self.pending_lap_msg = Some(self.lap_complete_message(snap, completed_lap, lap_ms));
+                    self.pending_lap_plan =
+                        Some(self.lap_complete_plan(snap, settings, completed_lap, lap_ms));
                     self.record_fuel_use(snap);
                     self.best_lap_ms = Some(self.best_lap_ms.map(|b| b.min(lap_ms)).unwrap_or(lap_ms));
                 } else {
                     let time_str = format_duration_long(lap_ms);
-                    self.pending_lap_msg =
-                        Some(format!("Lap {completed_lap}. {time_str}. Out lap."));
+                    self.pending_lap_plan = Some(SpeechPlan::sequence(vec![
+                        SpeechUnit::Clip("lap".into()),
+                        SpeechUnit::Tts(format!("{completed_lap}, {time_str}. Out lap.")),
+                    ]));
                 }
                 self.fuel_at_lap_start = Some(snap.fuel_level);
+                if settings.audio_fuel_race_enabled {
+                    self.spoke_fuel_low = false;
+                }
             }
         }
 
-        // When the player is clear/off, keep the pack baseline current so the
-        // next side-by-side moment re-announces.
-        if !snap.pack_state.is_traffic() {
+        if !snap.pack_state.is_traffic() && snap.pack_state != PackState::Clear {
             self.last_pack_state = snap.pack_state;
         }
+
+        self.last_time_remain_s = snap.session_time_remain_s;
     }
 
     fn gather_intro(&self, snap: &LiveSnapshot, out: &mut Vec<Candidate>) {
         if self.spoke_session_intro || snap.track.is_empty() {
             return;
         }
-        let text = format!(
-            "PitWall coach online. {}. {}",
-            snap.track,
-            if snap.session_type.is_empty() {
-                "Good luck.".into()
-            } else {
-                format!("{} session.", snap.session_type)
-            }
-        );
-        out.push(Candidate { priority: Priority::Critical, text, mark: Mark::Intro });
+        let session = if snap.session_type.is_empty() {
+            SpeechUnit::Clip("intro_good_luck".into())
+        } else {
+            SpeechUnit::Tts(format!("{}. Good luck.", snap.session_type))
+        };
+        out.push(Candidate {
+            priority: SpeechPriority::CRITICAL,
+            plan: SpeechPlan::sequence(vec![
+                SpeechUnit::Clip("intro_online".into()),
+                SpeechUnit::Tts(snap.track.clone()),
+                session,
+            ]),
+            mark: Mark::Intro,
+        });
     }
 
     fn gather_flags(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
@@ -210,23 +256,31 @@ impl CoachEngine {
         let newly_set = |mask: u32| (cur & mask) != 0 && (self.last_flags & mask) == 0;
 
         let alert = if newly_set(flags::RED) {
-            Some((Priority::Critical, "Red flag."))
+            Some((SpeechPriority::CRITICAL, "flag_red"))
         } else if newly_set(flags::CHECKERED) {
-            Some((Priority::Critical, "Checkered flag."))
-        } else if newly_set(flags::YELLOW) || newly_set(flags::YELLOW_WAVING) {
-            Some((Priority::Safety, "Yellow flag. Caution."))
+            Some((SpeechPriority::CRITICAL, "flag_checkered"))
+        } else if newly_set(flags::BLACK) {
+            Some((SpeechPriority::CRITICAL, "flag_black"))
+        } else if newly_set(flags::YELLOW_WAVING) {
+            Some((SpeechPriority::SAFETY, "flag_yellow_waving"))
+        } else if newly_set(flags::YELLOW) {
+            Some((SpeechPriority::SAFETY, "flag_yellow"))
         } else if newly_set(flags::BLUE) {
-            Some((Priority::Safety, "Blue flag. Faster car approaching."))
+            Some((SpeechPriority::SAFETY, "flag_blue"))
         } else if newly_set(flags::GREEN) || newly_set(flags::GREEN_HELD) {
-            Some((Priority::Safety, "Green flag. Go."))
+            Some((SpeechPriority::SAFETY, "flag_green"))
         } else if newly_set(flags::WHITE) {
-            Some((Priority::Safety, "White flag. Last lap."))
+            Some((SpeechPriority::SAFETY, "flag_white"))
         } else {
             None
         };
 
-        if let Some((priority, text)) = alert {
-            out.push(Candidate { priority, text: text.into(), mark: Mark::Flags });
+        if let Some((priority, clip)) = alert {
+            out.push(Candidate {
+                priority,
+                plan: SpeechPlan::clip(clip),
+                mark: Mark::Flags,
+            });
         }
     }
 
@@ -235,8 +289,21 @@ impl CoachEngine {
             return;
         }
         if snap.incident_count > self.last_incident_count {
-            let text = format!("Incident count now {}.", snap.incident_count);
-            out.push(Candidate { priority: Priority::Safety, text, mark: Mark::Incident });
+            let count = snap.incident_count;
+            let mut units = vec![
+                SpeechUnit::Clip("incident_intro".into()),
+                SpeechUnit::Tts(format!("{count}x")),
+            ];
+            if let Some(limit) = snap.incident_limit {
+                if limit > 0 && count >= limit.saturating_sub(2) {
+                    units.push(SpeechUnit::Tts(format!("Limit is {limit}.")));
+                }
+            }
+            out.push(Candidate {
+                priority: SpeechPriority::SAFETY,
+                plan: SpeechPlan::sequence(units),
+                mark: Mark::Incident,
+            });
         }
     }
 
@@ -252,19 +319,107 @@ impl CoachEngine {
         if !changed && !cooled {
             return;
         }
-        let text = match snap.pack_state {
-            PackState::CarLeft => "Car on your left.",
-            PackState::CarRight => "Car on your right.",
-            PackState::ThreeWide => "Three wide. You're in the middle.",
-            PackState::TwoCarsLeft => "Two cars on your left.",
-            PackState::TwoCarsRight => "Two cars on your right.",
+        let clip = match snap.pack_state {
+            PackState::CarLeft => "pack_car_left",
+            PackState::CarRight => "pack_car_right",
+            PackState::ThreeWide => "pack_three_wide_middle",
+            PackState::TwoCarsLeft => "pack_two_left",
+            PackState::TwoCarsRight => "pack_two_right",
             PackState::Clear | PackState::Off => return,
         };
-        out.push(Candidate { priority: Priority::Pack, text: text.into(), mark: Mark::Pack });
+        out.push(Candidate {
+            priority: SpeechPriority::PACK,
+            plan: SpeechPlan::clip(clip),
+            mark: Mark::Pack,
+        });
+    }
+
+    fn gather_pack_clear(
+        &self,
+        snap: &LiveSnapshot,
+        settings: &AppSettings,
+        prev_pack: PackState,
+        out: &mut Vec<Candidate>,
+    ) {
+        if !settings.audio_pack_clear_enabled {
+            return;
+        }
+        if snap.on_pit_road || !snap.on_track {
+            return;
+        }
+        if snap.pack_state != PackState::Clear {
+            return;
+        }
+        if !prev_pack.is_traffic() {
+            return;
+        }
+        let cooled = self
+            .last_pack_spoken
+            .map(|t| t.elapsed() >= Duration::from_secs(6))
+            .unwrap_or(true);
+        if !cooled {
+            return;
+        }
+        out.push(Candidate {
+            priority: SpeechPriority::PACK,
+            plan: SpeechPlan::clip("pack_clear"),
+            mark: Mark::PackClear,
+        });
+    }
+
+    fn gather_gap_change(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
+        if !settings.audio_gap_alerts_enabled || !chatter_allows_verbose(settings) {
+            return;
+        }
+        if snap.on_pit_road || !snap.on_track {
+            return;
+        }
+        let cooled = self
+            .last_gap_spoken
+            .map(|t| t.elapsed() >= GAP_COOLDOWN)
+            .unwrap_or(true);
+        if !cooled {
+            return;
+        }
+
+        if let (Some(cur), Some(prev)) = (snap.gap_to_car_ahead_s, self.last_announced_gap_ahead) {
+            let delta = cur - prev;
+            if delta.abs() >= GAP_CHANGE_THRESHOLD_S {
+                let clip = if delta < 0.0 {
+                    "gaining_ahead"
+                } else {
+                    "losing_ahead"
+                };
+                out.push(Candidate {
+                    priority: SpeechPriority::RACE,
+                    plan: SpeechPlan::clip(clip),
+                    mark: Mark::GapChange,
+                });
+                return;
+            }
+        }
+        if let (Some(cur), Some(prev)) = (snap.gap_to_car_behind_s, self.last_announced_gap_behind) {
+            let delta = cur - prev;
+            if delta.abs() >= GAP_CHANGE_THRESHOLD_S {
+                let clip = if delta > 0.0 {
+                    "gaining_behind"
+                } else {
+                    "losing_behind"
+                };
+                out.push(Candidate {
+                    priority: SpeechPriority::RACE,
+                    plan: SpeechPlan::clip(clip),
+                    mark: Mark::GapChange,
+                });
+            }
+        }
     }
 
     fn gather_race_fuel(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
-        if !settings.audio_fuel_race_enabled {
+        if !settings.audio_fuel_race_enabled || !settings.audio_strategy_enabled {
+            return;
+        }
+        if !SessionMode::from_session_type(&snap.session_type).is_race() {
             return;
         }
         let Some(laps_remain) = snap.session_laps_remain else {
@@ -279,32 +434,105 @@ impl CoachEngine {
 
         if laps_of_fuel + 0.3 < laps_remain as f32 && !self.spoke_pit_to_finish {
             let short_by = (laps_remain as f32 - laps_of_fuel).ceil() as i32;
-            let text = format!(
-                "Short on fuel. About {} lap{} short of the finish. Plan a stop.",
-                short_by,
-                if short_by == 1 { "" } else { "s" }
-            );
-            out.push(Candidate { priority: Priority::Race, text, mark: Mark::PitToFinish });
+            out.push(Candidate {
+                priority: SpeechPriority::RACE,
+                plan: SpeechPlan::sequence(vec![
+                    SpeechUnit::Clip("fuel_short_on_fuel".into()),
+                    SpeechUnit::Tts(format!(
+                        "About {short_by} lap{} short.",
+                        if short_by == 1 { "" } else { "s" }
+                    )),
+                    SpeechUnit::Clip("fuel_plan_stop".into()),
+                ]),
+                mark: Mark::PitToFinish,
+            });
         } else if laps_of_fuel >= laps_remain as f32 && laps_remain <= 5 && !self.spoke_fuel_to_end {
             out.push(Candidate {
-                priority: Priority::Race,
-                text: "Fuel is good to the finish.".into(),
+                priority: SpeechPriority::RACE,
+                plan: SpeechPlan::clip("fuel_good_to_finish"),
                 mark: Mark::FuelToEnd,
             });
         }
     }
 
-    fn gather_lap(&self, out: &mut Vec<Candidate>) {
-        if let Some(text) = &self.pending_lap_msg {
+    fn gather_race_clock(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
+        if !settings.audio_race_clock_enabled || !settings.audio_strategy_enabled {
+            return;
+        }
+        if !chatter_allows_verbose(settings) {
+            return;
+        }
+        if !SessionMode::from_session_type(&snap.session_type).is_race() {
+            return;
+        }
+        if let Some(laps) = snap.session_laps_remain {
+            if laps == 5 && !self.spoke_five_laps {
+                out.push(Candidate {
+                    priority: SpeechPriority::RACE,
+                    plan: SpeechPlan::clip("race_five_laps"),
+                    mark: Mark::RaceClock,
+                });
+                return;
+            }
+            if laps == 1 && !self.spoke_final_lap {
+                out.push(Candidate {
+                    priority: SpeechPriority::RACE,
+                    plan: SpeechPlan::clip("race_final_lap"),
+                    mark: Mark::RaceClock,
+                });
+                return;
+            }
+        }
+        if let (Some(cur), Some(prev)) = (snap.session_time_remain_s, self.last_time_remain_s) {
+            if prev > 300.0 && cur <= 300.0 && !self.spoke_five_minutes {
+                out.push(Candidate {
+                    priority: SpeechPriority::RACE,
+                    plan: SpeechPlan::clip("race_five_minutes"),
+                    mark: Mark::RaceClock,
+                });
+                return;
+            }
+            if prev > 60.0 && cur <= 60.0 && !self.spoke_one_minute {
+                out.push(Candidate {
+                    priority: SpeechPriority::RACE,
+                    plan: SpeechPlan::clip("race_one_minute"),
+                    mark: Mark::RaceClock,
+                });
+            }
+        }
+    }
+
+    fn gather_pits_open(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
+        if !settings.audio_pits_open_enabled || !settings.audio_strategy_enabled {
+            return;
+        }
+        let mode = SessionMode::from_session_type(&snap.session_type);
+        if mode.is_practice() {
+            return;
+        }
+        if snap.pits_open && !self.prev_pits_open && !self.pits_open_announced {
             out.push(Candidate {
-                priority: Priority::Pace,
-                text: text.clone(),
+                priority: SpeechPriority::RACE,
+                plan: SpeechPlan::clip("pits_open"),
+                mark: Mark::PitsOpen,
+            });
+        }
+    }
+
+    fn gather_lap(&self, out: &mut Vec<Candidate>) {
+        if let Some(plan) = &self.pending_lap_plan {
+            out.push(Candidate {
+                priority: SpeechPriority::PACE,
+                plan: plan.clone(),
                 mark: Mark::LapComplete,
             });
         }
     }
 
-    fn gather_sectors(&self, snap: &LiveSnapshot, out: &mut Vec<Candidate>) {
+    fn gather_sectors(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
+        if !settings.audio_pace_enabled {
+            return;
+        }
         for sector in &snap.sectors {
             if !sector.completed || self.announced_sectors.contains(&sector.sector_num) {
                 continue;
@@ -315,34 +543,48 @@ impl CoachEngine {
             }
             let prev_best = self.best_sector_ms.get(&sector.sector_num).copied();
             let is_pb = prev_best.map(|b| ms < b - 20.0).unwrap_or(true);
-            let text = self.sector_message(snap, sector.sector_num, ms, prev_best, is_pb);
+            let plan = self.sector_plan(snap, settings, sector.sector_num, ms, prev_best, is_pb);
             out.push(Candidate {
-                priority: Priority::Pace,
-                text,
-                mark: Mark::Sector { num: sector.sector_num, is_pb, ms },
+                priority: SpeechPriority::PACE,
+                plan,
+                mark: Mark::Sector {
+                    num: sector.sector_num,
+                    is_pb,
+                    ms,
+                },
             });
-            // Only surface the earliest pending sector each tick.
             break;
         }
     }
 
     fn gather_fuel_low(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
         if self.spoke_fuel_low
+            || !settings.audio_strategy_enabled
             || settings.audio_coach_fuel_threshold <= 0.0
             || snap.fuel_level <= 0.0
             || snap.fuel_level > settings.audio_coach_fuel_threshold
         {
             return;
         }
-        let mut text = format!("Fuel low. {:.0} liters left.", snap.fuel_level);
+        let mut units = vec![
+            SpeechUnit::Clip("fuel_low".into()),
+            SpeechUnit::Tts(format!("{:.0} liters", snap.fuel_level)),
+        ];
         if let Some(laps_left) = estimate_laps_remaining(snap.fuel_level, &self.fuel_per_lap) {
             if laps_left <= 1.5 {
-                text.push_str(" Pit this lap or next.");
+                units.push(SpeechUnit::Clip("fuel_pit_this_lap".into()));
             } else {
-                text.push_str(&format!(" About {:.0} laps of fuel.", laps_left.round()));
+                units.push(SpeechUnit::Tts(format!(
+                    "About {:.0} laps of fuel.",
+                    laps_left.round()
+                )));
             }
         }
-        out.push(Candidate { priority: Priority::Race, text, mark: Mark::FuelLow });
+        out.push(Candidate {
+            priority: SpeechPriority::RACE,
+            plan: SpeechPlan::sequence(units),
+            mark: Mark::FuelLow,
+        });
     }
 
     fn apply_mark(&mut self, snap: &LiveSnapshot, mark: Mark) {
@@ -354,16 +596,49 @@ impl CoachEngine {
                 }
                 self.announced_sectors.insert(num);
             }
-            Mark::LapComplete => self.pending_lap_msg = None,
+            Mark::LapComplete => {
+                self.pending_lap_plan = None;
+                if let Some(pos) = snap.player_class_position.or(snap.player_position) {
+                    if pos > 0 {
+                        self.last_announced_position = Some(pos);
+                    }
+                }
+                self.last_announced_gap_ahead = snap.gap_to_car_ahead_s;
+                self.last_announced_gap_behind = snap.gap_to_car_behind_s;
+            }
             Mark::Flags => self.last_flags = snap.session_flags,
             Mark::Incident => self.last_incident_count = snap.incident_count,
             Mark::Pack => {
                 self.last_pack_state = snap.pack_state;
                 self.last_pack_spoken = Some(Instant::now());
             }
+            Mark::PackClear => {
+                self.last_pack_state = snap.pack_state;
+                self.last_pack_spoken = Some(Instant::now());
+            }
             Mark::FuelLow => self.spoke_fuel_low = true,
             Mark::FuelToEnd => self.spoke_fuel_to_end = true,
             Mark::PitToFinish => self.spoke_pit_to_finish = true,
+            Mark::GapChange => {
+                self.last_announced_gap_ahead = snap.gap_to_car_ahead_s;
+                self.last_announced_gap_behind = snap.gap_to_car_behind_s;
+                self.last_gap_spoken = Some(Instant::now());
+            }
+            Mark::RaceClock => {
+                if snap.session_laps_remain == Some(5) {
+                    self.spoke_five_laps = true;
+                }
+                if snap.session_laps_remain == Some(1) {
+                    self.spoke_final_lap = true;
+                }
+                if snap.session_time_remain_s.map(|t| t <= 300.0).unwrap_or(false) {
+                    self.spoke_five_minutes = true;
+                }
+                if snap.session_time_remain_s.map(|t| t <= 60.0).unwrap_or(false) {
+                    self.spoke_one_minute = true;
+                }
+            }
+            Mark::PitsOpen => self.pits_open_announced = true,
         }
     }
 
@@ -378,93 +653,156 @@ impl CoachEngine {
         }
     }
 
-    fn sector_message(
+    fn sector_plan(
         &self,
         snap: &LiveSnapshot,
+        settings: &AppSettings,
         sector_num: i32,
         ms: f64,
         prev_best: Option<f64>,
         is_pb: bool,
-    ) -> String {
-        let time_str = format_duration_short(ms);
-        let delta_str = prev_best.and_then(|b| {
-            if is_pb && b > ms + 20.0 {
-                Some(format!(" {:.0} tenths quicker than before.", (b - ms) / 100.0))
-            } else if !is_pb {
-                Some(format_delta_phrase(ms - b))
-            } else {
-                None
-            }
-        });
+    ) -> SpeechPlan {
+        let mode = SessionMode::from_session_type(&snap.session_type);
+        let mut units = vec![
+            SpeechUnit::Clip("sector".into()),
+            SpeechUnit::Tts(sector_time_tts(sector_num, ms)),
+        ];
 
-        let live_delta = snap.delta_to_best_ms.filter(|d| d.abs() > 80.0 && snap.lap_dist_pct > 0.05);
-        let pace_hint = live_delta.map(|d| {
-            if d > 0.0 {
-                format!(" Currently {:.0} tenths off best lap pace.", d / 100.0)
-            } else {
-                " On personal best pace.".into()
+        if is_pb && prev_best.is_some() {
+            units.push(SpeechUnit::Clip("pb_sector".into()));
+        } else if let Some(b) = prev_best {
+            if !is_pb {
+                units.push(SpeechUnit::Tts(format_delta_phrase(ms - b).trim().to_string()));
             }
-        });
-
-        let mut msg = if is_pb && prev_best.is_some() {
-            format!("Sector {sector_num}. {time_str}. New best sector.")
-        } else if is_pb {
-            format!("Sector {sector_num}. {time_str}.")
-        } else {
-            format!("Sector {sector_num}. {time_str}.{}", delta_str.unwrap_or_default())
-        };
-        if let Some(hint) = pace_hint {
-            msg.push_str(&hint);
         }
-        msg
+
+        let show_live_pace = !( !is_pb && prev_best.is_some() && ms > prev_best.unwrap() + 20.0);
+        if show_live_pace {
+            if let Some(d) = snap.delta_to_best_ms.filter(|d| d.abs() > 80.0 && snap.lap_dist_pct > 0.05)
+            {
+                if d > 0.0 {
+                    units.push(SpeechUnit::Tts(format!(
+                        "Currently {:.0} tenths off best lap pace.",
+                        d / 100.0
+                    )));
+                } else {
+                    units.push(SpeechUnit::Clip("pace_on_pb".into()));
+                }
+            }
+        }
+
+        if chatter_allows_verbose(settings) && (mode.is_qual() || mode.is_practice()) {
+            if let Some(d) = snap
+                .delta_to_session_best_ms
+                .filter(|d| d.abs() > 80.0)
+            {
+                units.push(SpeechUnit::Tts(format_delta_phrase(d).trim().to_string()));
+            }
+        }
+
+        SpeechPlan::sequence(units)
     }
 
-    fn lap_complete_message(&self, snap: &LiveSnapshot, lap_num: i32, lap_ms: f64) -> String {
+    fn lap_complete_plan(
+        &self,
+        snap: &LiveSnapshot,
+        settings: &AppSettings,
+        lap_num: i32,
+        lap_ms: f64,
+    ) -> SpeechPlan {
+        let mode = SessionMode::from_session_type(&snap.session_type);
         let prev_best = self.best_lap_ms;
         let is_pb = prev_best.map(|b| lap_ms < b - 50.0).unwrap_or(true);
 
-        let time_str = format_duration_long(lap_ms);
-        let mut parts = vec![format!("Lap {lap_num}. {time_str}.")];
+        let mut units = vec![
+            SpeechUnit::Clip("lap".into()),
+            SpeechUnit::Tts(lap_time_tts(lap_num, lap_ms)),
+        ];
 
         if is_pb && prev_best.is_some() {
-            parts.push("New personal best.".into());
+            units.push(SpeechUnit::Clip("pb_new".into()));
         } else if let Some(best) = prev_best {
-            parts.push(format_delta_phrase(lap_ms - best));
+            units.push(SpeechUnit::Tts(format_delta_phrase(lap_ms - best).trim().to_string()));
         }
 
         if let Some(last) = snap.delta_to_last_ms {
             if last.abs() > 80.0 && prev_best.is_some() && !is_pb {
-                parts.push(format!("{} versus previous lap.", format_delta_phrase(last).trim()));
+                units.push(SpeechUnit::Tts(format!(
+                    "{} versus previous lap.",
+                    format_delta_phrase(last).trim()
+                )));
             }
         }
 
-        if let Some(pos) = snap.player_class_position.or(snap.player_position) {
-            if pos > 0 {
-                parts.push(format!("P{pos}."));
+        if mode.is_qual() || (mode.is_practice() && chatter_allows_verbose(settings)) {
+            if let Some(d) = snap
+                .delta_to_session_best_ms
+                .filter(|d| d.abs() > 80.0)
+            {
+                units.push(SpeechUnit::Tts(format!(
+                    "{} off session best.",
+                    format_delta_phrase(d).trim()
+                )));
             }
         }
 
-        if snap.fuel_level > 0.0 {
-            if let Some(laps_left) = estimate_laps_remaining(snap.fuel_level, &self.fuel_per_lap) {
-                if laps_left <= 3.0 {
-                    parts.push(format!(
-                        "Fuel {:.0} liters. Pit in {:.0} laps.",
-                        snap.fuel_level,
-                        laps_left.ceil()
-                    ));
-                } else {
-                    parts.push(format!(
-                        "Fuel {:.0} liters. About {:.0} laps remaining.",
-                        snap.fuel_level,
-                        laps_left.round()
-                    ));
+        if mode.is_race() || mode.is_qual() {
+            if chatter_allows_verbose(settings) {
+                if let Some(pos) = snap.player_class_position.or(snap.player_position) {
+                    if let Some(prev) = self.last_announced_position {
+                        if pos > 0 && prev > 0 && pos != prev {
+                            let clip = if pos < prev {
+                                "position_up"
+                            } else {
+                                "position_down"
+                            };
+                            units.push(SpeechUnit::Clip(clip.into()));
+                            units.push(SpeechUnit::Tts(format!("P{pos}")));
+                        } else if pos > 0 {
+                            units.push(SpeechUnit::Tts(format!("P{pos}")));
+                        }
+                    } else if pos > 0 {
+                        units.push(SpeechUnit::Tts(format!("P{pos}")));
+                    }
                 }
-            } else {
-                parts.push(format!("Fuel {:.0} liters.", snap.fuel_level));
             }
         }
 
-        parts.join(" ")
+        if settings.audio_gap_alerts_enabled && (mode.is_race() || mode.is_qual() || chatter_allows_verbose(settings))
+        {
+            if let Some(g) = snap.gap_to_car_ahead_s.filter(|g| *g >= 0.0) {
+                units.push(SpeechUnit::Clip("gap_ahead".into()));
+                units.push(SpeechUnit::Tts(format_gap_seconds(g)));
+            }
+            if let Some(g) = snap.gap_to_car_behind_s.filter(|g| *g >= 0.0) {
+                units.push(SpeechUnit::Clip("gap_behind".into()));
+                units.push(SpeechUnit::Tts(format_gap_seconds(g)));
+            }
+        }
+
+        if mode.is_race() && settings.audio_strategy_enabled {
+            if snap.fuel_level > 0.0 {
+                if let Some(laps_left) = estimate_laps_remaining(snap.fuel_level, &self.fuel_per_lap) {
+                    if laps_left <= 3.0 {
+                        units.push(SpeechUnit::Tts(format!(
+                            "Fuel {:.0} liters. Pit in {:.0} laps.",
+                            snap.fuel_level,
+                            laps_left.ceil()
+                        )));
+                    } else {
+                        units.push(SpeechUnit::Tts(format!(
+                            "Fuel {:.0} liters. About {:.0} laps remaining.",
+                            snap.fuel_level,
+                            laps_left.round()
+                        )));
+                    }
+                } else {
+                    units.push(SpeechUnit::Tts(format!("Fuel {:.0} liters.", snap.fuel_level)));
+                }
+            }
+        }
+
+        SpeechPlan::sequence(units)
     }
 }
 
@@ -487,37 +825,14 @@ fn estimate_laps_remaining(fuel_level: f32, fuel_per_lap: &[f32]) -> Option<f32>
     Some(fuel_level / avg)
 }
 
-fn format_duration_short(ms: f64) -> String {
-    let total = ms / 1000.0;
-    if total >= 60.0 {
-        let min = (total / 60.0).floor() as i32;
-        let sec = total - (min as f64 * 60.0);
-        format!("{min} minute{} {:.1} seconds", if min == 1 { "" } else { "s" }, sec)
-    } else {
-        format!("{:.1} seconds", total)
-    }
-}
-
-fn format_duration_long(ms: f64) -> String {
-    format_duration_short(ms)
-}
-
-fn format_delta_phrase(delta_ms: f64) -> String {
-    let abs = delta_ms.abs();
-    if abs < 50.0 {
-        return " Matching your best.".into();
-    }
-    let dir = if delta_ms > 0.0 { "slower" } else { "faster" };
-    if abs < 1000.0 {
-        format!(" {:.0} tenths {dir}.", abs / 100.0)
-    } else {
-        format!(" {:.1} seconds {dir}.", abs / 1000.0)
-    }
+fn chatter_allows_verbose(settings: &AppSettings) -> bool {
+    settings.audio_coach_chatter_level != ChatterLevel::Minimal
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::AppSettings;
 
     fn settings() -> AppSettings {
         AppSettings::default()
@@ -533,37 +848,23 @@ mod tests {
     }
 
     #[test]
-    fn delta_phrase_tenths() {
-        assert!(format_delta_phrase(350.0).contains("tenths slower"));
-        assert!(format_delta_phrase(-280.0).contains("faster"));
-    }
-
-    #[test]
-    fn fuel_estimate() {
-        let laps = vec![2.0, 2.1, 1.9];
-        let left = estimate_laps_remaining(6.0, &laps).unwrap();
-        assert!((left - 3.0).abs() < 0.5);
-    }
-
-    #[test]
     fn intro_spoken_first() {
         let mut engine = CoachEngine::new();
-        let msgs = engine.poll(&base_snapshot(), &settings());
-        assert_eq!(msgs.len(), 1);
-        assert!(msgs[0].contains("PitWall coach online"));
+        let plan = engine.poll(&base_snapshot(), &settings());
+        assert!(plan.is_some());
+        assert!(plan.unwrap().1.display_text().contains("Test Track"));
     }
 
     #[test]
     fn red_flag_beats_pack_alert() {
         let mut engine = CoachEngine::new();
-        // Consume the intro first.
         engine.poll(&base_snapshot(), &settings());
 
         let mut snap = base_snapshot();
         snap.session_flags = flags::RED;
         snap.pack_state = PackState::ThreeWide;
-        let msgs = engine.poll(&snap, &settings());
-        assert_eq!(msgs, vec!["Red flag.".to_string()]);
+        let plan = engine.poll(&snap, &settings()).unwrap();
+        assert!(matches!(plan.1, SpeechPlan::Clip(k) if k == "flag_red"));
     }
 
     #[test]
@@ -574,33 +875,59 @@ mod tests {
         let mut snap = base_snapshot();
         snap.pack_state = PackState::CarLeft;
         snap.on_pit_road = true;
-        let msgs = engine.poll(&snap, &settings());
-        assert!(msgs.is_empty());
+        assert!(engine.poll(&snap, &settings()).is_none());
     }
 
     #[test]
     fn incident_increase_announced() {
         let mut engine = CoachEngine::new();
-        // Baseline at 0 incidents.
         engine.poll(&base_snapshot(), &settings());
 
         let mut snap = base_snapshot();
         snap.incident_count = 4;
-        let msgs = engine.poll(&snap, &settings());
-        assert_eq!(msgs.len(), 1);
-        assert!(msgs[0].contains("Incident count now 4"));
+        let plan = engine.poll(&snap, &settings()).unwrap();
+        assert!(plan.1.display_text().contains("4"));
     }
 
     #[test]
-    fn flags_disabled_no_announce() {
+    fn session_reset_on_track_change() {
+        let mut engine = CoachEngine::new();
+        let intro = engine.poll(&base_snapshot(), &settings());
+        assert!(intro.is_some());
+
+        let mut snap = base_snapshot();
+        snap.track = "Other Track".into();
+        let intro2 = engine.poll(&snap, &settings());
+        assert!(intro2.is_some());
+        assert!(intro2.unwrap().1.display_text().contains("Other Track"));
+    }
+
+    #[test]
+    fn race_fuel_muted_in_practice() {
+        let mut engine = CoachEngine::new();
+        engine.fuel_per_lap = vec![2.0];
+        let mut snap = base_snapshot();
+        snap.session_type = "Practice".into();
+        snap.session_laps_remain = Some(10);
+        snap.fuel_level = 5.0;
+        engine.poll(&snap, &settings());
+        let plan = engine.poll(&snap, &settings());
+        assert!(plan.is_none() || !plan.unwrap().1.display_text().contains("fuel_short"));
+    }
+
+    #[test]
+    fn qual_lap_plan_has_session_delta() {
         let mut engine = CoachEngine::new();
         engine.poll(&base_snapshot(), &settings());
 
-        let mut cfg = settings();
-        cfg.audio_flags_enabled = false;
         let mut snap = base_snapshot();
-        snap.session_flags = flags::YELLOW;
-        let msgs = engine.poll(&snap, &cfg);
-        assert!(msgs.is_empty());
+        snap.session_type = "Qualifying".into();
+        snap.lap = 2;
+        snap.last_lap_valid = true;
+        snap.last_lap_ms = Some(92_000.0);
+        snap.delta_to_session_best_ms = Some(400.0);
+        engine.poll(&snap, &settings());
+        let plan = engine.poll(&snap, &settings()).unwrap();
+        assert!(plan.1.display_text().contains("session best"));
     }
 }

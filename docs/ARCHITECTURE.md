@@ -1,8 +1,8 @@
 # PitWall Desktop — Architecture & Audit
 
-Last audited: June 22, 2026. Version **0.1.0**.
+Last audited: June 23, 2026. Version **0.1.0**.
 
-This document describes how the project is structured, how data flows through it, and what is implemented vs planned.
+This document describes how the project is structured, how data flows through it, and what is implemented vs planned. **Documentation hub:** [README.md](README.md). **IPC detail:** [API.md](API.md).
 
 ---
 
@@ -26,7 +26,7 @@ flowchart TB
     ShmWriter --> OpenXRLayer[pitwall-openxr-layer.dll]
     LiveSvc --> HudServer[HUD server :17342]
     HudServer --> OpenKneeboard[OpenKneeboard fallback]
-    LiveSvc --> Audio[Audio coach TTS]
+    LiveSvc --> Audio[Audio coach WAV + WinRT]
   end
   subgraph analyze [Analyze]
     DB --> Pipeline[analysis pipeline]
@@ -43,7 +43,10 @@ flowchart TB
 ```
 pitwall-desktop/
 ├── docs/
-│   └── ARCHITECTURE.md          # This file
+│   ├── README.md                # Documentation hub
+│   ├── ARCHITECTURE.md          # This file
+│   ├── API.md                   # IPC reference + docs:api
+│   └── …                        # Area deep-dives
 ├── src/                         # React frontend
 │   ├── main.tsx                 # Main window entry
 │   ├── overlay.tsx              # Overlay window entry
@@ -70,14 +73,14 @@ pitwall-desktop/
 |--------|------|----------------|
 | `commands` | `commands/mod.rs` | `AppState`, all Tauri IPC handlers |
 | `ingest` | `ingest/` | IBT import, watcher, `app.ini` check |
-| `analysis` | `analysis/` | Lap segmentation, sectors, fuel/tire, coach rules |
+| `analysis` | `analysis/` | Lap segmentation, sectors, fuel/tire, coach rules, `lap_kind` |
 | `storage` | `storage/` | SQLite schema, models, queries |
 | `live` | `live/` | `LiveService`, snapshots, sector tracking, competitor leaderboard, pack state, standings persistence |
 | `coach` | `coach/` | Ollama HTTP client for AI summaries |
 | `settings` | `settings/` | `settings.json` load/save |
 | `overlay` | `overlay/` | Desktop `live-overlay` Tauri window |
 | `vr` | `vr/` | In-headset HUD: native OpenXR layer (`shm.rs`, `layer_install.rs`, `openxr-layer/`) + HTTP server fallback (`hud_server.rs`) |
-| `audio` | `audio/` | TTS audio coach from live snapshot |
+| `audio` | `audio/` | Path B coach: `speech`, `queue`, `player`, `manifest`, `tts_winrt`, `clip_phrases`, `coach` — see [AUDIO_COACH.md](AUDIO_COACH.md) |
 
 ### Ingest pipeline
 
@@ -99,7 +102,7 @@ pitwall-desktop/
 1. `Pitwall::connect().await` — shared memory connection.
 2. Subscribe to `AnalysisFrame` at `UpdateRate::Max(10)` (player) **and** `CarIdxFrame` at `UpdateRate::Max(4)` (all cars + session-wide state).
 3. `session_updates()` stream — track/car name, sector boundaries, and the driver roster (`competitors::build_roster`) from session YAML.
-4. `LiveTracker` — lap boundaries, sector crossings, deltas; holds the cached roster and player car index.
+4. `LiveTracker` — lap boundaries, sector **edge crossings** ([LIVE_TELEMETRY.md](LIVE_TELEMETRY.md)); holds roster and player car index.
 5. `merge_car_idx` — folds the latest `CarIdxFrame` into the snapshot: leaderboard (`competitors.rs`), positions, gaps, session deltas, pack state (`pack.rs`), flags, incidents, fuel/session remain.
 6. Per-lap traffic logging — laps run side-by-side (`pack_state.is_traffic()`) are accumulated for the standings snapshot.
 7. Emit `live-telemetry` + `live-status` every **100 ms** (10 Hz UI throttle).
@@ -144,55 +147,17 @@ TypeScript types in `src/lib/types.ts` mirror Rust `serde` structs (`camelCase`)
 
 ## IPC reference
 
-### Commands (29)
+**37 commands** and **4 events** — full tables, TypeScript wrappers, and generated rustdoc/TypeDoc instructions: **[API.md](API.md)**.
 
-| Command | Input | Output | Notes |
-|---------|-------|--------|-------|
-| `list_sessions` | — | `SessionSummary[]` | Newest first |
-| `get_session` | `session_id` | `SessionDetail?` | Laps + sectors |
-| `get_lap_traces` | `lap_ids[]` | `LapTrace[]` | For compare chart |
-| `get_fuel_summary` | `session_id` | `FuelSummary` | |
-| `get_tire_summary` | `session_id` | `TireSummary` | |
-| `import_ibt` | `path` | `String` | Status message |
-| `import_folder_cmd` | — | `usize` | Count imported |
-| `check_iracing_config_cmd` | — | `IracingConfigCheck` | |
-| `get_import_status` | — | `ImportStatus` | |
-| `pick_ibt_file` | — | `String?` | Native dialog |
-| `clear_database_cmd` | — | `usize` | **Debug builds only** |
-| `start_live_monitor` | — | — | May auto-start VR/audio per settings |
-| `stop_live_monitor` | — | — | Stops live, VR, audio |
-| `get_live_status` | — | `LiveStatus` | |
-| `get_live_snapshot` | — | `LiveSnapshot` | |
-| `get_coach_report` | `session_id` | `CoachReport` | Rule engine; adds field/traffic insights when standings linked |
-| `get_session_standings` | `session_id` | `SessionStandings?` | Linked live standings snapshot |
-| `generate_coach_summary` | `session_id` | `CoachSummaryResult` | Ollama |
-| `get_settings` | — | `AppSettings` | |
-| `save_settings_cmd` | `settings` | — | |
-| `open_desktop_overlay_cmd` | — | — | |
-| `close_desktop_overlay_cmd` | — | — | |
-| `is_desktop_overlay_open_cmd` | — | `bool` | |
-| `start_vr_overlay` | — | — | Requires live monitor |
-| `stop_vr_overlay` | — | — | |
-| `get_vr_overlay_status` | — | `VrOverlayStatus` | |
-| `get_native_vr_status` | — | `NativeVrStatus` | SHM compositor health |
-| `is_vr_layer_installed` | — | `bool` | OpenXR registry check |
-| `install_vr_layer` | — | — | Registers implicit API layer |
-| `uninstall_vr_layer` | — | — | Removes layer registration |
-| `check_vr_hud_health` | — | `bool` | Web fallback HTTP probe |
-| `open_vr_hud_preview_cmd` | — | — | Opens browser preview |
-| `start_audio_coach` | — | — | Requires live monitor |
-| `stop_audio_coach` | — | — | |
-| `get_audio_coach_status` | — | `AudioCoachStatus` | Active + last message |
-| `get_audio_coach_message` | — | `String` | Last TTS message |
+Summary:
 
-### Events (4)
+- **Sessions / analysis** — list, get, traces, fuel, tire, coach report, standings, Ollama summary
+- **Import** — IBT path, folder scan, config check, status, picker, clear DB (debug)
+- **Live** — start/stop monitor, status, snapshot
+- **Settings** — get/save `AppSettings`
+- **Overlays** — desktop window, VR native/web, layer install, audio coach
 
-| Event | Payload | Rate / trigger |
-|-------|---------|----------------|
-| `import-status` | `ImportStatus` | During import |
-| `import-complete` | `session_id: i64` | Import success |
-| `live-telemetry` | `LiveSnapshot` | ~10 Hz while connected |
-| `live-status` | `LiveStatus` | ~10 Hz while connected |
+Events: `import-status`, `import-complete`, `live-telemetry` (~10 Hz), `live-status`.
 
 ### Tauri capabilities
 
@@ -234,6 +199,7 @@ TypeScript types in `src/lib/types.ts` mirror Rust `serde` structs (`camelCase`)
 | `lap_number` | INTEGER | Sequential within sub-session |
 | `lap_time_ms` | REAL | |
 | `valid` | INTEGER | 0/1 |
+| `lap_kind` | TEXT | `flying`, `pitOut`, `pitIn`, `pitLane`, `partial` |
 | `fuel_start`, `fuel_used` | REAL | |
 | `avg_speed` | REAL | |
 | `lf_temp`, `rf_temp`, `lr_temp`, `rr_temp` | REAL | Lap averages |
@@ -271,35 +237,22 @@ Post-session snapshot of the live field, captured on live disconnect and linked 
 
 ### Settings — `%LOCALAPPDATA%\pitwall-desktop\settings.json`
 
+Full field list: [DATA_MODEL.md](DATA_MODEL.md). Example (abbreviated):
+
 ```json
 {
   "ollamaUrl": "http://localhost:11434",
   "ollamaModel": "llama3.2",
-  "overlayX": 100,
-  "overlayY": 100,
-  "overlayWidth": 720,
-  "overlayHeight": 520,
-  "vrOverlayEnabled": false,
   "vrMode": "native",
-  "vrOverlayScale": 1.0,
-  "vrHudOffset": 0.0,
-  "vrHudOpacity": 1.0,
-  "vrFieldPaceMode": "best",
-  "overlayLayout": {
-    "fieldPaceMode": "best",
-    "widgets": [
-      { "enabled": true, "desktopX": 24, "desktopY": 24, "desktopW": 360, "desktopH": 200, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 },
-      { "enabled": false, "desktopX": 24, "desktopY": 244, "desktopW": 320, "desktopH": 300, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 },
-      { "enabled": false, "desktopX": 360, "desktopY": 244, "desktopW": 300, "desktopH": 240, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 },
-      { "enabled": false, "desktopX": 404, "desktopY": 24, "desktopW": 200, "desktopH": 200, "vrOffsetY": 0, "vrScale": 1, "vrOpacity": 1 }
-    ]
-  },
+  "overlayLayout": { "fieldPaceMode": "best", "widgets": [/* 4 slots */] },
   "audioCoachEnabled": true,
-  "audioCoachFuelThreshold": 5.0,
+  "audioCoachChatterLevel": "normal",
   "audioPackAlertsEnabled": true,
   "audioFlagsEnabled": true,
-  "audioIncidentsEnabled": true,
-  "audioFuelRaceEnabled": true
+  "audioGapAlertsEnabled": true,
+  "audioPaceEnabled": true,
+  "audioStrategyEnabled": true,
+  "audioRaceClockEnabled": true
 }
 ```
 
@@ -374,23 +327,16 @@ research. `XR_EXTX_overlay` is unsupported on consumer runtimes, so the native
 path is an implicit OpenXR API layer hooking `xrEndFrame` — the June 2026 no-go
 was reversed on product direction to replace RaceLab VR.
 
-### Audio coach (Phase 3C)
+### Audio coach (Phase 3C — Path B)
 
-Implemented in `audio/coach.rs` + `audio/mod.rs`:
+**Summary:** Pre-recorded WAV clips + Windows WinRT for dynamic numbers. No neural runtime in the app.
 
-- Windows TTS via `tts` crate; polls live snapshot every **250 ms**
-- **Priority model** — at most one alert per tick, highest priority wins; lower-priority alerts are deferred (not dropped). Order: Critical (red/checkered) → Safety (yellow/green/blue/incident) → Pack → Race (fuel) → Pace (sector/lap)
-- **Pit/off-track suppression** — Pack/Race/Pace alerts are muted on pit road or when off track; flags and incidents still announce
-- **Session intro** — track and session type when telemetry connects
-- **Flags** — edge-triggered yellow, green, blue ("faster car"), checkered, red, white
-- **Incidents** — announced when `PlayerCarMyIncidentCount` increases
-- **Spotter pack** — car left/right, three-wide, two cars left/right (`CarLeftRight`), 4 s cooldown
-- **Sector complete** — time, delta vs personal-best sector, live pace hint
-- **Lap complete** — lap time, PB callout, delta to best/previous lap, class position, fuel + laps remaining estimate
-- **Fuel** — low-fuel threshold (`audioCoachFuelThreshold`, default 5 L) and race fuel-to-finish calls from `SessionLapsRemain`
-- Per-category toggles: `audioPackAlertsEnabled`, `audioFlagsEnabled`, `audioIncidentsEnabled`, `audioFuelRaceEnabled`
-- Commands: `start_audio_coach`, `stop_audio_coach`, `get_audio_coach_status`, `get_audio_coach_message`
-- Auto-start when `audioCoachEnabled` is true and live monitor starts
+Full pipeline, message catalog, and clip export: **[AUDIO_COACH.md](AUDIO_COACH.md)**.
+
+- `CoachEngine::poll` every **250 ms** → `SpeechQueue` → `AudioPlayer` (rodio + WinRT)
+- Priority model, pit/off-track suppression, session modes (practice/qual/race)
+- Gaps, race clock, pits open, position changes, chatter level + per-category toggles
+- Auto-start when `audioCoachEnabled` and live monitor starts
 
 ---
 
@@ -417,8 +363,8 @@ Native VR uses shared memory (`vr/shm.rs`); the web fallback HTTP server
 | `rusqlite` | SQLite |
 | `notify` | File watcher |
 | `reqwest` | Ollama |
-| `openvr` | Removed — required SteamVR |
-| `tts` | Audio coach |
+| `rodio` | WAV playback |
+| `tts_winrt` (in-tree) | WinRT speech synthesis |
 | `recharts` | Frontend charts |
 
 ---
@@ -435,7 +381,7 @@ Native VR uses shared memory (`vr/shm.rs`); the web fallback HTTP server
 | Ollama summary | Done |
 | Desktop overlay | Done |
 | VR in-headset HUD | Done — native OpenXR layer (default) + OpenKneeboard web fallback |
-| Audio TTS coach | Done |
+| Audio hybrid coach (Path B) | Done — WAV + WinRT; see [AUDIO_COACH.md](AUDIO_COACH.md) |
 | Config banner live CTA | Done |
 | Sub-session lap segmentation | Done (v1 fix) |
 | Sector splitter fix | Done (v1 fix) |
@@ -470,6 +416,17 @@ Native VR uses shared memory (`vr/shm.rs`); the web fallback HTTP server
 | Post-session standings UI | Done — `SessionStandingsPanel.tsx` |
 | Multi-driver docs | Done — [COMPARISON.md](COMPARISON.md) |
 
+### Implemented (v5 — Path B audio + docs hub)
+
+| Item | Status |
+|------|--------|
+| WAV clip manifest + WinRT dynamic speech | Done |
+| `gen-audio-clips` dev export | Done |
+| Gaps, race clock, pits open, session modes | Done |
+| Live sector edge crossing + mid-lap join | Done |
+| `lap_kind` classification | Done |
+| Documentation hub + API reference | Done — [README.md](README.md), [API.md](API.md) |
+
 ### Gaps / limitations
 
 | Item | Detail |
@@ -498,9 +455,11 @@ Native VR uses shared memory (`vr/shm.rs`); the web fallback HTTP server
 
 ## Suggested reading order for new contributors
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/README.md](README.md).
+
 1. `src-tauri/src/lib.rs` — module registration, invoke handler
 2. `src-tauri/src/commands/mod.rs` — `AppState` and command surface
-3. `src-tauri/src/ingest/import_runner.rs` — import flow + events
-4. `src-tauri/src/analysis/pipeline.rs` — post-session analysis
-5. `src-tauri/src/live/mod.rs` — live telemetry loop
+3. `docs/API.md` — IPC contract
+4. `src-tauri/src/live/mod.rs` — live telemetry loop
+5. `src-tauri/src/audio/coach.rs` — audio coach logic
 6. `src/App.tsx` + `src/lib/api.ts` — frontend wiring

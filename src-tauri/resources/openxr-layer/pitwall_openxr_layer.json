@@ -6,7 +6,6 @@
     "api_version": "1.0",
     "implementation_version": "1",
     "description": "PitWall in-headset HUD compositor",
-    "disable_environment": "PITWALL_VR_DISABLE",
-    "enable_environment": "PITWALL_VR_ENABLE"
+    "disable_environment": "PITWALL_VR_DISABLE"
   }
 }

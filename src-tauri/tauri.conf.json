@@ -34,7 +34,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/openxr-layer/*"
+      "resources/openxr-layer/*",
+      "resources/audio/coach/default/*"
     ]
   }
 }

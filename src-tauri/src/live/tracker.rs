@@ -1,11 +1,14 @@
 use pitwall::SessionInfo;
 
 use crate::analysis::lap_segmenter::is_valid_lap_metrics;
+use crate::analysis::sector_splitter::normalize_sector_boundaries;
 use crate::analysis::types::SectorBoundary;
 use crate::ingest::frame::AnalysisFrame;
 
 use super::competitors::{build_roster, RosterEntry};
 use super::snapshot::{LiveSectorProgress, LiveSnapshot};
+
+const MIN_SECTOR_MS: f64 = 1000.0;
 
 #[derive(Default)]
 struct LapAccum {
@@ -26,7 +29,12 @@ pub struct LiveTracker {
     best_lap_ms: Option<f64>,
     sector_start_time: f64,
     completed_sectors: Vec<(i32, f64)>,
-    last_bounds_len: usize,
+    normalized_bounds: Vec<SectorBoundary>,
+    next_boundary_idx: usize,
+    prev_lap_dist_pct: Option<f32>,
+    prev_session_time: Option<f64>,
+    /// Sectors from the lap that just ended; exposed once on the first snapshot after a lap change.
+    pending_lap_sectors: Option<Vec<(i32, f64)>>,
     roster: Vec<RosterEntry>,
     player_car_idx: i32,
     lap_accum: LapAccum,
@@ -47,7 +55,11 @@ impl LiveTracker {
             best_lap_ms: None,
             sector_start_time: 0.0,
             completed_sectors: Vec::new(),
-            last_bounds_len: 0,
+            normalized_bounds: Vec::new(),
+            next_boundary_idx: 0,
+            prev_lap_dist_pct: None,
+            prev_session_time: None,
+            pending_lap_sectors: None,
             roster: Vec::new(),
             player_car_idx: -1,
             lap_accum: LapAccum::default(),
@@ -82,7 +94,11 @@ impl LiveTracker {
         self.best_lap_ms = None;
         self.sector_start_time = 0.0;
         self.completed_sectors.clear();
-        self.last_bounds_len = 0;
+        self.normalized_bounds.clear();
+        self.next_boundary_idx = 0;
+        self.prev_lap_dist_pct = None;
+        self.prev_session_time = None;
+        self.pending_lap_sectors = None;
         self.lap_accum = LapAccum::default();
         self.latest_iracing_lap_ok = true;
     }
@@ -117,8 +133,12 @@ impl LiveTracker {
     }
 
     pub fn update(&mut self, frame: &AnalysisFrame, bounds: &[SectorBoundary]) {
+        self.sync_bounds(bounds, frame.lap_dist_pct);
+
         if frame.lap != self.current_lap {
             if self.current_lap > 0 && frame.lap > self.current_lap {
+                self.record_final_sector(frame.session_time);
+                self.pending_lap_sectors = Some(self.completed_sectors.clone());
                 let lap_ms = (frame.session_time - self.lap_start_time) * 1000.0;
                 let valid = is_valid_lap_metrics(
                     self.lap_accum.frames as usize,
@@ -143,26 +163,87 @@ impl LiveTracker {
             self.sector_start_time = frame.session_time;
             self.completed_sectors.clear();
             self.lap_accum = LapAccum::default();
+            self.skip_passed_boundaries(frame.lap_dist_pct);
+            self.prev_lap_dist_pct = Some(frame.lap_dist_pct);
+            self.prev_session_time = Some(frame.session_time);
+            self.record_lap_frame(frame);
+            return;
         }
 
         self.record_lap_frame(frame);
 
-        // Detect sector boundary crossings within current lap
-        if bounds.len() != self.last_bounds_len {
-            self.completed_sectors.clear();
-            self.sector_start_time = frame.session_time;
-            self.last_bounds_len = bounds.len();
+        if let Some(prev_pct) = self.prev_lap_dist_pct {
+            let prev_time = self.prev_session_time.unwrap_or(frame.session_time);
+            self.detect_sector_crossings(prev_pct, prev_time, frame.lap_dist_pct, frame.session_time);
         }
+        self.prev_lap_dist_pct = Some(frame.lap_dist_pct);
+        self.prev_session_time = Some(frame.session_time);
+    }
 
-        for boundary in bounds {
-            if self.completed_sectors.iter().any(|(n, _)| *n == boundary.sector_num) {
-                continue;
+    fn sync_bounds(&mut self, bounds: &[SectorBoundary], lap_dist_pct: f32) {
+        let normalized = normalize_sector_boundaries(bounds);
+        if normalized != self.normalized_bounds {
+            self.normalized_bounds = normalized;
+            self.next_boundary_idx = 0;
+            self.skip_passed_boundaries(lap_dist_pct);
+        }
+    }
+
+    fn skip_passed_boundaries(&mut self, lap_dist_pct: f32) {
+        while self.next_boundary_idx < self.normalized_bounds.len() {
+            let pct = self.normalized_bounds[self.next_boundary_idx].start_pct;
+            if lap_dist_pct as f64 >= pct {
+                self.next_boundary_idx += 1;
+            } else {
+                break;
             }
-            if frame.lap_dist_pct as f64 >= boundary.start_pct {
-                let sector_ms = (frame.session_time - self.sector_start_time) * 1000.0;
+        }
+    }
+
+    fn detect_sector_crossings(
+        &mut self,
+        prev_pct: f32,
+        prev_time: f64,
+        curr_pct: f32,
+        session_time: f64,
+    ) {
+        while self.next_boundary_idx < self.normalized_bounds.len() {
+            let boundary = &self.normalized_bounds[self.next_boundary_idx];
+            let pct = boundary.start_pct;
+            let crossed = prev_pct as f64 <= pct && curr_pct as f64 > pct;
+            if !crossed {
+                break;
+            }
+            let ratio = if (curr_pct - prev_pct).abs() > f32::EPSILON {
+                ((pct - prev_pct as f64) / (curr_pct - prev_pct) as f64).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let cross_time = prev_time + (session_time - prev_time) * ratio;
+            let sector_ms = (cross_time - self.sector_start_time) * 1000.0;
+            if sector_ms >= MIN_SECTOR_MS {
                 self.completed_sectors.push((boundary.sector_num, sector_ms));
-                self.sector_start_time = frame.session_time;
             }
+            self.sector_start_time = cross_time;
+            self.next_boundary_idx += 1;
+        }
+    }
+
+    fn record_final_sector(&mut self, lap_end_time: f64) {
+        if self.normalized_bounds.is_empty() {
+            return;
+        }
+        let final_sector = self
+            .normalized_bounds
+            .last()
+            .map(|b| b.sector_num + 1)
+            .unwrap_or(1);
+        if self.completed_sectors.iter().any(|(n, _)| *n == final_sector) {
+            return;
+        }
+        let sector_ms = (lap_end_time - self.sector_start_time) * 1000.0;
+        if sector_ms >= MIN_SECTOR_MS {
+            self.completed_sectors.push((final_sector, sector_ms));
         }
     }
 
@@ -194,6 +275,11 @@ impl LiveTracker {
 
         let current_sector = self.completed_sectors.len() as i32 + 1;
 
+        let sector_source = self
+            .pending_lap_sectors
+            .take()
+            .unwrap_or_else(|| self.completed_sectors.clone());
+
         LiveSnapshot {
             track: self.track.clone(),
             car: self.car.clone(),
@@ -211,7 +297,7 @@ impl LiveTracker {
             current_sector: current_sector.min(3),
             sectors: (1..=3)
                 .map(|n| {
-                    let done = self.completed_sectors.iter().find(|(s, _)| *s == n);
+                    let done = sector_source.iter().find(|(s, _)| *s == n);
                     LiveSectorProgress {
                         sector_num: n,
                         time_ms: done.map(|(_, ms)| *ms),
@@ -247,4 +333,83 @@ fn extract_car_name(session: &SessionInfo) -> String {
         }
     }
     "Unknown Car".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::types::SectorBoundary;
+
+    fn boundary(sector_num: i32, start_pct: f64) -> SectorBoundary {
+        SectorBoundary {
+            sector_num,
+            start_pct,
+        }
+    }
+
+    fn frame(lap: i32, pct: f32, session_time: f64) -> AnalysisFrame {
+        AnalysisFrame {
+            session_num: 0,
+            lap,
+            lap_dist_pct: pct,
+            speed: 0.0,
+            throttle: 0.0,
+            brake: 0.0,
+            steering: 0.0,
+            gear: 0,
+            fuel_level: 0.0,
+            on_pit_road: false,
+            session_time,
+            lf_temp: 0.0,
+            rf_temp: 0.0,
+            lr_temp: 0.0,
+            rr_temp: 0.0,
+        }
+    }
+
+    fn default_bounds() -> Vec<SectorBoundary> {
+        vec![boundary(1, 0.34), boundary(2, 0.72)]
+    }
+
+    #[test]
+    fn sector_crossings_at_splits() {
+        let mut tracker = LiveTracker::new();
+        let bounds = default_bounds();
+        tracker.update(&frame(1, 0.0, 0.0), &bounds);
+        tracker.update(&frame(1, 0.35, 34.0), &bounds);
+        tracker.update(&frame(1, 0.73, 72.0), &bounds);
+        assert_eq!(tracker.completed_sectors.len(), 2);
+
+        let snap = tracker.snapshot_from_frame(&frame(2, 0.01, 100.0), &bounds);
+        let completed: Vec<_> = snap
+            .sectors
+            .iter()
+            .filter(|s| s.completed)
+            .map(|s| s.sector_num)
+            .collect();
+        assert_eq!(completed, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn mid_lap_join_skips_passed_splits() {
+        let mut tracker = LiveTracker::new();
+        let bounds = default_bounds();
+        tracker.update(&frame(1, 0.50, 50.0), &bounds);
+        assert_eq!(tracker.completed_sectors.len(), 0);
+        tracker.update(&frame(1, 0.73, 72.0), &bounds);
+        assert_eq!(tracker.completed_sectors.len(), 1);
+        assert_eq!(tracker.completed_sectors[0].0, 2);
+    }
+
+    #[test]
+    fn no_spurious_sectors_on_single_tick() {
+        let mut tracker = LiveTracker::new();
+        let bounds = default_bounds();
+        tracker.update(&frame(1, 0.0, 0.0), &bounds);
+        tracker.update(&frame(1, 0.80, 80.0), &bounds);
+        assert!(tracker.completed_sectors.len() <= 2);
+        for (_, ms) in &tracker.completed_sectors {
+            assert!(*ms >= MIN_SECTOR_MS);
+        }
+    }
 }

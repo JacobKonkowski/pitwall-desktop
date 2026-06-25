@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rayon::prelude::*;
 
 use super::fuel_tire::{fuel_stats, tire_averages};
+use super::lap_kind::classify_lap_kind;
 use super::lap_segmenter::{
     average_speed, compute_lap_time_ms, downsample_traces, is_valid_lap, max_lap_dist_pct,
     segment_laps, MIN_LAP_MAX_PCT,
@@ -39,6 +40,7 @@ pub fn analyze_session(
 fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> AnalyzedLap {
     let lap_time_ms = compute_lap_time_ms(&group.frames);
     let valid = is_valid_lap(&group.frames, lap_time_ms);
+    let lap_kind = classify_lap_kind(&group.frames);
     let max_dist_pct = max_lap_dist_pct(&group.frames);
     let (fuel_start, fuel_used) = fuel_stats(&group.frames);
     let (lf_temp, rf_temp, lr_temp, rr_temp) = tire_averages(&group.frames);
@@ -61,6 +63,7 @@ fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> Analyz
             lap_number: group.lap_number,
             lap_time_ms,
             valid,
+            lap_kind,
             fuel_start,
             fuel_used,
             avg_speed: average_speed(&group.frames),
@@ -135,6 +138,7 @@ mod tests {
                 lap_number,
                 lap_time_ms: Some(time_ms),
                 valid,
+                lap_kind: crate::storage::models::LapKind::Flying,
                 fuel_start: None,
                 fuel_used: None,
                 avg_speed: None,
