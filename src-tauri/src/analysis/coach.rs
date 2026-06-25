@@ -304,7 +304,7 @@ pub fn append_standings_insights(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::SessionSummary;
+    use crate::storage::{LapKind, LapSummary, SessionSummary};
 
     fn lap(lap_number: i32, iracing_lap: i32, lap_time_ms: f64, delta_to_best_ms: f64) -> LapSummary {
         LapSummary {
@@ -315,6 +315,7 @@ mod tests {
             lap_number,
             lap_time_ms: Some(lap_time_ms),
             valid: true,
+            lap_kind: LapKind::Flying,
             fuel_start: None,
             fuel_used: None,
             avg_speed: None,

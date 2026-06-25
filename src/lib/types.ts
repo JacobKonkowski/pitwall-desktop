@@ -1,3 +1,7 @@
+/**
+ * Shared serde types for the Tauri IPC boundary (`camelCase` JSON).
+ * Rust definitions live in `src-tauri/src/` (storage, live, settings, etc.).
+ */
 export interface SessionSummary {
   id: number;
   ibtPath: string;
@@ -14,6 +18,8 @@ export interface SectorTime {
   timeMs: number;
 }
 
+export type LapKind = "flying" | "pitOut" | "pitIn" | "pitLane" | "partial";
+
 export interface LapSummary {
   id: number;
   sessionNum: number;
@@ -22,6 +28,7 @@ export interface LapSummary {
   lapNumber: number;
   lapTimeMs: number | null;
   valid: boolean;
+  lapKind: LapKind;
   fuelStart: number | null;
   fuelUsed: number | null;
   avgSpeed: number | null;
@@ -136,6 +143,7 @@ export interface CompetitorEntry {
   gapToPlayerS: number | null;
 }
 
+/** Live telemetry + field context from `get_live_snapshot` / `live-telemetry` events. */
 export interface LiveSnapshot {
   track: string;
   car: string;
@@ -283,6 +291,7 @@ export function defaultOverlayLayout(): OverlayLayout {
   };
 }
 
+/** User preferences persisted to `%LOCALAPPDATA%\\pitwall-desktop\\settings.json`. */
 export interface AppSettings {
   ollamaUrl: string;
   ollamaModel: string;
@@ -306,6 +315,13 @@ export interface AppSettings {
   audioFlagsEnabled: boolean;
   audioIncidentsEnabled: boolean;
   audioFuelRaceEnabled: boolean;
+  audioGapAlertsEnabled: boolean;
+  audioPaceEnabled: boolean;
+  audioStrategyEnabled: boolean;
+  audioRaceClockEnabled: boolean;
+  audioPitsOpenEnabled: boolean;
+  audioPackClearEnabled: boolean;
+  audioCoachChatterLevel: "minimal" | "normal" | "verbose";
 }
 
 export interface AudioCoachStatus {
@@ -326,5 +342,20 @@ export interface NativeVrStatus {
   active: boolean;
   layerInstalled: boolean;
   compositorActive: boolean;
+  telemetryPublishing: boolean;
   lastFrameAgeMs: number | null;
+  layerHeartbeatAgeMs: number | null;
+}
+
+export interface VrLayerDiagnostics {
+  registered: boolean;
+  manifestPath: string | null;
+  dllPresent: boolean;
+  dllPath: string | null;
+  layerDisabled: boolean;
+  ready: boolean;
+  iracingOpenXrVrMode: number | null;
+  iracingOpenXrEnabled: boolean | null;
+  layerHeartbeatAgeMs: number | null;
+  issues: string[];
 }

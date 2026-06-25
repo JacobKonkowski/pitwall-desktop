@@ -21,8 +21,37 @@ use tokio_util::sync::CancellationToken;
 use crate::live::LiveService;
 use crate::settings::AppSettings;
 
+// #region agent log
+fn agent_debug(hypothesis_id: &str, location: &str, message: &str, data: serde_json::Value) {
+    use std::io::Write;
+    let payload = serde_json::json!({
+        "sessionId": "68355e",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0),
+        "runId": "pre-fix",
+        "source": "pitwall"
+    });
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(r"c:\Users\jrkon\Projects\pitwall-desktop\debug-68355e.log")
+    {
+        let _ = writeln!(f, "{payload}");
+    }
+}
+// #endregion
+
 pub use hud_server::{check_hud_health, hud_url, open_hud_preview, HUD_PORT};
-pub use layer_install::{install_layer, is_layer_installed, uninstall_layer, MANIFEST_FILE};
+pub use layer_install::{
+    install_layer, is_layer_installed, layer_diagnostics, uninstall_layer, MANIFEST_FILE,
+    VrLayerDiagnostics,
+};
 
 pub struct VrOverlayService {
     cancel: Mutex<Option<CancellationToken>>,
@@ -49,9 +78,14 @@ pub struct VrOverlayStatus {
 pub struct NativeVrStatus {
     pub active: bool,
     pub layer_installed: bool,
+    /// True when the OpenXR layer has composited recently (heartbeat file).
     pub compositor_active: bool,
-    /// Age of the last published frame in ms (None if nothing published yet).
+    /// True when PitWall is publishing telemetry to shared memory.
+    pub telemetry_publishing: bool,
+    /// Age of the last published telemetry frame in ms (None if nothing published yet).
     pub last_frame_age_ms: Option<u64>,
+    /// Age of the last layer compositor heartbeat in ms (None if layer never ran).
+    pub layer_heartbeat_age_ms: Option<u64>,
 }
 
 impl VrOverlayService {
@@ -81,11 +115,20 @@ impl VrOverlayService {
     pub fn native_status(&self) -> NativeVrStatus {
         let now = now_ms();
         let last = *self.last_frame_ms.lock();
+        let layer_heartbeat_age_ms = layer_install::layer_heartbeat_age_ms(now);
+        let telemetry_publishing = last
+            .map(|t| now.saturating_sub(t) < 2000)
+            .unwrap_or(false);
+        let compositor_active = layer_heartbeat_age_ms
+            .map(|age| age < 2000)
+            .unwrap_or(false);
         NativeVrStatus {
             active: self.is_active(),
             layer_installed: layer_install::is_layer_installed(),
-            compositor_active: last.map(|t| now.saturating_sub(t) < 2000).unwrap_or(false),
+            compositor_active,
+            telemetry_publishing,
             last_frame_age_ms: last.map(|t| now.saturating_sub(t)),
+            layer_heartbeat_age_ms,
         }
     }
 
@@ -152,7 +195,7 @@ impl VrOverlayService {
             active: true,
             runtime: "OpenXR (native layer)".into(),
             message: if installed {
-                "Publishing HUD to in-headset compositor".into()
+                "Publishing telemetry for in-headset layer".into()
             } else {
                 "VR layer not installed — install it, then restart iRacing".into()
             },
@@ -198,6 +241,15 @@ fn run_native_loop(
 ) -> anyhow::Result<()> {
     let mut writer = shm::ShmWriter::open()?;
     let _ = initial; // settings are re-read each tick below
+    // #region agent log
+    agent_debug(
+        "F",
+        "vr/mod.rs:run_native_loop",
+        "native shm writer opened",
+        serde_json::json!({ "shmName": shm::SHM_NAME }),
+    );
+    // #endregion
+    let mut tick: u64 = 0;
 
     while !cancel.is_cancelled() {
         let settings = crate::settings::load_settings();
@@ -220,6 +272,25 @@ fn run_native_loop(
         let field_pace = field_pace_ordinal(&layout.field_pace_mode);
         writer.publish(shm::build_block(&snap, &slots, field_pace));
         *service.last_frame_ms.lock() = Some(now_ms());
+
+        // #region agent log
+        tick += 1;
+        if tick % 30 == 0 {
+            let enabled: Vec<bool> = slots.iter().map(|s| s.enabled).collect();
+            agent_debug(
+                "F",
+                "vr/mod.rs:run_native_loop",
+                "shm publish tick",
+                serde_json::json!({
+                    "lap": snap.lap,
+                    "track": snap.track,
+                    "onPitRoad": snap.on_pit_road,
+                    "enabledWidgets": enabled,
+                    "liveState": format!("{:?}", live.status.lock().state),
+                }),
+            );
+        }
+        // #endregion
 
         thread::sleep(Duration::from_millis(33));
     }

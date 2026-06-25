@@ -9,6 +9,7 @@ import {
   getLiveStatus,
   getNativeVrStatus,
   getSettings,
+  getVrLayerDiagnostics,
   getVrOverlayStatus,
   installVrLayer,
   isDesktopOverlayOpen,
@@ -23,6 +24,7 @@ import {
   stopAudioCoach,
   stopLiveMonitor,
   stopVrOverlay,
+  uninstallVrLayer,
 } from "../lib/api";
 import type {
   AppSettings,
@@ -30,6 +32,7 @@ import type {
   LiveSnapshot,
   LiveStatus,
   NativeVrStatus,
+  VrLayerDiagnostics,
   VrOverlayStatus,
   WidgetPlacement,
 } from "../lib/types";
@@ -84,6 +87,7 @@ export function LivePanel() {
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [vrStatus, setVrStatus] = useState<VrOverlayStatus | null>(null);
   const [nativeVr, setNativeVr] = useState<NativeVrStatus | null>(null);
+  const [layerDiag, setLayerDiag] = useState<VrLayerDiagnostics | null>(null);
   const [vrHudHealthy, setVrHudHealthy] = useState<boolean | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioCoachStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -174,6 +178,22 @@ export function LivePanel() {
     };
   }, [vrStatus?.active, vrStatus?.mode]);
 
+  const refreshLayerDiag = useCallback(async () => {
+    if (settings?.vrMode !== "native") {
+      setLayerDiag(null);
+      return;
+    }
+    try {
+      setLayerDiag(await getVrLayerDiagnostics());
+    } catch {
+      setLayerDiag(null);
+    }
+  }, [settings?.vrMode]);
+
+  useEffect(() => {
+    refreshLayerDiag();
+  }, [refreshLayerDiag, vrStatus?.layerInstalled, settings?.vrMode]);
+
   const handleStart = async () => {
     setError(null);
     try {
@@ -239,6 +259,19 @@ export function LivePanel() {
       await installVrLayer();
       setVrStatus(await getVrOverlayStatus());
       setNativeVr(await getNativeVrStatus());
+      await refreshLayerDiag();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleUninstallLayer = async () => {
+    setError(null);
+    try {
+      await uninstallVrLayer();
+      setVrStatus(await getVrOverlayStatus());
+      setNativeVr(await getNativeVrStatus());
+      await refreshLayerDiag();
     } catch (e) {
       setError(String(e));
     }
@@ -336,48 +369,55 @@ export function LivePanel() {
             {vrStatus.runtime || "VR"} — {vrStatus.message}
           </p>
         )}
-        {vrStatus?.active && vrStatus.mode === "native" && (
+        {settings?.vrMode === "native" && (
           <div className="vr-hud-help panel">
             <div className="vr-hud-help-header">
               <h3>In-headset HUD (native)</h3>
-              {vrStatus.layerInstalled ? (
-                <span className="vr-health-pill vr-health-ok">VR layer installed</span>
+              {layerDiag?.ready ? (
+                <span className="vr-health-pill vr-health-ok">Layer ready</span>
+              ) : layerDiag?.registered ? (
+                <span className="vr-health-pill vr-health-err">Layer needs attention</span>
               ) : (
-                <span className="vr-health-pill vr-health-err">VR layer not installed</span>
+                <span className="vr-health-pill vr-health-err">Layer not installed</span>
               )}
             </div>
-            {!vrStatus.layerInstalled ? (
-              <>
-                <p className="muted small">
-                  PitWall composites the HUD directly in the headset through its own OpenXR
-                  layer — no OpenKneeboard or RaceLab needed. Install the layer once, then
-                  restart iRacing.
-                </p>
-                <div className="btn-row">
-                  <button type="button" onClick={handleInstallLayer}>
-                    Install VR layer
-                  </button>
-                  <button type="button" onClick={handlePreviewVr}>
-                    Preview in browser
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="muted small">
-                  {nativeVr?.compositorActive
-                    ? "Compositor active — the HUD is live in your headset."
-                    : "Waiting for the in-headset compositor. Launch iRacing in OpenXR mode and get on track."}
-                  {" "}The HUD is head-locked to the upper windshield; adjust height, scale, and
-                  opacity in Settings.
-                </p>
-                <div className="btn-row">
-                  <button type="button" onClick={handlePreviewVr}>
-                    Preview in browser
-                  </button>
-                </div>
-              </>
+            <p className="muted small">
+              PitWall composites the HUD in your headset through its own OpenXR layer — no
+              OpenKneeboard required. Install once, restart iRacing in OpenXR mode, then start the
+              in-headset HUD while the live monitor is running.
+            </p>
+            {vrStatus?.active && (
+              <p className="muted small">
+                {nativeVr?.compositorActive
+                  ? "OpenXR layer is compositing in your headset."
+                  : nativeVr?.telemetryPublishing
+                    ? "Telemetry is publishing, but the OpenXR layer is not active. iRacing must be running in OpenXR VR (not desktop or OpenVR)."
+                    : "Start iRacing on track in OpenXR VR — the layer reads telemetry once the sim is in your headset."}
+              </p>
             )}
+            {layerDiag && layerDiag.issues.length > 0 && (
+              <ul className="vr-steps muted small">
+                {layerDiag.issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            )}
+            {layerDiag?.ready && (
+              <p className="muted small">
+                After reinstalling, fully quit and restart iRacing. Enable widgets under Settings →
+                Overlay widgets.
+              </p>
+            )}
+            <div className="btn-row">
+              <button type="button" onClick={handleInstallLayer}>
+                {layerDiag?.registered ? "Reinstall VR layer" : "Install VR layer"}
+              </button>
+              {layerDiag?.registered && (
+                <button type="button" className="tab" onClick={handleUninstallLayer}>
+                  Uninstall layer
+                </button>
+              )}
+            </div>
           </div>
         )}
         {vrStatus?.active && vrStatus.mode !== "native" && vrStatus.hudUrl && (
@@ -590,6 +630,69 @@ export function LivePanel() {
               onChange={(e) => handleSaveSettings({ audioFuelRaceEnabled: e.target.checked })}
             />
             <span>Race fuel-to-finish calls</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioGapAlertsEnabled ?? true}
+              onChange={(e) => handleSaveSettings({ audioGapAlertsEnabled: e.target.checked })}
+            />
+            <span>Gap alerts (ahead/behind on lap and when closing)</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioPaceEnabled ?? true}
+              onChange={(e) => handleSaveSettings({ audioPaceEnabled: e.target.checked })}
+            />
+            <span>Lap and sector pace callouts</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioStrategyEnabled ?? true}
+              onChange={(e) => handleSaveSettings({ audioStrategyEnabled: e.target.checked })}
+            />
+            <span>Strategy calls (fuel, race clock, pits open)</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioRaceClockEnabled ?? true}
+              onChange={(e) => handleSaveSettings({ audioRaceClockEnabled: e.target.checked })}
+            />
+            <span>Race clock milestones (5 laps, 5 minutes, etc.)</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioPitsOpenEnabled ?? true}
+              onChange={(e) => handleSaveSettings({ audioPitsOpenEnabled: e.target.checked })}
+            />
+            <span>Pits open callout</span>
+          </label>
+          <label className="settings-row checkbox">
+            <input
+              type="checkbox"
+              checked={settings.audioPackClearEnabled ?? false}
+              onChange={(e) => handleSaveSettings({ audioPackClearEnabled: e.target.checked })}
+            />
+            <span>Spotter clear callout</span>
+          </label>
+          <label className="settings-row">
+            <span>Radio chatter level</span>
+            <select
+              value={settings.audioCoachChatterLevel ?? "normal"}
+              onChange={(e) =>
+                handleSaveSettings({
+                  audioCoachChatterLevel: e.target.value as "minimal" | "normal" | "verbose",
+                })
+              }
+            >
+              <option value="minimal">Minimal (safety only)</option>
+              <option value="normal">Normal</option>
+              <option value="verbose">Verbose</option>
+            </select>
           </label>
           <label className="settings-row">
             <span>Speech rate ({settings.audioCoachRate.toFixed(1)}×)</span>

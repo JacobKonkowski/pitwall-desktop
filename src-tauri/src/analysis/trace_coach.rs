@@ -296,7 +296,7 @@ fn build_insight(lap: &LapSummary, sector_num: i32, loss_ms: f64, cause: Cause) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{SectorTime, SessionSummary};
+    use crate::storage::{LapKind, SectorTime, SessionSummary};
 
     fn tp(dist_pct: f64, throttle: f64, brake: f64, steering: f64) -> TracePoint {
         TracePoint {
@@ -324,6 +324,7 @@ mod tests {
             lap_number,
             lap_time_ms: Some(time_ms),
             valid: true,
+            lap_kind: LapKind::Flying,
             fuel_start: None,
             fuel_used: None,
             avg_speed: None,

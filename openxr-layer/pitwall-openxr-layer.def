@@ -1,0 +1,3 @@
+LIBRARY pitwall-openxr-layer
+EXPORTS
+    xrNegotiateLoaderApiLayerInterface

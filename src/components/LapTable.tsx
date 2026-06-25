@@ -1,12 +1,27 @@
 import { Fragment } from "react";
 import { formatDelta, formatLapTime } from "../lib/api";
-import type { LapSummary } from "../lib/types";
+import type { LapKind, LapSummary } from "../lib/types";
 
 interface Props {
   laps: LapSummary[];
   selectedLaps: number[];
   highlightedLaps?: number[];
   onToggleLap: (lapId: number) => void;
+}
+
+function formatLapKind(kind: LapKind): string {
+  switch (kind) {
+    case "flying":
+      return "Fly";
+    case "pitOut":
+      return "Out";
+    case "pitIn":
+      return "In";
+    case "pitLane":
+      return "Pit";
+    case "partial":
+      return "Part";
+  }
 }
 
 export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap }: Props) {
@@ -23,6 +38,7 @@ export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap
             <th>Stage</th>
             <th>#</th>
             <th>Time</th>
+            <th>Type</th>
             <th>Delta</th>
             <th>S1</th>
             <th>S2</th>
@@ -40,11 +56,13 @@ export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap
             const s1 = lap.sectors.find((s) => s.sectorNum === 1)?.timeMs;
             const s2 = lap.sectors.find((s) => s.sectorNum === 2)?.timeMs;
             const s3 = lap.sectors.find((s) => s.sectorNum === 3)?.timeMs;
+            const kindLabel = formatLapKind(lap.lapKind);
+            const nonFlying = lap.lapKind !== "flying";
             return (
               <Fragment key={lap.id}>
                 {showStageHeader && (
                   <tr className="stage-row">
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <strong>{lap.sessionType}</strong>
                     </td>
                   </tr>
@@ -61,6 +79,7 @@ export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap
                   <td className="muted stage-label">{lap.sessionType}</td>
                   <td>{lap.lapNumber}</td>
                   <td>{formatLapTime(lap.lapTimeMs)}</td>
+                  <td className={nonFlying ? "muted" : ""}>{kindLabel}</td>
                   <td className={lap.valid && lap.deltaToBestMs != null && lap.deltaToBestMs > 0 ? "slow" : lap.valid ? "fast" : "muted"}>
                     {lap.valid ? formatDelta(lap.deltaToBestMs) : "—"}
                   </td>

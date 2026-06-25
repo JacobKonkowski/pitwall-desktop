@@ -1,3 +1,9 @@
+/**
+ * Tauri IPC wrappers for the PitWall backend.
+ *
+ * Commands use `invoke()`; live/import updates use `listen()` helpers below.
+ * Rust handlers: `src-tauri/src/commands/mod.rs`. Contract: `docs/API.md`.
+ */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
@@ -16,13 +22,16 @@ import type {
   SessionStandings,
   SessionSummary,
   TireSummary,
+  VrLayerDiagnostics,
   VrOverlayStatus,
 } from "./types";
 
+/** List imported sessions (`list_sessions`). Newest first. */
 export async function listSessions(): Promise<SessionSummary[]> {
   return invoke("list_sessions");
 }
 
+/** Full session with laps and sectors (`get_session`). */
 export async function getSession(sessionId: number): Promise<SessionDetail | null> {
   return invoke("get_session", { sessionId });
 }
@@ -141,6 +150,10 @@ export async function uninstallVrLayer(): Promise<void> {
   return invoke("uninstall_vr_layer");
 }
 
+export async function getVrLayerDiagnostics(): Promise<VrLayerDiagnostics> {
+  return invoke("get_vr_layer_diagnostics");
+}
+
 export async function checkVrHudHealth(): Promise<boolean> {
   return invoke("check_vr_hud_health");
 }
@@ -173,6 +186,7 @@ export function onImportStatus(callback: (status: ImportStatus) => void) {
   return listen<ImportStatus>("import-status", (event) => callback(event.payload));
 }
 
+/** Subscribe to `live-telemetry` events (~10 Hz while connected). */
 export function onLiveTelemetry(callback: (snap: LiveSnapshot) => void) {
   return listen<LiveSnapshot>("live-telemetry", (event) => callback(event.payload));
 }

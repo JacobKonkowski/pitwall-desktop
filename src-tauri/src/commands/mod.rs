@@ -1,6 +1,9 @@
+//! Tauri IPC commands and shared [`AppState`].
+//!
+//! Every `#[tauri::command]` here is registered in [`crate::run`] and wrapped by
+//! [`api.ts`](../../src/lib/api.ts) on the frontend. See `docs/API.md` for the full contract.
 use std::path::PathBuf;
 use std::sync::Arc;
-
 use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
@@ -17,7 +20,7 @@ use crate::storage::{
     Database, FuelSummary, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail,
     SessionSummary, TireSummary,
 };
-use crate::vr::{NativeVrStatus, VrOverlayService, VrOverlayStatus};
+use crate::vr::{NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus};
 
 pub struct AppState {
     pub db: Mutex<Database>,
@@ -353,6 +356,12 @@ pub fn install_vr_layer(app: AppHandle) -> Result<(), String> {
 pub fn uninstall_vr_layer(app: AppHandle) -> Result<(), String> {
     let path = vr_layer_manifest_path(&app)?;
     crate::vr::uninstall_layer(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_vr_layer_diagnostics(app: AppHandle) -> Result<VrLayerDiagnostics, String> {
+    let path = vr_layer_manifest_path(&app)?;
+    Ok(crate::vr::layer_diagnostics(&path))
 }
 
 #[tauri::command]

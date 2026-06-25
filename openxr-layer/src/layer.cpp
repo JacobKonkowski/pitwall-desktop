@@ -10,9 +10,14 @@
 // per-function dispatch via xrGetInstanceProcAddr.
 
 #include <d3d11.h>
+#include <windows.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include <openxr/openxr.h>
@@ -28,8 +33,50 @@ namespace {
 constexpr int64_t kSwapchainFormatBgra = DXGI_FORMAT_B8G8R8A8_UNORM;
 constexpr uint64_t kMaxSnapshotAgeMs = 2000;
 
-// Per-kind swapchain dimensions. Aspect ratios match the quad sizes the Rust
-// producer publishes (see base_pose in shm.rs) so nothing is stretched.
+uint64_t NowMs() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+// #region agent log
+std::string LocalPitwallDir() {
+    const char* localAppData = std::getenv("LOCALAPPDATA");
+    std::string base = localAppData ? localAppData : "C:\\Users\\Public";
+    return base + "\\pitwall-desktop";
+}
+
+void AppendAgentLogLine(const std::string& path, const std::string& line) {
+    std::ofstream f(path, std::ios::app);
+    if (f) {
+        f << line;
+    }
+}
+
+void AgentDebug(const char* hyp, const char* loc, const char* msg, const std::string& dataJson) {
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+    const std::string line = std::string("{\"sessionId\":\"68355e\",\"hypothesisId\":\"") + hyp +
+                             "\",\"location\":\"" + loc + "\",\"message\":\"" + msg +
+                             "\",\"data\":" + dataJson + ",\"timestamp\":" + std::to_string(ms) +
+                             ",\"runId\":\"pre-fix\",\"source\":\"layer\"}\n";
+    const std::string dir = LocalPitwallDir();
+    CreateDirectoryA(dir.c_str(), nullptr);
+    AppendAgentLogLine(dir + "\\debug-68355e.log", line);
+    AppendAgentLogLine(R"(c:\Users\jrkon\Projects\pitwall-desktop\debug-68355e.log)", line);
+}
+
+void WriteLayerHeartbeat() {
+    const std::string dir = LocalPitwallDir();
+    CreateDirectoryA(dir.c_str(), nullptr);
+    std::ofstream f(dir + "\\layer-heartbeat", std::ios::trunc);
+    if (f) {
+        f << NowMs();
+    }
+}
+// #endregion
+
+// Per-kind swapchain dimensions.
 void HudDimensions(uint32_t kind, uint32_t& width, uint32_t& height) {
     switch (kind) {
         case PW_OVERLAY_STANDINGS: width = 512; height = 640; break;  // tall list
@@ -38,11 +85,6 @@ void HudDimensions(uint32_t kind, uint32_t& width, uint32_t& height) {
         case PW_OVERLAY_COACH:
         default:                   width = 1024; height = 288; break; // wide-short
     }
-}
-
-uint64_t NowMs() {
-    using namespace std::chrono;
-    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
 // One overlay slot's GPU resources.
@@ -175,12 +217,31 @@ XrSpace SpaceFor(uint32_t lockSpace) {
 
 XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
                                                   const XrFrameEndInfo* frameEndInfo) {
+    static uint64_t frameCounter = 0;
+    frameCounter++;
+
     if (session != g_ctx.session || !g_ctx.sessionReady || frameEndInfo == nullptr) {
+        // #region agent log
+        if (frameCounter % 90 == 0) {
+            std::ostringstream data;
+            data << "{\"sessionMatch\":" << (session == g_ctx.session ? "true" : "false")
+                 << ",\"sessionReady\":" << (g_ctx.sessionReady ? "true" : "false")
+                 << ",\"hasFrameInfo\":" << (frameEndInfo != nullptr ? "true" : "false") << "}";
+            AgentDebug("C", "layer.cpp:xrEndFrame", "early exit before composite", data.str());
+        }
+        // #endregion
         return g_ctx.dispatch.endFrame(session, frameEndInfo);
     }
 
+    WriteLayerHeartbeat();
+
     PwSharedBlock block;
     if (!g_ctx.shm.Read(block, NowMs(), kMaxSnapshotAgeMs)) {
+        // #region agent log
+        if (frameCounter % 90 == 0) {
+            AgentDebug("D", "layer.cpp:xrEndFrame", "shm read failed", "{}");
+        }
+        // #endregion
         return g_ctx.dispatch.endFrame(session, frameEndInfo);
     }
 
@@ -194,14 +255,20 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
     const uint32_t overlayCount =
         block.overlay_count < PITWALL_VR_MAX_OVERLAYS ? block.overlay_count
                                                       : PITWALL_VR_MAX_OVERLAYS;
+    uint32_t enabledCount = 0;
+    uint32_t renderedCount = 0;
+    uint32_t renderFailCount = 0;
     for (uint32_t i = 0; i < overlayCount; ++i) {
         const PwOverlay& ov = block.overlays[i];
         if (!ov.enabled) {
             continue;
         }
+        enabledCount++;
         if (!RenderOverlay(static_cast<int>(i), ov, block.snapshot)) {
+            renderFailCount++;
             continue;
         }
+        renderedCount++;
 
         XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
         quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
@@ -217,6 +284,16 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
         quad.size = {ov.size_w, ov.size_h};
         quads.push_back(quad);
     }
+
+    // #region agent log
+    if (frameCounter % 90 == 0) {
+        std::ostringstream data;
+        data << "{\"enabledCount\":" << enabledCount << ",\"renderedCount\":" << renderedCount
+             << ",\"renderFailCount\":" << renderFailCount << ",\"quadsAppended\":" << quads.size()
+             << ",\"lap\":" << block.snapshot.lap << "}";
+        AgentDebug("E", "layer.cpp:xrEndFrame", "composite frame", data.str());
+    }
+    // #endregion
 
     for (auto& quad : quads) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad));
@@ -247,6 +324,11 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateSession(XrInstance instance,
     }
 
     if (!g_ctx.device || !g_ctx.renderer.Initialize(g_ctx.device)) {
+        // #region agent log
+        std::ostringstream data;
+        data << "{\"hasDevice\":" << (g_ctx.device ? "true" : "false") << "}";
+        AgentDebug("C", "layer.cpp:xrCreateSession", "d3d/renderer init failed", data.str());
+        // #endregion
         return res;  // session is valid; we simply will not composite
     }
 
@@ -263,6 +345,10 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateSession(XrInstance instance,
     g_ctx.dispatch.createReferenceSpace(*session, &localInfo, &g_ctx.localSpace);
 
     g_ctx.sessionReady = (g_ctx.viewSpace != XR_NULL_HANDLE);
+    // #region agent log
+    AgentDebug("B", "layer.cpp:xrCreateSession", "session created",
+               std::string("{\"sessionReady\":") + (g_ctx.sessionReady ? "true" : "false") + "}");
+    // #endregion
     return res;
 }
 
@@ -331,6 +417,9 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateApiLayerInstance(
     }
 
     g_ctx.instance = *instance;
+    // #region agent log
+    AgentDebug("B", "layer.cpp:xrCreateApiLayerInstance", "layer instance created", "{}");
+    // #endregion
     Load("xrDestroyInstance", g_ctx.dispatch.destroyInstance);
     Load("xrCreateSession", g_ctx.dispatch.createSession);
     Load("xrDestroySession", g_ctx.dispatch.destroySession);
@@ -355,6 +444,9 @@ extern "C" {
 XRAPI_ATTR XrResult XRAPI_CALL xrNegotiateLoaderApiLayerInterface(
     const XrNegotiateLoaderInfo* loaderInfo, const char* /*layerName*/,
     XrNegotiateApiLayerRequest* apiLayerRequest) {
+    // #region agent log
+    AgentDebug("B", "layer.cpp:xrNegotiateLoaderApiLayerInterface", "negotiate called", "{}");
+    // #endregion
     if (!loaderInfo || !apiLayerRequest ||
         loaderInfo->structType != XR_LOADER_INTERFACE_STRUCT_LOADER_INFO ||
         apiLayerRequest->structType != XR_LOADER_INTERFACE_STRUCT_API_LAYER_REQUEST) {
@@ -365,6 +457,16 @@ XRAPI_ATTR XrResult XRAPI_CALL xrNegotiateLoaderApiLayerInterface(
     apiLayerRequest->getInstanceProcAddr = PitWall_xrGetInstanceProcAddr;
     apiLayerRequest->createApiLayerInstance = PitWall_xrCreateApiLayerInstance;
     return XR_SUCCESS;
+}
+
+BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) {
+        // #region agent log
+        OutputDebugStringA("PitWallVR: pitwall-openxr-layer.dll attached\n");
+        AgentDebug("B", "layer.cpp:DllMain", "dll attached", "{}");
+        // #endregion
+    }
+    return TRUE;
 }
 
 }  // extern "C"

@@ -106,7 +106,8 @@ panel shows an **Install VR layer** button, which registers the manifest under
 (see [`layer_install.rs`](../src-tauri/src/vr/layer_install.rs)). Restart iRacing
 after installing so the loader picks up the layer.
 
-Set `PITWALL_VR_DISABLE=1` to bypass the layer without unregistering it.
+Set `PITWALL_VR_DISABLE=1` to bypass the layer without unregistering it. The layer
+loads automatically once registered (no extra environment variable required).
 
 ## Quest 3 + Meta Link setup
 

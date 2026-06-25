@@ -37,6 +37,9 @@ jobs:
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      - name: Build API docs (smoke)
+        run: npm run docs:api
+
   release:
     name: Build installer
     needs: build

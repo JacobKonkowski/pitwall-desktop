@@ -1,0 +1,11 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/lib/api.ts", "src/lib/types.ts"],
+  "out": "docs/.api-out/ts",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "readme": "none",
+  "name": "PitWall Desktop — Frontend IPC",
+  "categorizeByGroup": true,
+  "sort": ["source-order"]
+}

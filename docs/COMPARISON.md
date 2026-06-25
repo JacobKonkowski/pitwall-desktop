@@ -45,23 +45,20 @@ indicator.
 
 ## Audio coach
 
-The audio coach ([`audio/coach.rs`](../src-tauri/src/audio/coach.rs)) speaks at most one
-alert per tick, choosing the highest-priority eligible alert. Lower-priority alerts are
-reconsidered on the next tick rather than dropped, so a flag never gets buried under
-routine chatter.
+Path B hybrid delivery: **WAV clips** for fixed phrases, **WinRT TTS** for dynamic lap times, gaps, and positions. Full pipeline, priority order, session modes, and clip export: **[AUDIO_COACH.md](AUDIO_COACH.md)**.
+
+The coach ([`audio/coach.rs`](../src-tauri/src/audio/coach.rs)) speaks at most one alert per 250 ms tick. Lower-priority alerts wait for the next tick rather than being dropped.
 
 | Priority | Category | Examples |
 |----------|----------|----------|
-| 1 (highest) | Critical | Red flag, checkered flag |
-| 2 | Safety | Yellow, green, blue flag, incident count |
+| 1 (highest) | Critical | Red, checkered, black |
+| 2 | Safety | Yellow (incl. waving), green, blue, incidents |
 | 3 | Pack | Car left/right, three-wide (4 s cooldown) |
-| 4 | Race | Fuel-to-finish, fuel low |
-| 5 (lowest) | Pace | Sector and lap callouts |
+| 4 | Race | Fuel-to-finish, low fuel, pit-this-lap |
+| 5 | Pace | Sector and lap callouts |
+| 6 | Strategy | Race clock, pits open, position |
 
-Pack, race-fuel, and pace alerts are suppressed while you are on pit road or off track;
-flags and incidents still come through. Each category can be toggled in the live
-settings (`audioPackAlertsEnabled`, `audioFlagsEnabled`, `audioIncidentsEnabled`,
-`audioFuelRaceEnabled`).
+Pack, race, pace, gap, and strategy alerts are suppressed on pit road or off track; flags and incidents still announce. Toggle categories and **chatter level** in Live settings (`audioGapAlertsEnabled`, `audioPaceEnabled`, `audioRaceClockEnabled`, etc. — see [DATA_MODEL.md](DATA_MODEL.md)).
 
 ### Notes on `CarIdxF2Time` and the blue flag
 

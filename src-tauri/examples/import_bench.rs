@@ -43,8 +43,8 @@ fn main() -> anyhow::Result<()> {
             .map(|ms| format!("{:.3}s", ms / 1000.0))
             .unwrap_or_else(|| "—".into());
         println!(
-            "  lap {:>2}: valid={} time={} max_pct~{:.3}",
-            lap.lap_number, lap.valid, time_s, max_pct
+            "  lap {:>2}: valid={} kind={:?} time={} max_pct~{:.3}",
+            lap.lap_number, lap.valid, lap.lap_kind, time_s, max_pct
         );
     }
 

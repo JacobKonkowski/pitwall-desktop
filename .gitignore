@@ -33,3 +33,6 @@ src-tauri/resources/openxr-layer/*.dll
 # Local env
 .env
 .env.*
+
+# Generated API docs (npm run docs:api)
+docs/.api-out/
