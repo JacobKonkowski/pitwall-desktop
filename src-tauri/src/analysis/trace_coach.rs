@@ -58,6 +58,7 @@ pub fn append_trace_insights(
     traces: &HashMap<i64, Vec<TracePoint>>,
 ) {
     let mut trace_insights: Vec<CoachInsight> = Vec::new();
+    let boundaries = &detail.session.sector_boundaries;
 
     for session_num in sub_session_nums(detail) {
         let stage: Vec<&LapSummary> = detail
@@ -94,13 +95,20 @@ pub fn append_trace_insights(
                 continue;
             };
 
-            for sector_num in 1..=3i32 {
+            let max_sector = best_lap
+                .sectors
+                .iter()
+                .map(|s| s.sector_num)
+                .max()
+                .unwrap_or(0);
+
+            for sector_num in 1..=max_sector {
                 let loss = sector_loss_ms(lap, best_lap, sector_num);
                 let Some(loss_ms) = loss.filter(|l| *l > MIN_SECTOR_LOSS_MS) else {
                     continue;
                 };
 
-                let (lo, hi) = sector_pct_range(sector_num);
+                let (lo, hi) = sector_pct_range(sector_num, boundaries);
                 if let Some(cause) = detect_cause(best_trace, slow_trace, lo, hi) {
                     trace_insights.push(build_insight(lap, sector_num, loss_ms, cause));
                 }
@@ -140,9 +148,14 @@ fn sector_loss_ms(lap: &LapSummary, best_lap: &LapSummary, sector_num: i32) -> O
     Some(slow - best)
 }
 
-/// Approximate dist_pct range for a sector. The DB stores sector *times*, not
-/// boundary positions, so we use equal thirds. Good enough to localise a cause.
-fn sector_pct_range(sector_num: i32) -> (f64, f64) {
+/// dist_pct range for a sector using persisted session boundaries when available.
+fn sector_pct_range(sector_num: i32, boundaries: &[f64]) -> (f64, f64) {
+    if boundaries.len() >= 2 {
+        let idx = (sector_num - 1).max(0) as usize;
+        let lo = boundaries.get(idx).copied().unwrap_or(0.0);
+        let hi = boundaries.get(idx + 1).copied().unwrap_or(1.0);
+        return (lo, hi);
+    }
     match sector_num {
         1 => (0.0, 1.0 / 3.0),
         2 => (1.0 / 3.0, 2.0 / 3.0),
@@ -351,6 +364,7 @@ mod tests {
                 lap_count: laps.len() as i32,
                 best_lap_ms: None,
                 imported_at: String::new(),
+                sector_boundaries: vec![0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0],
             },
             laps,
         }

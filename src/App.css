@@ -3,6 +3,11 @@
   font-size: 14px;
   color: #e8e8e8;
   background: #0f1115;
+  --color-surface: #151820;
+  --color-border: #2a2d35;
+  --color-accent: #4fc3f7;
+  --color-muted: #888;
+  --radius-panel: 8px;
 }
 
 * {
@@ -47,7 +52,16 @@ body,
 .tab.active {
   background: #243048;
   color: #fff;
-  border-color: #4fc3f7;
+  border-color: var(--color-accent);
+}
+
+.tab:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .app-header h1 {
@@ -339,7 +353,106 @@ button.btn-danger:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  max-width: 900px;
+  width: 100%;
+}
+
+.live-dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.live-dashboard .session-leaderboard {
+  grid-column: 1 / -1;
+}
+
+.live-dashboard-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.live-race-context,
+.live-traffic-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.live-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #2a2d35;
+  color: #ccc;
+}
+
+.live-badge-ok {
+  background: #1e3a2f;
+  color: #8fd4a8;
+}
+
+.live-badge-warn {
+  background: #3a2a10;
+  color: #ffb74d;
+}
+
+.live-pack-pill {
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--color-border);
+}
+
+.live-traffic-gaps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.live-proximity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.live-widget-frame {
+  height: 180px;
+  background: #0a0c10;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  position: relative;
+}
+
+.live-widget-relative {
+  height: 240px;
+}
+
+.live-proximity-widget h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.pw-radar-car {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 1200px) {
+  .live-dashboard {
+    grid-template-columns: 1fr;
+  }
+  .live-proximity-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .live-header-row {
@@ -704,4 +817,123 @@ button.btn-danger:hover:not(:disabled) {
   color: #ffb74d;
   font-size: 0.7rem;
   font-weight: 600;
+}
+
+/* Settings page */
+.settings-main {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.settings-page {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 1rem;
+  max-width: 960px;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-self: start;
+}
+
+.settings-nav h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.settings-nav .tab {
+  text-align: left;
+  width: 100%;
+}
+
+.settings-content {
+  min-height: 400px;
+}
+
+.settings-section {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+}
+
+.settings-section-title {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.settings-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.error-banner {
+  margin: 0 1rem;
+  padding: 0.75rem 1rem;
+  background: #3a1e1e;
+  color: #ef9a9a;
+  border-radius: var(--radius-panel);
+}
+
+.banner-info {
+  background: #1a2433;
+  border-color: #2a3a50;
+}
+
+.session-browser-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.session-browser-filters input {
+  flex: 1;
+}
+
+.btn-small {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.coach-card-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.coach-compare-link {
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.coach-summary-md {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.coach-summary-md h2,
+.coach-summary-md h3,
+.coach-summary-md h4 {
+  margin: 0.75rem 0 0.35rem;
+}
+
+.empty-state-inline {
+  padding: 1rem;
+}
+
+.scan-summary {
+  margin: 0 0 0.5rem;
+}
+
+@media (max-width: 700px) {
+  .settings-page {
+    grid-template-columns: 1fr;
+  }
 }

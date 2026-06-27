@@ -5,7 +5,7 @@ use crate::live::{LiveSnapshot, PackState};
 use crate::settings::{AppSettings, ChatterLevel};
 
 use super::phrasing::{
-    format_delta_phrase, format_duration_long, format_gap_seconds, lap_time_tts, sector_time_tts,
+    format_delta_tts, format_duration_long, format_gap_seconds, lap_time_tts, sector_time_tts,
 };
 use super::queue::SpeechPriority;
 use super::session_mode::SessionMode;
@@ -24,7 +24,8 @@ mod flags {
     pub const GREEN_HELD: u32 = 0x0000_0400;
 }
 
-const PACK_COOLDOWN: Duration = Duration::from_secs(4);
+/// Minimum interval before repeating the same traffic-side callout while cars stay alongside.
+const PACK_TRAFFIC_REMINDER: Duration = Duration::from_secs(3);
 const GAP_CHANGE_THRESHOLD_S: f32 = 0.3;
 const GAP_COOLDOWN: Duration = Duration::from_secs(9);
 
@@ -67,7 +68,8 @@ pub struct CoachEngine {
     last_incident_count: i32,
     incident_baseline_set: bool,
     last_pack_state: PackState,
-    last_pack_spoken: Option<Instant>,
+    /// Last traffic alert (not updated by clear callouts).
+    last_traffic_spoken: Option<Instant>,
     spoke_fuel_to_end: bool,
     spoke_pit_to_finish: bool,
     last_announced_gap_ahead: Option<f32>,
@@ -102,7 +104,7 @@ impl CoachEngine {
             last_incident_count: 0,
             incident_baseline_set: false,
             last_pack_state: PackState::Off,
-            last_pack_spoken: None,
+            last_traffic_spoken: None,
             spoke_fuel_to_end: false,
             spoke_pit_to_finish: false,
             last_announced_gap_ahead: None,
@@ -134,7 +136,7 @@ impl CoachEngine {
         self.maintenance(snap, settings);
 
         let mut candidates: Vec<Candidate> = Vec::new();
-        self.gather_intro(snap, &mut candidates);
+        self.gather_intro(snap, settings, &mut candidates);
         self.gather_flags(snap, settings, &mut candidates);
         self.gather_incident(snap, settings, &mut candidates);
         self.gather_pack(snap, settings, &mut candidates);
@@ -182,8 +184,14 @@ impl CoachEngine {
         }
 
         if snap.lap != self.tracked_lap {
+            let previously_announced = self.announced_sectors.clone();
             self.tracked_lap = snap.lap;
             self.announced_sectors.clear();
+            for sector in &snap.sectors {
+                if sector.completed && previously_announced.contains(&sector.sector_num) {
+                    self.announced_sectors.insert(sector.sector_num);
+                }
+            }
             if snap.lap > 0 && self.fuel_at_lap_start.is_none() {
                 self.fuel_at_lap_start = Some(snap.fuel_level);
             }
@@ -228,8 +236,8 @@ impl CoachEngine {
         self.last_time_remain_s = snap.session_time_remain_s;
     }
 
-    fn gather_intro(&self, snap: &LiveSnapshot, out: &mut Vec<Candidate>) {
-        if self.spoke_session_intro || snap.track.is_empty() {
+    fn gather_intro(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
+        if !settings.audio_session_intro_enabled || self.spoke_session_intro || snap.track.is_empty() {
             return;
         }
         let session = if snap.session_type.is_empty() {
@@ -311,13 +319,18 @@ impl CoachEngine {
         if !settings.audio_pack_alerts_enabled || !snap.pack_state.is_traffic() {
             return;
         }
-        let changed = snap.pack_state != self.last_pack_state;
-        let cooled = self
-            .last_pack_spoken
-            .map(|t| t.elapsed() >= PACK_COOLDOWN)
-            .unwrap_or(true);
-        if !changed && !cooled {
+        if snap.on_pit_road || !snap.on_track {
             return;
+        }
+        let changed = snap.pack_state != self.last_pack_state;
+        if !changed {
+            let remind = self
+                .last_traffic_spoken
+                .map(|t| t.elapsed() >= PACK_TRAFFIC_REMINDER)
+                .unwrap_or(true);
+            if !remind {
+                return;
+            }
         }
         let clip = match snap.pack_state {
             PackState::CarLeft => "pack_car_left",
@@ -328,7 +341,7 @@ impl CoachEngine {
             PackState::Clear | PackState::Off => return,
         };
         out.push(Candidate {
-            priority: SpeechPriority::PACK,
+            priority: SpeechPriority::SAFETY,
             plan: SpeechPlan::clip(clip),
             mark: Mark::Pack,
         });
@@ -341,7 +354,7 @@ impl CoachEngine {
         prev_pack: PackState,
         out: &mut Vec<Candidate>,
     ) {
-        if !settings.audio_pack_clear_enabled {
+        if !settings.audio_pack_alerts_enabled {
             return;
         }
         if snap.on_pit_road || !snap.on_track {
@@ -353,22 +366,16 @@ impl CoachEngine {
         if !prev_pack.is_traffic() {
             return;
         }
-        let cooled = self
-            .last_pack_spoken
-            .map(|t| t.elapsed() >= Duration::from_secs(6))
-            .unwrap_or(true);
-        if !cooled {
-            return;
-        }
+        let clip = pack_clear_clip(prev_pack);
         out.push(Candidate {
-            priority: SpeechPriority::PACK,
-            plan: SpeechPlan::clip("pack_clear"),
+            priority: SpeechPriority::SAFETY,
+            plan: SpeechPlan::clip(clip),
             mark: Mark::PackClear,
         });
     }
 
     fn gather_gap_change(&self, snap: &LiveSnapshot, settings: &AppSettings, out: &mut Vec<Candidate>) {
-        if !settings.audio_gap_alerts_enabled || !chatter_allows_verbose(settings) {
+        if !settings.audio_gap_alerts_enabled || !chatter_is_verbose(settings) {
             return;
         }
         if snap.on_pit_road || !snap.on_track {
@@ -610,11 +617,10 @@ impl CoachEngine {
             Mark::Incident => self.last_incident_count = snap.incident_count,
             Mark::Pack => {
                 self.last_pack_state = snap.pack_state;
-                self.last_pack_spoken = Some(Instant::now());
+                self.last_traffic_spoken = Some(Instant::now());
             }
             Mark::PackClear => {
                 self.last_pack_state = snap.pack_state;
-                self.last_pack_spoken = Some(Instant::now());
             }
             Mark::FuelLow => self.spoke_fuel_low = true,
             Mark::FuelToEnd => self.spoke_fuel_to_end = true,
@@ -672,7 +678,7 @@ impl CoachEngine {
             units.push(SpeechUnit::Clip("pb_sector".into()));
         } else if let Some(b) = prev_best {
             if !is_pb {
-                units.push(SpeechUnit::Tts(format_delta_phrase(ms - b).trim().to_string()));
+                push_pace_delta_units(&mut units, ms - b);
             }
         }
 
@@ -681,10 +687,8 @@ impl CoachEngine {
             if let Some(d) = snap.delta_to_best_ms.filter(|d| d.abs() > 80.0 && snap.lap_dist_pct > 0.05)
             {
                 if d > 0.0 {
-                    units.push(SpeechUnit::Tts(format!(
-                        "Currently {:.0} tenths off best lap pace.",
-                        d / 100.0
-                    )));
+                    units.push(SpeechUnit::Clip("pace_off_pb_intro".into()));
+                    units.push(SpeechUnit::Tts(format_delta_tts(d)));
                 } else {
                     units.push(SpeechUnit::Clip("pace_on_pb".into()));
                 }
@@ -696,7 +700,7 @@ impl CoachEngine {
                 .delta_to_session_best_ms
                 .filter(|d| d.abs() > 80.0)
             {
-                units.push(SpeechUnit::Tts(format_delta_phrase(d).trim().to_string()));
+                push_pace_delta_units(&mut units, d);
             }
         }
 
@@ -722,32 +726,26 @@ impl CoachEngine {
         if is_pb && prev_best.is_some() {
             units.push(SpeechUnit::Clip("pb_new".into()));
         } else if let Some(best) = prev_best {
-            units.push(SpeechUnit::Tts(format_delta_phrase(lap_ms - best).trim().to_string()));
+            push_pace_delta_units(&mut units, lap_ms - best);
         }
 
         if let Some(last) = snap.delta_to_last_ms {
             if last.abs() > 80.0 && prev_best.is_some() && !is_pb {
-                units.push(SpeechUnit::Tts(format!(
-                    "{} versus previous lap.",
-                    format_delta_phrase(last).trim()
-                )));
+                push_pace_delta_with_suffix(&mut units, last, "versus previous lap.");
             }
         }
 
-        if mode.is_qual() || (mode.is_practice() && chatter_allows_verbose(settings)) {
+        if mode.is_qual() || (mode.is_practice() && chatter_is_verbose(settings)) {
             if let Some(d) = snap
                 .delta_to_session_best_ms
                 .filter(|d| d.abs() > 80.0)
             {
-                units.push(SpeechUnit::Tts(format!(
-                    "{} off session best.",
-                    format_delta_phrase(d).trim()
-                )));
+                push_pace_delta_with_suffix(&mut units, d, "off session best.");
             }
         }
 
         if mode.is_race() || mode.is_qual() {
-            if chatter_allows_verbose(settings) {
+            if settings.audio_position_callouts_enabled && chatter_allows_normal(settings) {
                 if let Some(pos) = snap.player_class_position.or(snap.player_position) {
                     if let Some(prev) = self.last_announced_position {
                         if pos > 0 && prev > 0 && pos != prev {
@@ -768,7 +766,8 @@ impl CoachEngine {
             }
         }
 
-        if settings.audio_gap_alerts_enabled && (mode.is_race() || mode.is_qual() || chatter_allows_verbose(settings))
+        if settings.audio_gap_alerts_enabled
+            && (mode.is_race() || mode.is_qual() || chatter_is_verbose(settings))
         {
             if let Some(g) = snap.gap_to_car_ahead_s.filter(|g| *g >= 0.0) {
                 units.push(SpeechUnit::Clip("gap_ahead".into()));
@@ -806,6 +805,47 @@ impl CoachEngine {
     }
 }
 
+fn pack_clear_clip(prev_pack: PackState) -> &'static str {
+    match prev_pack {
+        PackState::CarLeft | PackState::TwoCarsLeft => "pack_clear_left",
+        PackState::CarRight | PackState::TwoCarsRight => "pack_clear_right",
+        _ => "pack_clear",
+    }
+}
+
+fn push_pace_delta_units(units: &mut Vec<SpeechUnit>, delta_ms: f64) {
+    let abs = delta_ms.abs();
+    if abs < 50.0 {
+        units.push(SpeechUnit::Clip("pace_matching_best".into()));
+    } else if delta_ms > 0.0 {
+        units.push(SpeechUnit::Clip("pace_off_pb_intro".into()));
+        units.push(SpeechUnit::Tts(format_delta_tts(delta_ms)));
+    } else {
+        units.push(SpeechUnit::Tts(format_delta_tts(delta_ms)));
+    }
+}
+
+fn push_pace_delta_with_suffix(units: &mut Vec<SpeechUnit>, delta_ms: f64, suffix: &str) {
+    let abs = delta_ms.abs();
+    if abs < 50.0 {
+        units.push(SpeechUnit::Clip("pace_matching_best".into()));
+        units.push(SpeechUnit::Tts(suffix.into()));
+    } else if delta_ms > 0.0 {
+        units.push(SpeechUnit::Clip("pace_off_pb_intro".into()));
+        units.push(SpeechUnit::Tts(format!(
+            "{} {}",
+            format_delta_tts(delta_ms).trim_end_matches('.'),
+            suffix
+        )));
+    } else {
+        units.push(SpeechUnit::Tts(format!(
+            "{} {}",
+            format_delta_tts(delta_ms).trim_end_matches('.'),
+            suffix
+        )));
+    }
+}
+
 fn pick_highest(candidates: &[Candidate]) -> Option<usize> {
     candidates
         .iter()
@@ -825,8 +865,17 @@ fn estimate_laps_remaining(fuel_level: f32, fuel_per_lap: &[f32]) -> Option<f32>
     Some(fuel_level / avg)
 }
 
-fn chatter_allows_verbose(settings: &AppSettings) -> bool {
+fn chatter_allows_normal(settings: &AppSettings) -> bool {
     settings.audio_coach_chatter_level != ChatterLevel::Minimal
+}
+
+fn chatter_is_verbose(settings: &AppSettings) -> bool {
+    settings.audio_coach_chatter_level == ChatterLevel::Verbose
+}
+
+#[allow(dead_code)]
+fn chatter_allows_verbose(settings: &AppSettings) -> bool {
+    chatter_allows_normal(settings)
 }
 
 #[cfg(test)]
@@ -929,5 +978,95 @@ mod tests {
         engine.poll(&snap, &settings());
         let plan = engine.poll(&snap, &settings()).unwrap();
         assert!(plan.1.display_text().contains("session best"));
+    }
+
+    fn clip_key(plan: &SpeechPlan) -> Option<&str> {
+        match plan {
+            SpeechPlan::Clip(k) => Some(k.as_str()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn pack_clear_after_car_left() {
+        let mut engine = CoachEngine::new();
+        let s = settings();
+        let mut snap = base_snapshot();
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::CarLeft;
+        assert_eq!(
+            clip_key(&engine.poll(&snap, &s).unwrap().1),
+            Some("pack_car_left")
+        );
+        snap.pack_state = PackState::Clear;
+        assert_eq!(
+            clip_key(&engine.poll(&snap, &s).unwrap().1),
+            Some("pack_clear_left")
+        );
+    }
+
+    #[test]
+    fn pack_clear_after_three_wide() {
+        let mut engine = CoachEngine::new();
+        let s = settings();
+        let mut snap = base_snapshot();
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::ThreeWide;
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::Clear;
+        assert_eq!(
+            clip_key(&engine.poll(&snap, &s).unwrap().1),
+            Some("pack_clear")
+        );
+    }
+
+    #[test]
+    fn pack_traffic_immediate_after_clear() {
+        let mut engine = CoachEngine::new();
+        let s = settings();
+        let mut snap = base_snapshot();
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::CarLeft;
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::Clear;
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::CarLeft;
+        assert_eq!(
+            clip_key(&engine.poll(&snap, &s).unwrap().1),
+            Some("pack_car_left")
+        );
+    }
+
+    #[test]
+    fn pack_clear_requires_pack_alerts() {
+        let mut engine = CoachEngine::new();
+        let mut s = settings();
+        let mut snap = base_snapshot();
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::CarLeft;
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::Clear;
+        s.audio_pack_alerts_enabled = false;
+        assert!(engine.poll(&snap, &s).is_none());
+    }
+
+    #[test]
+    fn pack_clear_suppressed_in_pits() {
+        let mut engine = CoachEngine::new();
+        let s = settings();
+        let mut snap = base_snapshot();
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::CarLeft;
+        engine.poll(&snap, &s);
+        snap.pack_state = PackState::Clear;
+        snap.on_pit_road = true;
+        assert!(engine.poll(&snap, &s).is_none());
+    }
+
+    #[test]
+    fn pace_matching_best_on_small_delta() {
+        let mut units = Vec::new();
+        push_pace_delta_units(&mut units, 30.0);
+        assert!(matches!(&units[0], SpeechUnit::Clip(k) if k == "pace_matching_best"));
     }
 }

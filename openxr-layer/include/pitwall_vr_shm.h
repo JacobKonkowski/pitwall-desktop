@@ -27,12 +27,13 @@ extern "C" {
 
 // "PWVR" as little-endian bytes ('P'=0x50, 'W'=0x57, 'V'=0x56, 'R'=0x52).
 #define PITWALL_VR_MAGIC 0x52565750u
-#define PITWALL_VR_VERSION 1u
+#define PITWALL_VR_VERSION 2u
 
 #define PITWALL_VR_SHM_NAME "Local\\PitWallVR"
 
 #define PITWALL_VR_MAX_OVERLAYS 4
 #define PITWALL_VR_MAX_COMPETITORS 64
+#define PITWALL_VR_MAX_SECTORS 8
 #define PITWALL_VR_NUM_LEN 8
 #define PITWALL_VR_NAME_LEN 40
 #define PITWALL_VR_TRACK_LEN 64
@@ -119,8 +120,9 @@ typedef struct PwSnapshot {
     float session_time_remain_s;   // NaN = none
     uint32_t on_track;             // 0 / 1
     uint32_t field_pace_mode;      // PwFieldPaceMode
-    float sector_pct[3];           // 0..1 progress per sector
-    uint32_t sector_done[3];       // 0 / 1 completed flag per sector
+    uint32_t sector_count;         // active sectors in sector_pct / sector_done
+    float sector_pct[PITWALL_VR_MAX_SECTORS];   // 0..1 progress per sector
+    uint32_t sector_done[PITWALL_VR_MAX_SECTORS]; // 0 / 1 completed flag per sector
     uint32_t competitor_count;
     char track[PITWALL_VR_TRACK_LEN];
     char session_type[PITWALL_VR_SESSION_LEN];

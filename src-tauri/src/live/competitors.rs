@@ -81,7 +81,7 @@ fn array_get<T: Copy>(arr: &[T], idx: i32) -> Option<T> {
 
 /// iRacing reports lap times in seconds, using a negative sentinel when no lap
 /// has been set yet. Convert to milliseconds, dropping the sentinel.
-fn lap_seconds_to_ms(secs: Option<f32>) -> Option<f64> {
+pub fn lap_seconds_to_ms(secs: Option<f32>) -> Option<f64> {
     match secs {
         Some(s) if s > 0.0 => Some(s as f64 * 1000.0),
         _ => None,
@@ -108,8 +108,8 @@ pub fn build(roster: &[RosterEntry], player_car_idx: i32, frame: &CarIdxFrame) -
                 class_color: r.class_color.clone(),
                 position,
                 class_position,
-                best_lap_ms: lap_seconds_to_ms(array_get(&frame.best_lap_time, r.car_idx)),
-                last_lap_ms: lap_seconds_to_ms(array_get(&frame.last_lap_time, r.car_idx)),
+                best_lap_ms: lap_seconds_to_ms(array_get(&frame.car_idx_best_lap_time, r.car_idx)),
+                last_lap_ms: lap_seconds_to_ms(array_get(&frame.car_idx_last_lap_time, r.car_idx)),
                 on_pit_road: array_get(&frame.on_pit_road, r.car_idx).unwrap_or(false),
                 is_player: r.car_idx == player_car_idx,
                 lap_dist_pct: array_get(&frame.lap_dist_pct, r.car_idx).unwrap_or(0.0),
@@ -127,10 +127,13 @@ pub fn build(roster: &[RosterEntry], player_car_idx: i32, frame: &CarIdxFrame) -
         (false, false) => a.car_idx.cmp(&b.car_idx),
     });
 
-    let session_fastest_lap_ms = competitors
-        .iter()
-        .filter_map(|c| c.best_lap_ms)
-        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let session_fastest_lap_ms = lap_seconds_to_ms(Some(frame.session_best_lap_time))
+        .or_else(|| {
+            competitors
+                .iter()
+                .filter_map(|c| c.best_lap_ms)
+                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        });
 
     let player = competitors.iter().find(|c| c.is_player);
     let player_position = player.map(|p| p.position).filter(|p| *p > 0);
@@ -201,14 +204,21 @@ mod tests {
     fn frame() -> CarIdxFrame {
         CarIdxFrame {
             player_car_idx: 0,
-            best_lap_time: vec![91.0, 90.0, 92.0],
-            last_lap_time: vec![91.5, 90.5, 92.5],
+            car_idx_best_lap_time: vec![91.0, 90.0, 92.0],
+            car_idx_last_lap_time: vec![91.5, 90.5, 92.5],
             position: vec![2, 1, 3],
             class_position: vec![2, 1, 3],
             on_pit_road: vec![false, false, true],
             f2_time: vec![1.5, 0.0, 3.0],
             lap_dist_pct: vec![0.10, 0.12, 0.05],
+            current_lap_time: 45.0,
+            player_last_lap_time: 91.5,
+            player_best_lap_time: 91.0,
+            session_best_lap_time: 90.0,
+            delta_best: 0.0,
             delta_best_ok: true,
+            delta_last: 0.0,
+            delta_last_ok: false,
             delta_session_best: 0.0,
             delta_session_best_ok: false,
             delta_session_optimal: 0.0,
@@ -250,7 +260,7 @@ mod tests {
     #[test]
     fn best_lap_sentinel_dropped() {
         let mut f = frame();
-        f.best_lap_time = vec![-1.0, 90.0, -1.0];
+        f.car_idx_best_lap_time = vec![-1.0, 90.0, -1.0];
         let snap = build(&roster(), 0, &f);
         let you = snap.competitors.iter().find(|c| c.is_player).unwrap();
         assert_eq!(you.best_lap_ms, None);

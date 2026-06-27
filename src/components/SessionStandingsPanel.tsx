@@ -43,9 +43,16 @@ export function SessionStandingsPanel({ sessionId }: Props) {
     return standings.competitors.slice().sort((a, b) => rank(a.position) - rank(b.position));
   }, [standings, mode, player]);
 
-  // No linked live snapshot for this session: render nothing.
   if (!standings || standings.competitors.length === 0) {
-    return null;
+    return (
+      <div className="panel session-standings empty-state-inline">
+        <h2>Session standings</h2>
+        <p className="muted">
+          No field data was captured for this session. Standings appear when live telemetry was
+          running during the session and linked on import.
+        </p>
+      </div>
+    );
   }
 
   return (

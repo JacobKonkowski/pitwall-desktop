@@ -11,6 +11,9 @@ pub struct SessionSummary {
     pub lap_count: i32,
     pub best_lap_ms: Option<f64>,
     pub imported_at: String,
+    /// Region start pcts from iRacing SplitTimeInfo (includes 0% when present).
+    #[serde(default)]
+    pub sector_boundaries: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,12 +172,36 @@ pub struct SessionStandings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ImportStatus {
     pub active: bool,
     pub current_file: Option<String>,
     pub progress_pct: f64,
     pub message: String,
+    /// Wall-clock time for the last folder scan batch (milliseconds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_elapsed_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_file_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_imported_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_skipped_count: Option<usize>,
+}
+
+impl Default for ImportStatus {
+    fn default() -> Self {
+        Self {
+            active: false,
+            current_file: None,
+            progress_pct: 0.0,
+            message: "Idle".into(),
+            batch_elapsed_ms: None,
+            batch_file_count: None,
+            batch_imported_count: None,
+            batch_skipped_count: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

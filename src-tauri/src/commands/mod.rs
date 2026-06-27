@@ -14,6 +14,7 @@ use crate::ingest::{
     check_iracing_config, default_telemetry_dir, run_import,
 };
 use crate::live::{LiveService, LiveSnapshot, LiveStatus};
+use crate::hotkey::sync_hotkey;
 use crate::overlay::{close_desktop_overlay, is_desktop_overlay_open, open_desktop_overlay};
 use crate::settings::{load_settings, save_settings, AppSettings};
 use crate::storage::{
@@ -36,12 +37,7 @@ impl AppState {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             db: Mutex::new(Database::open()?),
-            import_status: Mutex::new(ImportStatus {
-                active: false,
-                current_file: None,
-                progress_pct: 0.0,
-                message: "Idle".into(),
-            }),
+            import_status: Mutex::new(ImportStatus::default()),
             import_gate: tokio::sync::Mutex::new(()),
             live: Arc::new(LiveService::new()),
             vr: Arc::new(VrOverlayService::new()),
@@ -166,6 +162,7 @@ pub fn clear_database_cmd(state: State<'_, Arc<AppState>>) -> Result<usize, Stri
             } else {
                 "Database already empty".into()
             },
+            ..Default::default()
         };
         Ok(removed)
     }
@@ -266,17 +263,85 @@ pub async fn generate_coach_summary(
 }
 
 #[tauri::command]
+pub fn delete_session_cmd(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<bool, String> {
+    state
+        .db
+        .lock()
+        .delete_session(session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn patch_settings_cmd(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    patch: serde_json::Value,
+) -> Result<AppSettings, String> {
+    let mut current = state.settings.lock().clone();
+    let mut value = serde_json::to_value(&current).map_err(|e| e.to_string())?;
+    if let (Some(base), Some(p)) = (value.as_object_mut(), patch.as_object()) {
+        for (k, v) in p {
+            base.insert(k.clone(), v.clone());
+        }
+    }
+    current = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    save_settings(&current).map_err(|e| e.to_string())?;
+    *state.settings.lock() = current.clone();
+    sync_hotkey(&app, state.inner());
+    let _ = app.emit("settings-changed", current.clone());
+    Ok(current)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsVoiceInfo {
+    pub display_name: String,
+    pub language: String,
+    pub gender: String,
+    pub neural: bool,
+}
+
+#[tauri::command]
+pub fn list_tts_voices_cmd() -> Result<Vec<TtsVoiceInfo>, String> {
+    #[cfg(windows)]
+    {
+        use crate::audio::tts_winrt::WinRtTts;
+        WinRtTts::list_voices()
+            .map(|voices| {
+                voices
+                    .into_iter()
+                    .map(|v| TtsVoiceInfo {
+                        display_name: v.display_name,
+                        language: v.language,
+                        gender: v.gender,
+                        neural: v.neural,
+                    })
+                    .collect()
+            })
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = ();
+        Ok(Vec::new())
+    }
+}
+
+#[tauri::command]
 pub fn get_settings(state: State<'_, Arc<AppState>>) -> AppSettings {
     state.settings.lock().clone()
 }
 
 #[tauri::command]
 pub fn save_settings_cmd(
+    app: AppHandle,
     state: State<'_, Arc<AppState>>,
     settings: AppSettings,
 ) -> Result<(), String> {
     save_settings(&settings).map_err(|e| e.to_string())?;
-    *state.settings.lock() = settings;
+    *state.settings.lock() = settings.clone();
+    sync_hotkey(&app, state.inner());
+    let _ = app.emit("settings-changed", settings);
     Ok(())
 }
 

@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::info;
 
-use crate::analysis::{analyze_session, SectorBoundary};
+use crate::analysis::sector_splitter::{extract_region_starts, extract_sector_boundaries};
+use crate::analysis::analyze_session;
 use crate::storage::StoredLap;
 
 use super::frame_extractor::FastFrameExtractor;
@@ -24,6 +25,7 @@ pub struct ParsedSession {
     pub track: String,
     pub car: String,
     pub session_date: String,
+    pub sector_boundaries: Vec<f64>,
     pub laps: Vec<StoredLap>,
 }
 
@@ -45,6 +47,7 @@ pub fn import_ibt_file(
         &parsed.track,
         &parsed.car,
         &parsed.session_date,
+        &parsed.sector_boundaries,
         &parsed.laps,
     )?;
     info!(
@@ -104,7 +107,8 @@ pub fn parse_ibt_file_fast(
     let track = session.weekend_info.track_display_name.clone();
     let car = extract_car_name(&session);
     let session_date = extract_session_date(path);
-    let sector_boundaries = extract_sectors(&session);
+    let sector_boundaries = extract_sector_boundaries(&session);
+    let region_starts = extract_region_starts(&session);
     let session_labels = build_session_labels(&session);
 
     let extractor = FastFrameExtractor::from_schema(reader.variables())?;
@@ -156,6 +160,7 @@ pub fn parse_ibt_file_fast(
             track,
             car,
             session_date,
+            sector_boundaries: region_starts,
             laps: analyzed,
         },
         hash,
@@ -269,38 +274,6 @@ fn extract_car_name(session: &SessionInfo) -> String {
         }
     }
     "Unknown Car".into()
-}
-
-fn extract_sectors(session: &SessionInfo) -> Vec<SectorBoundary> {
-    let Some(split) = &session.split_time_info else {
-        return default_sectors();
-    };
-    let Some(sectors) = &split.sectors else {
-        return default_sectors();
-    };
-
-    sectors
-        .iter()
-        .filter_map(|s| {
-            Some(SectorBoundary {
-                sector_num: s.sector_num?,
-                start_pct: s.sector_start_pct?,
-            })
-        })
-        .collect()
-}
-
-fn default_sectors() -> Vec<SectorBoundary> {
-    vec![
-        SectorBoundary {
-            sector_num: 1,
-            start_pct: 0.33,
-        },
-        SectorBoundary {
-            sector_num: 2,
-            start_pct: 0.66,
-        },
-    ]
 }
 
 fn extract_session_date(path: &Path) -> String {

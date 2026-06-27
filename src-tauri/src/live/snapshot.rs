@@ -47,6 +47,8 @@ pub struct LiveSnapshot {
     pub speed: f32,
     pub lap_dist_pct: f32,
     pub current_sector: i32,
+    /// Normalized region start pcts (0..1) plus implicit finish at 1.0.
+    pub sector_boundaries: Vec<f64>,
     pub sectors: Vec<LiveSectorProgress>,
     pub lf_temp: f32,
     pub rf_temp: f32,

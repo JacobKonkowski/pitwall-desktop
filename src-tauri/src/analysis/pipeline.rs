@@ -5,11 +5,13 @@ use rayon::prelude::*;
 use super::fuel_tire::{fuel_stats, tire_averages};
 use super::lap_kind::classify_lap_kind;
 use super::lap_segmenter::{
-    average_speed, compute_lap_time_ms, downsample_traces, is_valid_lap, max_lap_dist_pct,
-    segment_laps, MIN_LAP_MAX_PCT,
+    average_speed, compute_lap_time_ms, downsample_traces, max_lap_dist_pct, segment_laps,
+    MIN_LAP_MAX_PCT,
 };
+use super::lap_validity::{include_in_stats_ibt, metrics_from_frames, telemetry_passes_heuristics};
 use super::sector_splitter::compute_sector_times;
 use super::types::{LapFrames, RawFrame, SectorBoundary};
+use crate::storage::models::LapKind;
 use crate::storage::StoredLap;
 
 /// Laps faster than this fraction of the sub-session median are re-checked.
@@ -39,8 +41,9 @@ pub fn analyze_session(
 
 fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> AnalyzedLap {
     let lap_time_ms = compute_lap_time_ms(&group.frames);
-    let valid = is_valid_lap(&group.frames, lap_time_ms);
     let lap_kind = classify_lap_kind(&group.frames);
+    let metrics = metrics_from_frames(&group.frames, lap_time_ms);
+    let valid = include_in_stats_ibt(lap_kind, telemetry_passes_heuristics(&metrics));
     let max_dist_pct = max_lap_dist_pct(&group.frames);
     let (fuel_start, fuel_used) = fuel_stats(&group.frames);
     let (lf_temp, rf_temp, lr_temp, rr_temp) = tire_averages(&group.frames);
@@ -109,7 +112,7 @@ fn apply_session_outlier_filter(analyzed: &mut [AnalyzedLap]) {
         let threshold = median * OUTLIER_TIME_RATIO;
 
         for entry in analyzed.iter_mut().filter(|e| e.lap.session_num == session_num) {
-            if !entry.lap.valid {
+            if !entry.lap.valid || entry.lap.lap_kind != LapKind::Flying {
                 continue;
             }
             let Some(lap_time) = entry.lap.lap_time_ms else {
@@ -127,6 +130,8 @@ fn apply_session_outlier_filter(analyzed: &mut [AnalyzedLap]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::types::RawFrame;
+    use crate::storage::models::LapKind;
     use crate::storage::StoredLap;
 
     fn entry(lap_number: i32, time_ms: f64, valid: bool, max_pct: f32) -> AnalyzedLap {
@@ -138,7 +143,7 @@ mod tests {
                 lap_number,
                 lap_time_ms: Some(time_ms),
                 valid,
-                lap_kind: crate::storage::models::LapKind::Flying,
+                lap_kind: LapKind::Flying,
                 fuel_start: None,
                 fuel_used: None,
                 avg_speed: None,
@@ -153,6 +158,31 @@ mod tests {
         }
     }
 
+    fn pit_out_frames(count: usize) -> Vec<RawFrame> {
+        (0..count)
+            .map(|i| {
+                let t = i as f64 / (count.max(2) - 1) as f64;
+                RawFrame {
+                    session_num: 0,
+                    lap: 1,
+                    lap_dist_pct: t as f32 * 0.98,
+                    speed: 50.0,
+                    throttle: 0.0,
+                    brake: 0.0,
+                    steering: 0.0,
+                    gear: 3,
+                    fuel_level: 50.0,
+                    on_pit_road: i < count / 10,
+                    session_time: t * 90.0,
+                    lf_temp: 0.0,
+                    rf_temp: 0.0,
+                    lr_temp: 0.0,
+                    rr_temp: 0.0,
+                }
+            })
+            .collect()
+    }
+
     #[test]
     fn outlier_pass_invalidates_fast_incomplete_lap() {
         let mut analyzed = vec![
@@ -163,5 +193,29 @@ mod tests {
         ];
         apply_session_outlier_filter(&mut analyzed);
         assert!(!analyzed[2].lap.valid);
+    }
+
+    #[test]
+    fn pit_out_lap_has_no_sectors() {
+        let mut labels = std::collections::HashMap::new();
+        labels.insert(0, "Practice".into());
+        let laps = analyze_session(pit_out_frames(900), default_split_boundaries(), labels);
+        let lap = laps.first().expect("one lap");
+        assert_eq!(lap.lap_kind, LapKind::PitOut);
+        assert!(!lap.valid);
+        assert!(lap.sectors.is_empty());
+    }
+
+    fn default_split_boundaries() -> Vec<SectorBoundary> {
+        vec![
+            SectorBoundary {
+                sector_num: 1,
+                start_pct: 0.34,
+            },
+            SectorBoundary {
+                sector_num: 2,
+                start_pct: 0.72,
+            },
+        ]
     }
 }

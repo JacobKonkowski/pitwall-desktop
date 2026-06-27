@@ -30,6 +30,7 @@ SQLite, settings JSON, live snapshot shapes, and on-disk paths.
 | `lap_count` | INTEGER | |
 | `best_lap_ms` | REAL | |
 | `imported_at` | TEXT | ISO |
+| `sector_boundaries_json` | TEXT | Region start pcts from SplitTimeInfo (JSON array) |
 
 ### `laps`
 
@@ -55,7 +56,7 @@ SQLite, settings JSON, live snapshot shapes, and on-disk paths.
 | Column | Type |
 |--------|------|
 | `lap_id` | FK → laps |
-| `sector_num` | INTEGER 1–3 |
+| `sector_num` | INTEGER | 1..N (track-dependent) |
 | `time_ms` | REAL |
 
 ### `lap_traces`
@@ -83,13 +84,13 @@ Rust: [`live/snapshot.rs`](../src-tauri/src/live/snapshot.rs). TypeScript: `Live
 | Group | Fields |
 |-------|--------|
 | Session | `track`, `car`, `sessionType` |
-| Player lap | `lap`, `lapTimeMs`, `lastLapMs`, `bestLapMs`, deltas, `lapDistPct`, `currentSector`, `sectors[]` |
+| Player lap | `lap`, `lapTimeMs`, `lastLapMs`, `bestLapMs`, deltas (from SDK), `lapDistPct`, `currentSector`, `sectorBoundaries[]`, `sectors[]` |
 | Car state | `fuelLevel`, `speed`, tire temps, `onPitRoad`, `onTrack` |
 | Field | `competitors[]`, `playerPosition`, `playerClassPosition`, gaps, session deltas |
 | Race | `sessionFlags`, `incidentCount`, `sessionLapsRemain`, `sessionTimeRemainS`, `pitsOpen` |
 | Pack | `packState` |
 
-VR SHM uses a compact binary layout — [`pitwall_vr_shm.h`](../openxr-layer/include/pitwall_vr_shm.h).
+VR SHM v2 uses a compact binary layout (up to 8 sector slots) — [`pitwall_vr_shm.h`](../openxr-layer/include/pitwall_vr_shm.h).
 
 ---
 
@@ -114,7 +115,7 @@ Persisted to `settings.json`. UI: Live tab → Settings.
 | `audioCoachRate` | `1.0` | WinRT rate |
 | `audioCoachVolume` | `1.0` | Playback volume |
 | `audioCoachFuelThreshold` | `5.0` | Liters; `0` disables low-fuel |
-| `audioPackAlertsEnabled` | `true` | Pack spotter |
+| `audioPackAlertsEnabled` | `true` | Pack spotter (traffic + clear) |
 | `audioFlagsEnabled` | `true` | Flag callouts |
 | `audioIncidentsEnabled` | `true` | Incident count |
 | `audioFuelRaceEnabled` | `true` | Race fuel strategy |
@@ -123,7 +124,6 @@ Persisted to `settings.json`. UI: Live tab → Settings.
 | `audioStrategyEnabled` | `true` | Fuel pit planning |
 | `audioRaceClockEnabled` | `true` | Time/lap milestones |
 | `audioPitsOpenEnabled` | `true` | Pits open |
-| `audioPackClearEnabled` | `false` | "Clear all around" |
 | `audioCoachChatterLevel` | `"normal"` | minimal / normal / verbose |
 
 ---

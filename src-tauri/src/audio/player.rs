@@ -28,14 +28,18 @@ impl AudioPlayer {
         })
     }
 
-    pub fn set_voice_settings(&mut self, rate: f32, volume: f32) {
+    pub fn set_voice_settings(&mut self, rate: f32, volume: f32, voice: &str) {
         self.tts.set_rate(rate);
         self.tts.set_volume(volume);
+        if !voice.is_empty() {
+            if let Err(e) = self.tts.set_voice(Some(voice)) {
+                tracing::warn!("TTS voice selection failed: {e:#}");
+            }
+        }
     }
 
     pub fn play_plan(&self, plan: &SpeechPlan) -> anyhow::Result<()> {
         match plan {
-            SpeechPlan::Tts(text) => self.play_tts(text),
             SpeechPlan::Clip(key) => self.play_clip(key),
             SpeechPlan::Sequence(units) => {
                 for unit in units {

@@ -140,6 +140,7 @@ fn finish_status(app: &AppHandle, state: &Arc<AppState>, result: &ImportResult) 
             current_file: None,
             progress_pct: 100.0,
             message,
+            ..Default::default()
         };
     }
     let _ = app.emit("import-status", state.import_status.lock().clone());

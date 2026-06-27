@@ -4,6 +4,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage::{LapSummary, SessionDetail, SessionStandings};
 
+fn max_sector_num(detail: &SessionDetail) -> i32 {
+    detail
+        .laps
+        .iter()
+        .flat_map(|l| l.sectors.iter().map(|s| s.sector_num))
+        .max()
+        .unwrap_or(0)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoachReport {
@@ -124,7 +133,7 @@ pub fn build_coach_report(session_id: i64, detail: &SessionDetail) -> CoachRepor
             continue;
         };
 
-        for sector_num in 1..=3 {
+        for sector_num in 1..=max_sector_num(detail) {
             let best_sector = best_lap
                 .sectors
                 .iter()
@@ -339,6 +348,7 @@ mod tests {
                 lap_count: laps.len() as i32,
                 best_lap_ms: None,
                 imported_at: String::new(),
+                sector_boundaries: vec![0.0, 0.34, 0.72],
             },
             laps,
         }

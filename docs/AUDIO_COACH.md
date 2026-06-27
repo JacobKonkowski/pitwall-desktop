@@ -50,17 +50,18 @@ At most **one alert per poll** (250 ms). Highest eligible priority wins; lower p
 | Priority | Category | Examples |
 |----------|----------|----------|
 | 1 | Critical | Red, checkered, black |
-| 2 | Safety | Yellow (incl. waving), green, blue, incidents |
-| 3 | Pack | Car left/right, three-wide, two-wide (4 s cooldown) |
-| 4 | Race | Fuel-to-finish, low fuel, pit-this-lap |
-| 5 | Pace | Sector/lap summaries, gap summaries |
-| 6 | Strategy | Race clock, pits open, position changes |
+| 2 | Safety | Flags, incidents, spotter traffic + clear |
+| 3 | Race | Fuel-to-finish, low fuel, pit-this-lap |
+| 4 | Pace | Sector/lap summaries, gap summaries |
+| 5 | Strategy | Race clock, pits open, position changes |
 
-**Pit / off-track suppression:** Pack, race, pace, gap, and strategy alerts are muted on pit road or off track. Flags and incidents still announce.
+Spotter alerts use **Safety** priority (same tier as flags/incidents). Traffic speaks immediately on side change; repeats every 3 s while cars stay alongside. Clear speaks immediately when traffic drops.
 
-**Chatter level** (`audioCoachChatterLevel`): `minimal` trims pace/strategy; `verbose` allows more gap and pack-clear callouts.
+**Pit / off-track suppression:** Race, pace, gap, and strategy alerts are muted on pit road or off track. Flags and incidents still announce. Spotter traffic and clear are also muted on pit road.
 
-Per-category toggles in settings: pack, flags, incidents, fuel/race, gaps, pace, strategy, race clock, pits open, pack clear.
+**Chatter level** (`audioCoachChatterLevel`): `minimal` trims pace/strategy; `verbose` allows more gap callouts.
+
+Per-category toggles in settings: pack (includes clear), flags, incidents, fuel/race, gaps, pace, strategy, race clock, pits open.
 
 ---
 

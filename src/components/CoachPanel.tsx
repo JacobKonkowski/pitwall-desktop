@@ -6,6 +6,7 @@ interface Props {
   sessionId: number;
   highlightedLaps: number[];
   onHighlightLaps: (lapNumbers: number[]) => void;
+  onCompareLaps?: (lapNumbers: number[]) => void;
 }
 
 function severityClass(severity: string): string {
@@ -34,7 +35,12 @@ function kindMeta(kind: string): { icon: string; label: string } {
   return KIND_META[kind] ?? { icon: "💡", label: "Tip" };
 }
 
-export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Props) {
+export function CoachPanel({
+  sessionId,
+  highlightedLaps,
+  onHighlightLaps,
+  onCompareLaps,
+}: Props) {
   const [report, setReport] = useState<CoachReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -119,7 +125,10 @@ export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Prop
       {summary && (
         <div className="coach-summary">
           <h3>AI summary {summaryModel ? `(${summaryModel})` : ""}</h3>
-          <pre>{summary}</pre>
+          <div
+            className="coach-summary-md"
+            dangerouslySetInnerHTML={{ __html: formatMarkdown(summary) }}
+          />
         </div>
       )}
 
@@ -147,7 +156,28 @@ export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Prop
                 </strong>
                 <p>{insight.detail}</p>
                 {insight.lapNumbers.length > 0 && (
-                  <span className="muted small">Laps: {insight.lapNumbers.join(", ")}</span>
+                  <span className="coach-card-actions">
+                    <span className="muted small">Laps: {insight.lapNumbers.join(", ")}</span>
+                    {onCompareLaps && (
+                      <span
+                        className="coach-compare-link"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCompareLaps(insight.lapNumbers);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.stopPropagation();
+                            onCompareLaps(insight.lapNumbers);
+                          }
+                        }}
+                      >
+                        Compare laps
+                      </span>
+                    )}
+                  </span>
                 )}
               </button>
             );
@@ -160,4 +190,20 @@ export function CoachPanel({ sessionId, highlightedLaps, onHighlightLaps }: Prop
 
 function formatSec(ms: number): string {
   return `${(ms / 1000).toFixed(3)}s`;
+}
+
+function formatMarkdown(md: string): string {
+  return md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/^### (.+)$/gm, "<h4>$1</h4>")
+    .replace(/^## (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^# (.+)$/gm, "<h2>$1</h2>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`)
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/^(.+)$/gm, (line) =>
+      line.startsWith("<h") || line.startsWith("<ul") || line.startsWith("<li") ? line : `<p>${line}</p>`,
+    );
 }
