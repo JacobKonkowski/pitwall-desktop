@@ -8,6 +8,29 @@ const PIT_SAMPLE_FRACTION: f64 = 0.05;
 const PIT_LANE_RATIO: f64 = 0.85;
 const PIT_MEANINGFUL_RATIO: f64 = 0.15;
 
+/// Classify a lap from pit ratio, completion, and start/end pit signals.
+/// Shared by IBT frame classification and live lap accumulation.
+pub fn classify_from_signals(
+    pit_ratio: f64,
+    completed: bool,
+    start_on_pit: bool,
+    end_on_pit: bool,
+) -> LapKind {
+    if pit_ratio > PIT_LANE_RATIO || (start_on_pit && end_on_pit && pit_ratio > PIT_MEANINGFUL_RATIO) {
+        return LapKind::PitLane;
+    }
+    if start_on_pit && !end_on_pit {
+        return LapKind::PitOut;
+    }
+    if !start_on_pit && end_on_pit {
+        return LapKind::PitIn;
+    }
+    if !completed {
+        return LapKind::Partial;
+    }
+    LapKind::Flying
+}
+
 /// Classify a lap from per-frame `OnPitRoad` and distance coverage. Independent of
 /// validity — a pit-out lap may be invalid while still labeled `PitOut`.
 pub fn classify_lap_kind(frames: &[RawFrame]) -> LapKind {
@@ -20,20 +43,9 @@ pub fn classify_lap_kind(frames: &[RawFrame]) -> LapKind {
     let start_pit = sample_pit_majority(frames, true);
     let end_pit = sample_pit_majority(frames, false);
     let (min_pct, max_pct) = lap_dist_range(frames);
+    let completed = lap_completed(min_pct, max_pct);
 
-    if pit_ratio > PIT_LANE_RATIO || (start_pit && end_pit && pit_ratio > PIT_MEANINGFUL_RATIO) {
-        return LapKind::PitLane;
-    }
-    if start_pit && !end_pit {
-        return LapKind::PitOut;
-    }
-    if !start_pit && end_pit {
-        return LapKind::PitIn;
-    }
-    if !lap_completed(min_pct, max_pct) {
-        return LapKind::Partial;
-    }
-    LapKind::Flying
+    classify_from_signals(pit_ratio, completed, start_pit, end_pit)
 }
 
 fn sample_pit_majority(frames: &[RawFrame], from_start: bool) -> bool {

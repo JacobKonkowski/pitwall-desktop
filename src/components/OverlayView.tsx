@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getLiveSnapshot, getSettings, onLiveTelemetry, saveSettings } from "../lib/api";
+import { getLiveSnapshot, getSettings, onLiveTelemetry, onSettingsChanged, saveSettings } from "../lib/api";
 import type { AppSettings, LiveSnapshot, WidgetPlacement } from "../lib/types";
 import { WIDGET_KINDS } from "../lib/types";
 import { Widget } from "../widgets";
@@ -19,18 +19,17 @@ export function OverlayView() {
       if (s.track) setSnap(s);
     });
     getSettings().then(setSettings);
-    let unlisten: (() => void) | undefined;
+    let unlistenTelemetry: (() => void) | undefined;
+    let unlistenSettings: (() => void) | undefined;
     onLiveTelemetry((payload) => setSnap(payload)).then((fn) => {
-      unlisten = fn;
+      unlistenTelemetry = fn;
     });
-    // Pick up enable/disable and field-pace changes made in the main window.
-    const poll = setInterval(() => {
-      if (draggingRef.current) return;
-      getSettings().then(setSettings).catch(() => {});
-    }, 2000);
+    onSettingsChanged((cfg) => setSettings(cfg)).then((fn) => {
+      unlistenSettings = fn;
+    });
     return () => {
-      unlisten?.();
-      clearInterval(poll);
+      unlistenTelemetry?.();
+      unlistenSettings?.();
     };
   }, []);
 

@@ -8,7 +8,7 @@ React 19 + TypeScript + Vite. Two HTML entry points share widgets and types with
 
 | HTML | TS entry | Window |
 |------|----------|--------|
-| `index.html` | `main.tsx` | Main — Analyze \| Live tabs |
+| `index.html` | `main.tsx` | Main — Analyze \| Live \| Settings tabs |
 | `overlay.html` | `overlay.tsx` | `live-overlay` — desktop pop-out |
 
 Built as a Vite multi-page app (`vite.config.ts`, dev port **1420**).
@@ -20,9 +20,12 @@ Built as a Vite multi-page app (`vite.config.ts`, dev port **1420**).
 [`App.tsx`](../src/App.tsx) — tab shell:
 
 - **Analyze** — `SessionBrowser`, `LapTable`, compare chart, fuel/tire, coach, standings
-- **Live** — `ConfigBanner`, `LivePanel`, `SessionLeaderboard`
+- **Live** — unified dashboard (`LivePanel` with metrics, traffic, radar, relative, leaderboard)
+- **Settings** — [`SettingsPage`](../src/components/SettingsPage.tsx) with section nav (AI, Overlay & VR, Audio, Advanced)
 
-[`LivePanel.tsx`](../src/components/LivePanel.tsx) — live controls, settings, overlay/VR/audio toggles.
+[`LivePanel.tsx`](../src/components/LivePanel.tsx) — live controls and dashboard; configuration lives on the Settings tab.
+
+[`useSettings`](../src/lib/useSettings.ts) — shared settings load/patch with debounced save. Overlay listens for `settings-changed` events.
 
 ---
 

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context;
 
@@ -23,9 +23,5 @@ impl ClipManifest {
             .get(key)
             .map(|rel| self.base_dir.join(rel))
             .filter(|p| p.is_file())
-    }
-
-    pub fn base_dir(&self) -> &Path {
-        &self.base_dir
     }
 }

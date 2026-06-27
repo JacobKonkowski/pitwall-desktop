@@ -161,9 +161,19 @@ pub struct AppSettings {
     pub audio_strategy_enabled: bool,
     pub audio_race_clock_enabled: bool,
     pub audio_pits_open_enabled: bool,
-    pub audio_pack_clear_enabled: bool,
     #[serde(default)]
     pub audio_coach_chatter_level: ChatterLevel,
+    /// WinRT voice display name; empty = system default.
+    #[serde(default)]
+    pub audio_coach_voice: String,
+    #[serde(default = "default_true")]
+    pub audio_session_intro_enabled: bool,
+    #[serde(default = "default_true")]
+    pub audio_position_callouts_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -196,8 +206,10 @@ impl Default for AppSettings {
             audio_strategy_enabled: true,
             audio_race_clock_enabled: true,
             audio_pits_open_enabled: true,
-            audio_pack_clear_enabled: false,
             audio_coach_chatter_level: ChatterLevel::Normal,
+            audio_coach_voice: String::new(),
+            audio_session_intro_enabled: true,
+            audio_position_callouts_enabled: true,
         }
     }
 }

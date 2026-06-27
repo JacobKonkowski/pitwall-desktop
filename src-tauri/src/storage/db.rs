@@ -130,6 +130,7 @@ impl Database {
         track: &str,
         car: &str,
         session_date: &str,
+        sector_boundaries: &[f64],
         laps: &[StoredLap],
     ) -> Result<i64> {
         let imported_at = chrono::Utc::now().to_rfc3339();
@@ -139,12 +140,24 @@ impl Database {
             .filter_map(|l| l.lap_time_ms)
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let lap_count = laps.len() as i32;
+        let sector_boundaries_json =
+            serde_json::to_string(sector_boundaries).unwrap_or_else(|_| "[]".into());
 
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO sessions (ibt_path, file_hash, track, car, session_date, lap_count, best_lap_ms, imported_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![ibt_path, file_hash, track, car, session_date, lap_count, best_lap_ms, imported_at],
+            "INSERT INTO sessions (ibt_path, file_hash, track, car, session_date, lap_count, best_lap_ms, imported_at, sector_boundaries_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                ibt_path,
+                file_hash,
+                track,
+                car,
+                session_date,
+                lap_count,
+                best_lap_ms,
+                imported_at,
+                sector_boundaries_json
+            ],
         )?;
         let session_id = tx.last_insert_rowid();
 
@@ -217,6 +230,26 @@ impl Database {
              DELETE FROM session_standings;",
         )?;
         Ok(count as usize)
+    }
+
+    /// Remove one session and all related lap/trace/standings data.
+    pub fn delete_session(&self, session_id: i64) -> Result<bool> {
+        let exists: bool = self.conn.query_row(
+            "SELECT 1 FROM sessions WHERE id = ?1",
+            params![session_id],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        if !exists {
+            return Ok(false);
+        }
+        self.conn.execute_batch(&format!(
+            "DELETE FROM lap_traces WHERE lap_id IN (SELECT id FROM laps WHERE session_id = {session_id});
+             DELETE FROM sectors WHERE lap_id IN (SELECT id FROM laps WHERE session_id = {session_id});
+             DELETE FROM laps WHERE session_id = {session_id};
+             DELETE FROM session_standings WHERE session_id = {session_id};
+             DELETE FROM sessions WHERE id = {session_id};"
+        ))?;
+        Ok(true)
     }
 
     /// Persist a post-session standings snapshot. Returns the new row id.
@@ -312,7 +345,7 @@ impl Database {
 
     pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, ibt_path, track, car, session_date, lap_count, best_lap_ms, imported_at
+            "SELECT id, ibt_path, track, car, session_date, lap_count, best_lap_ms, imported_at, sector_boundaries_json
              FROM sessions ORDER BY imported_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -325,6 +358,7 @@ impl Database {
                 lap_count: row.get(5)?,
                 best_lap_ms: row.get(6)?,
                 imported_at: row.get(7)?,
+                sector_boundaries: parse_sector_boundaries_json(row.get(8)?),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -341,7 +375,7 @@ impl Database {
 
     fn get_session_summary(&self, session_id: i64) -> Result<Option<SessionSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, ibt_path, track, car, session_date, lap_count, best_lap_ms, imported_at
+            "SELECT id, ibt_path, track, car, session_date, lap_count, best_lap_ms, imported_at, sector_boundaries_json
              FROM sessions WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![session_id])?;
@@ -355,6 +389,7 @@ impl Database {
                 lap_count: row.get(5)?,
                 best_lap_ms: row.get(6)?,
                 imported_at: row.get(7)?,
+                sector_boundaries: parse_sector_boundaries_json(row.get(8)?),
             }))
         } else {
             Ok(None)
@@ -531,6 +566,10 @@ pub fn db_path() -> PathBuf {
         .join("pitwall.db")
 }
 
+fn parse_sector_boundaries_json(raw: String) -> Vec<f64> {
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
 fn migrate_schema(conn: &Connection) -> Result<()> {
     if !Database::table_has_column(conn, "laps", "session_num")? {
         conn.execute_batch(
@@ -574,6 +613,12 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
     if !Database::table_has_column(conn, "laps", "lap_kind")? {
         conn.execute_batch(
             "ALTER TABLE laps ADD COLUMN lap_kind TEXT NOT NULL DEFAULT 'flying';",
+        )?;
+    }
+
+    if !Database::table_has_column(conn, "sessions", "sector_boundaries_json")? {
+        conn.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN sector_boundaries_json TEXT NOT NULL DEFAULT '[]';",
         )?;
     }
 

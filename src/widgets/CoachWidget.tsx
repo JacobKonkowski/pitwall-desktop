@@ -56,9 +56,12 @@ export function CoachWidget({ snap, fieldPaceMode }: Props) {
       </div>
       {pack && <div className={`pw-coach-pack ${snap.packState === "clear" ? "fast" : "warn"}`}>{pack}</div>}
       <div className="pw-coach-sectors">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="pw-sector">
-            <div className="pw-sector-fill" style={{ width: `${sectorProgress(snap, n)}%` }} />
+        {snap.sectors.map((sector) => (
+          <div key={sector.sectorNum} className="pw-sector">
+            <div
+              className="pw-sector-fill"
+              style={{ width: `${sectorProgress(snap, sector.sectorNum)}%` }}
+            />
           </div>
         ))}
       </div>

@@ -19,12 +19,14 @@ use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::analysis::lap_validity::include_in_stats_live;
 use crate::analysis::types::SectorBoundary;
-use crate::analysis::sector_splitter::normalize_sector_boundaries;
+use crate::analysis::sector_splitter::{extract_sector_boundaries, normalize_sector_boundaries, region_starts};
 use crate::commands::AppState;
 use crate::ingest::frame::AnalysisFrame;
 
 use self::car_idx_frame::CarIdxFrame;
+use self::competitors::lap_seconds_to_ms;
 use self::tracker::LiveTracker;
 
 /// How far back we look for IBT files to auto-import when a live session ends.
@@ -215,6 +217,7 @@ impl LiveService {
 
         let mut tracker = LiveTracker::new();
         let mut sector_bounds: Vec<SectorBoundary> = Vec::new();
+        let mut prev_sector_bounds: Vec<SectorBoundary> = Vec::new();
         let mut got_frame = false;
         let mut ever_got_frame = false;
         let mut latest_car_idx: Option<CarIdxFrame> = None;
@@ -228,6 +231,7 @@ impl LiveService {
         // so track/car/roster are populated on the first frame.
         if let Some(session) = connection.current_session() {
             sector_bounds = extract_sector_boundaries(&session);
+            log_sector_bounds_if_changed(&session, &sector_bounds, &mut prev_sector_bounds, "loaded");
             tracker.set_session_meta(&session);
         }
 
@@ -243,6 +247,12 @@ impl LiveService {
                 session = session_stream.next() => {
                     if let Some(session) = session {
                         sector_bounds = extract_sector_boundaries(&session);
+                        log_sector_bounds_if_changed(
+                            &session,
+                            &sector_bounds,
+                            &mut prev_sector_bounds,
+                            "updated",
+                        );
                         let prev_track = tracker.track().to_string();
                         tracker.set_session_meta(&session);
                         // New track means a new session: drop carried-over deltas/bests.
@@ -274,11 +284,8 @@ impl LiveService {
                                 }
                             }
                             self.set_status(LiveConnectionState::Connected, "Receiving telemetry");
-                            let bounds = normalize_sector_boundaries(&sector_bounds);
-                            if let Some(car_idx) = &latest_car_idx {
-                                tracker.note_iracing_lap_ok(car_idx.completed_lap_ok());
-                            }
-                            let mut snap = tracker.snapshot_from_frame(&f, &bounds);
+                            let bounds = &sector_bounds;
+                            let mut snap = tracker.snapshot_from_frame(&f, bounds);
                             if let Some(car_idx) = &latest_car_idx {
                                 merge_car_idx(&mut snap, &tracker, car_idx);
                             }
@@ -319,6 +326,28 @@ impl LiveService {
     }
 }
 
+fn log_sector_bounds_if_changed(
+    session: &SessionInfo,
+    bounds: &[SectorBoundary],
+    prev: &mut Vec<SectorBoundary>,
+    event: &str,
+) {
+    if bounds == *prev {
+        return;
+    }
+    if let Some(raw) = session.split_time_info.as_ref().and_then(|s| s.sectors.as_ref()) {
+        info!(
+            raw_sectors = ?raw.iter().map(|s| (s.sector_num, s.sector_start_pct)).collect::<Vec<_>>(),
+            region_starts = ?region_starts(bounds),
+            splits = ?normalize_sector_boundaries(bounds),
+            "Sector boundaries {event} from session YAML"
+        );
+    } else {
+        info!("Sector boundaries suppressed: no SplitTimeInfo.Sectors in session YAML");
+    }
+    *prev = bounds.to_vec();
+}
+
 /// Merge multi-car and session-wide telemetry from the CarIdx stream into the
 /// snapshot built from the player's frame.
 fn merge_car_idx(snap: &mut LiveSnapshot, tracker: &LiveTracker, frame: &CarIdxFrame) {
@@ -351,6 +380,26 @@ fn merge_car_idx(snap: &mut LiveSnapshot, tracker: &LiveTracker, frame: &CarIdxF
     snap.session_time_remain_s = (frame.session_time_remain >= 0.0).then_some(frame.session_time_remain);
     snap.pits_open = frame.pits_open;
     snap.on_track = frame.on_track;
+
+    if let Some(ms) = lap_seconds_to_ms(Some(frame.current_lap_time)) {
+        snap.lap_time_ms = ms;
+    }
+    snap.last_lap_ms = lap_seconds_to_ms(Some(frame.player_last_lap_time));
+    snap.best_lap_ms = lap_seconds_to_ms(Some(frame.player_best_lap_time));
+    if frame.delta_best_ok {
+        snap.delta_to_best_ms = Some(frame.delta_best as f64 * 1000.0);
+    }
+    if frame.delta_last_ok {
+        snap.delta_to_last_ms = Some(frame.delta_last as f64 * 1000.0);
+    }
+
+    if let Some(kind) = tracker.last_finished_lap_kind() {
+        snap.last_lap_valid = include_in_stats_live(
+            kind,
+            tracker.last_finished_completed(),
+            frame.completed_lap_ok(),
+        );
+    }
 }
 
 /// After a live session ends, scan the telemetry folder for recently written IBT
@@ -386,22 +435,4 @@ fn spawn_post_session_import(app: AppHandle, state: Arc<AppState>) {
             }
         }
     });
-}
-
-fn extract_sector_boundaries(session: &SessionInfo) -> Vec<SectorBoundary> {
-    let Some(split) = &session.split_time_info else {
-        return Vec::new();
-    };
-    let Some(sectors) = &split.sectors else {
-        return Vec::new();
-    };
-    sectors
-        .iter()
-        .filter_map(|s| {
-            Some(SectorBoundary {
-                sector_num: s.sector_num?,
-                start_pct: s.sector_start_pct?,
-            })
-        })
-        .collect()
 }

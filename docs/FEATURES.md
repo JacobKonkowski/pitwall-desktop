@@ -20,13 +20,21 @@ What PitWall does on each tab and overlay, in plain language.
 ## Live tab (in the session)
 
 1. **Start live monitor** — Connects to iRacing shared memory (~10 Hz UI).
-2. **Metrics** — Lap time, deltas, sectors, fuel, temps, flags.
-3. **Leaderboard** — Overall or class view; gaps vs your pace.
-4. **Desktop overlay** — Pop-out transparent window with draggable widgets (coach, standings, relative, radar).
-5. **In-headset HUD** — Native OpenXR layer (default) or OpenKneeboard web fallback.
-6. **Audio coach** — Spoken race engineer (WAV + Windows speech). Toggle categories and chatter level in Settings.
+2. **Unified dashboard** — Lap time, deltas, race clock, gaps, pack state, flags, sectors, tires, radar, relative board, and full leaderboard on one screen.
+3. **Desktop overlay** — Pop-out transparent window with draggable widgets (coach, standings, relative, radar).
+4. **In-headset HUD** — Native OpenXR layer (default) or OpenKneeboard web fallback (URL includes layout/pace from settings).
+5. **Audio coach** — Spoken race engineer (WAV + Windows speech).
 
-Settings on the Live tab control Ollama, overlay layout, VR mode, and all audio toggles.
+## Settings tab
+
+Global configuration with sections:
+
+- **AI** — Ollama URL/model for post-session summaries
+- **Overlay & VR** — Widget layout, VR mode, recenter hotkey, field pace
+- **Audio coach** — Voice, category toggles, chatter level, rate/volume
+- **Advanced** — Export/import settings JSON
+
+Session browser on Analyze also supports search, sort, per-session delete, and folder scan timing summary.
 
 ---
 

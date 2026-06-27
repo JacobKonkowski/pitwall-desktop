@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 
+use super::lap_kind::classify_lap_kind;
+use super::lap_validity::{
+    include_in_stats_ibt, metrics_from_frames, telemetry_passes_heuristics,
+};
 use super::types::{LapFrames, RawFrame};
 
 const DOWNSAMPLE_EVERY: usize = 6;
@@ -81,35 +85,11 @@ pub const MIN_LAP_MAX_PCT: f32 = 0.95;
 const MIN_LAP_MAX_PCT_FALLBACK: f32 = 0.87;
 const MIN_LAP_SPAN_FALLBACK: f32 = 0.85;
 
-/// Shared validity check for IBT import and live telemetry (same thresholds).
-pub fn is_valid_lap_metrics(
-    frame_count: usize,
-    pit_frame_count: usize,
-    lap_time_ms: Option<f64>,
-    min_dist_pct: f32,
-    max_dist_pct: f32,
-) -> bool {
-    if frame_count < 30 {
-        return false;
-    }
-    let pit_ratio = pit_frame_count as f64 / frame_count as f64;
-    if pit_ratio > 0.15 {
-        return false;
-    }
-    match lap_time_ms {
-        Some(ms) if ms >= 10_000.0 && ms <= 600_000.0 => {}
-        _ => return false,
-    }
-    if !lap_completed(min_dist_pct, max_dist_pct) {
-        return false;
-    }
-    true
-}
-
+/// IBT `valid` = flying lap with telemetry heuristics (`include_in_stats_ibt`).
 pub fn is_valid_lap(frames: &[RawFrame], lap_time_ms: Option<f64>) -> bool {
-    let pit_frames = frames.iter().filter(|f| f.on_pit_road).count();
-    let (min_pct, max_pct) = lap_dist_range(frames);
-    is_valid_lap_metrics(frames.len(), pit_frames, lap_time_ms, min_pct, max_pct)
+    let kind = classify_lap_kind(frames);
+    let metrics = metrics_from_frames(frames, lap_time_ms);
+    include_in_stats_ibt(kind, telemetry_passes_heuristics(&metrics))
 }
 
 /// Whether the car reached the start/finish line on this lap.

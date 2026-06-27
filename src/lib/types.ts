@@ -11,6 +11,7 @@ export interface SessionSummary {
   lapCount: number;
   bestLapMs: number | null;
   importedAt: string;
+  sectorBoundaries?: number[];
 }
 
 export interface SectorTime {
@@ -90,6 +91,10 @@ export interface ImportStatus {
   currentFile: string | null;
   progressPct: number;
   message: string;
+  batchElapsedMs?: number | null;
+  batchFileCount?: number | null;
+  batchImportedCount?: number | null;
+  batchSkippedCount?: number | null;
 }
 
 export interface IracingConfigCheck {
@@ -159,6 +164,7 @@ export interface LiveSnapshot {
   speed: number;
   lapDistPct: number;
   currentSector: number;
+  sectorBoundaries: number[];
   sectors: LiveSectorProgress[];
   lfTemp: number;
   rfTemp: number;
@@ -320,9 +326,20 @@ export interface AppSettings {
   audioStrategyEnabled: boolean;
   audioRaceClockEnabled: boolean;
   audioPitsOpenEnabled: boolean;
-  audioPackClearEnabled: boolean;
   audioCoachChatterLevel: "minimal" | "normal" | "verbose";
+  audioCoachVoice: string;
+  audioSessionIntroEnabled: boolean;
+  audioPositionCalloutsEnabled: boolean;
 }
+
+export interface TtsVoiceInfo {
+  displayName: string;
+  language: string;
+  gender: string;
+  neural: boolean;
+}
+
+export type SettingsSectionId = "ai" | "overlay" | "audio" | "advanced";
 
 export interface AudioCoachStatus {
   active: boolean;

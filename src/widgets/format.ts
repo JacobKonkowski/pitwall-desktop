@@ -48,12 +48,17 @@ export function hasLiveData(snap: LiveSnapshot | null): snap is LiveSnapshot {
   return !!snap && (!!snap.track || snap.lap > 0 || snap.fuelLevel > 0);
 }
 
-/** Progress 0..100 of the given sector, mirroring the VR HUD logic. */
+export const MAX_VR_SECTORS = 8;
+
+/** Progress 0..100 of the given sector using snapshot boundaries. */
 export function sectorProgress(snap: LiveSnapshot, sectorNum: number): number {
   const sector = snap.sectors.find((s) => s.sectorNum === sectorNum);
   if (sector?.completed) return 100;
   if (snap.currentSector !== sectorNum) return 0;
-  const bounds = [0, 0.33, 0.66, 1];
+  const bounds =
+    snap.sectorBoundaries.length >= 2
+      ? snap.sectorBoundaries
+      : [0, 0.33, 0.66, 1];
   const start = bounds[sectorNum - 1] ?? 0;
   const end = bounds[sectorNum] ?? 1;
   const span = end - start;

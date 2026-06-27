@@ -7,6 +7,7 @@ pub mod coach;
 pub mod commands;
 pub mod ingest;
 pub mod live;
+pub mod hotkey;
 pub mod overlay;
 pub mod settings;
 pub mod storage;
@@ -14,7 +15,7 @@ pub mod vr;
 
 use std::sync::Arc;
 
-use commands::AppState;
+use crate::commands::AppState;
 use ingest::start_watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,6 +34,7 @@ pub fn run() {
         .manage(state.clone())
         .setup(move |app| {
             start_watcher(app.handle().clone(), state.clone());
+            crate::hotkey::sync_hotkey(app.handle(), &state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -47,6 +49,7 @@ pub fn run() {
             commands::get_import_status,
             commands::pick_ibt_file,
             commands::clear_database_cmd,
+            commands::delete_session_cmd,
             commands::start_live_monitor,
             commands::stop_live_monitor,
             commands::get_live_status,
@@ -56,6 +59,8 @@ pub fn run() {
             commands::generate_coach_summary,
             commands::get_settings,
             commands::save_settings_cmd,
+            commands::patch_settings_cmd,
+            commands::list_tts_voices_cmd,
             commands::open_desktop_overlay_cmd,
             commands::close_desktop_overlay_cmd,
             commands::is_desktop_overlay_open_cmd,

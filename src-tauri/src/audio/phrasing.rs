@@ -19,16 +19,14 @@ pub fn format_duration_long(ms: f64) -> String {
     format_duration_short(ms)
 }
 
-pub fn format_delta_phrase(delta_ms: f64) -> String {
+/// Tenths/seconds faster or slower — for use after `pace_off_pb_intro` clip.
+pub fn format_delta_tts(delta_ms: f64) -> String {
     let abs = delta_ms.abs();
-    if abs < 50.0 {
-        return " Matching your best.".into();
-    }
     let dir = if delta_ms > 0.0 { "slower" } else { "faster" };
     if abs < 1000.0 {
-        format!(" {:.0} tenths {dir}.", abs / 100.0)
+        format!("{:.0} tenths {dir}.", abs / 100.0)
     } else {
-        format!(" {:.1} seconds {dir}.", abs / 1000.0)
+        format!("{:.1} seconds {dir}.", abs / 1000.0)
     }
 }
 
@@ -58,8 +56,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn delta_phrase_tenths() {
-        assert!(format_delta_phrase(350.0).contains("tenths slower"));
-        assert!(format_delta_phrase(-280.0).contains("faster"));
+    fn delta_tts_tenths() {
+        assert!(format_delta_tts(350.0).contains("tenths slower"));
+        assert!(format_delta_tts(-280.0).contains("faster"));
     }
 }

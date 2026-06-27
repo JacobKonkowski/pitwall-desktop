@@ -110,6 +110,40 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   return invoke("save_settings_cmd", { settings });
 }
 
+export async function deleteSession(sessionId: number): Promise<boolean> {
+  return invoke("delete_session_cmd", { sessionId });
+}
+
+export async function patchSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+  return invoke("patch_settings_cmd", { patch });
+}
+
+export async function listTtsVoices(): Promise<import("./types").TtsVoiceInfo[]> {
+  return invoke("list_tts_voices_cmd");
+}
+
+export function buildOpenKneeboardUrl(settings: AppSettings, baseUrl: string): string {
+  const layoutMap: Record<string, string> = {
+    coach: "ironman",
+    standings: "standings",
+    relative: "relative",
+    radar: "radar",
+  };
+  const enabled = settings.overlayLayout.widgets
+    .map((w, i) => ({ w, kind: ["coach", "standings", "relative", "radar"][i] }))
+    .filter(({ w }) => w.enabled);
+  const layout = enabled.length > 0 ? layoutMap[enabled[0].kind] ?? "ironman" : "ironman";
+  const pace = settings.overlayLayout.fieldPaceMode || "best";
+  const url = new URL(baseUrl.endsWith("/vr") ? baseUrl : `${baseUrl.replace(/\/$/, "")}/vr`);
+  url.searchParams.set("layout", layout);
+  url.searchParams.set("pace", pace);
+  return url.toString();
+}
+
+export function onSettingsChanged(callback: (settings: AppSettings) => void) {
+  return listen<AppSettings>("settings-changed", (event) => callback(event.payload));
+}
+
 export async function openDesktopOverlay(): Promise<void> {
   return invoke("open_desktop_overlay_cmd");
 }

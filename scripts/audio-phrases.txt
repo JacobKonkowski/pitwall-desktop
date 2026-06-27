@@ -19,6 +19,8 @@ pack_three_wide_middle=Three wide, middle.
 pack_two_left=Two cars on your left.
 pack_two_right=Two cars on your right.
 pack_clear=Clear all around.
+pack_clear_left=Clear on your left.
+pack_clear_right=Clear on your right.
 
 gap_ahead=Gap ahead.
 gap_behind=Gap behind.

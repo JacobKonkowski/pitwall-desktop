@@ -258,14 +258,16 @@ void HudRenderer::DrawCoach(const PwSnapshot& s, float w, float h) {
                  packColor);
     }
 
-    // Sector arcs.
+    // Sector arcs (dynamic count up to PITWALL_VR_MAX_SECTORS).
     ComPtr<ID2D1SolidColorBrush> base, fill;
     m_d2dContext->CreateSolidColorBrush(kGlowDim, base.GetAddressOf());
     m_d2dContext->CreateSolidColorBrush(kGlow, fill.GetAddressOf());
     if (base && fill) {
         const float top = h - 14.0f;
-        const float segW = (w - 120.0f) / 3.0f;
-        for (int i = 0; i < 3; ++i) {
+        const uint32_t sectorCount =
+            s.sector_count > 0 && s.sector_count <= PITWALL_VR_MAX_SECTORS ? s.sector_count : 3;
+        const float segW = (w - 120.0f) / static_cast<float>(sectorCount);
+        for (uint32_t i = 0; i < sectorCount; ++i) {
             const float x0 = 60.0f + segW * i + 8.0f;
             const float x1 = 60.0f + segW * (i + 1) - 8.0f;
             m_d2dContext->DrawLine({x0, top}, {x1, top}, base.Get(), 4.0f);

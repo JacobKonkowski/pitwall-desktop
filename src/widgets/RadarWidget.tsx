@@ -15,13 +15,15 @@ export function RadarWidget({ snap }: Props) {
       <div className="pw-radar-me" />
       {cars.map((c) => {
         const gap = c.gapToPlayerS ?? 0;
-        // +/-3s maps across the dish; ahead (positive) sits toward the top.
         const top = 50 - (gap / 3) * 42;
+        const lateral =
+          Math.abs(gap) <= 1.5 ? (c.lapDistPct - snap.lapDistPct) * 80 : 0;
+        const left = 50 + lateral;
         return (
           <div
             key={c.carIdx}
-            className="pw-radar-car"
-            style={{ top: `${top}%` }}
+            className={`pw-radar-car${c.onPitRoad ? " pit" : ""}`}
+            style={{ top: `${top}%`, left: `${left}%` }}
             title={`#${c.carNumber || c.carIdx} ${c.driverName}`}
           />
         );

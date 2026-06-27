@@ -120,6 +120,7 @@ fn run_audio_loop(
     let mut queue = SpeechQueue::new(3);
     let mut applied_rate = f32::NAN;
     let mut applied_volume = f32::NAN;
+    let mut applied_voice = String::new();
 
     while !cancel.is_cancelled() {
         let settings = load_settings();
@@ -128,6 +129,7 @@ fn run_audio_loop(
             &settings,
             &mut applied_rate,
             &mut applied_volume,
+            &mut applied_voice,
         );
 
         let snap = live.snapshot.lock().clone();
@@ -157,14 +159,17 @@ fn apply_voice_settings(
     settings: &AppSettings,
     applied_rate: &mut f32,
     applied_volume: &mut f32,
+    applied_voice: &mut String,
 ) {
-    if (settings.audio_coach_rate - *applied_rate).abs() > f32::EPSILON {
-        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume);
+    let voice = settings.audio_coach_voice.clone();
+    if (settings.audio_coach_rate - *applied_rate).abs() > f32::EPSILON
+        || (settings.audio_coach_volume - *applied_volume).abs() > f32::EPSILON
+        || voice != *applied_voice
+    {
+        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume, &voice);
         *applied_rate = settings.audio_coach_rate;
         *applied_volume = settings.audio_coach_volume;
-    } else if (settings.audio_coach_volume - *applied_volume).abs() > f32::EPSILON {
-        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume);
-        *applied_volume = settings.audio_coach_volume;
+        *applied_voice = voice;
     }
 }
 

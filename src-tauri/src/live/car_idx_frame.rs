@@ -11,9 +11,9 @@ pub struct CarIdxFrame {
 
     // Per-car arrays, indexed by car_idx (iRacing reports 64 slots).
     #[field_name = "CarIdxBestLapTime"]
-    pub best_lap_time: Vec<f32>,
+    pub car_idx_best_lap_time: Vec<f32>,
     #[field_name = "CarIdxLastLapTime"]
-    pub last_lap_time: Vec<f32>,
+    pub car_idx_last_lap_time: Vec<f32>,
     #[field_name = "CarIdxPosition"]
     pub position: Vec<i32>,
     #[field_name = "CarIdxClassPosition"]
@@ -25,9 +25,25 @@ pub struct CarIdxFrame {
     #[field_name = "CarIdxLapDistPct"]
     pub lap_dist_pct: Vec<f32>,
 
+    // Player lap clock (seconds; negative sentinel when unset).
+    #[field_name = "LapCurrentLapTime"]
+    pub current_lap_time: f32,
+    #[field_name = "LapLastLapTime"]
+    pub player_last_lap_time: f32,
+    #[field_name = "LapBestLapTime"]
+    pub player_best_lap_time: f32,
+    #[field_name = "SessionBestLapTime"]
+    pub session_best_lap_time: f32,
+
     // Player session deltas (valid only when the matching `_OK` flag is set).
+    #[field_name = "LapDeltaToBestLap"]
+    pub delta_best: f32,
     #[field_name = "LapDeltaToBestLap_OK"]
     pub delta_best_ok: bool,
+    #[field_name = "LapDeltaToLastLap"]
+    pub delta_last: f32,
+    #[field_name = "LapDeltaToLastLap_OK"]
+    pub delta_last_ok: bool,
     #[field_name = "LapDeltaToSessionBestLap"]
     pub delta_session_best: f32,
     #[field_name = "LapDeltaToSessionBestLap_OK"]

@@ -225,15 +225,30 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       return b != null ? '<span class="' + deltaClass(b) + '">FLD ' + fmtDelta(b) + '</span>' : "";
     }
 
+    function sectorPct(s, sectorNum) {
+      const sec = (s.sectors || []).find(x => x.sectorNum === sectorNum);
+      if (sec && sec.completed) return 100;
+      if (s.currentSector !== sectorNum) return 0;
+      const bounds = (s.sectorBoundaries && s.sectorBoundaries.length >= 2)
+        ? s.sectorBoundaries : [0, 0.33, 0.66, 1];
+      const start = bounds[sectorNum - 1] ?? 0;
+      const end = bounds[sectorNum] ?? 1;
+      const span = end - start;
+      if (span <= 0) return 0;
+      return Math.min(100, Math.max(0, ((s.lapDistPct || 0) - start) / span * 100));
+    }
+
     function renderIronman(s) {
       const packLabel = PACK[s.packState] || "";
       const packClass = s.packState === "clear" ? "fast" : "warn";
-      const sectors = [1, 2, 3].map(n => {
-        const sec = (s.sectors || []).find(x => x.sectorNum === n);
-        const done = sec && sec.completed, active = s.currentSector === n;
-        const pct = done ? 100 : active ? Math.min(100, (s.lapDistPct || 0) * 100) : 0;
+      const sectorList = (s.sectors && s.sectors.length)
+        ? s.sectors
+        : [{ sectorNum: 1 }, { sectorNum: 2 }, { sectorNum: 3 }];
+      const sectors = sectorList.map(sec => {
+        const pct = sectorPct(s, sec.sectorNum);
         return '<div class="sector"><div class="fill" style="width:' + pct + '%"></div></div>';
       }).join("");
+      const sectorCols = 'repeat(' + sectorList.length + ', 1fr)';
       return '<div class="ironman">' +
         '<div class="corner pos">' + position(s) + '</div>' +
         (s.sessionFlags ? '<div class="corner flag warn">FLAG</div>' : '') +
@@ -247,7 +262,7 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
           fieldPace(s) +
         '</div>' +
         (packLabel ? '<div class="pack ' + packClass + '">' + packLabel + '</div>' : '') +
-        '<div class="sectors">' + sectors + '</div>' +
+        '<div class="sectors" style="grid-template-columns:' + sectorCols + '">' + sectors + '</div>' +
         '<div class="footer">' + (s.fuelLevel || 0).toFixed(1) + ' L \u00b7 ' + Math.round(s.speed || 0) + '</div>' +
       '</div>';
     }
