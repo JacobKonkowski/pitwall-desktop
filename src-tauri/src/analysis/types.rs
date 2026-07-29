@@ -16,6 +16,15 @@ pub struct RawFrame {
     pub rf_temp: f32,
     pub lr_temp: f32,
     pub rr_temp: f32,
+    pub track_temp: f32,
+    pub track_wetn: i32,
+    pub rel_humid: f32,
+    pub air_temp: f32,
+    pub air_pres: f32,
+    pub air_dens: f32,
+    pub wind_dir: f32,
+    pub wind_vel: f32,
+    pub skies: f32,
 }
 
 #[derive(Debug, Clone)]

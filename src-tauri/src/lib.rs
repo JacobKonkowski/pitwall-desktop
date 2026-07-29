@@ -43,6 +43,8 @@ pub fn run() {
             commands::get_lap_traces,
             commands::get_fuel_summary,
             commands::get_tire_summary,
+            commands::get_air_density_summary,
+            commands::get_weather_summary,
             commands::import_ibt,
             commands::import_folder_cmd,
             commands::check_iracing_config_cmd,

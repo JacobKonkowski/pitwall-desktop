@@ -3,6 +3,12 @@ use std::collections::HashMap;
 use rayon::prelude::*;
 
 use super::fuel_tire::{fuel_stats, tire_averages};
+use super::fuel_tire::track_temp_average;
+use super::fuel_tire::track_wetn_average;
+use super::fuel_tire::rel_humid_average;
+use super::fuel_tire::air_averages;
+use super::fuel_tire::wind_averages;
+use super::fuel_tire::skies_averages;
 use super::lap_kind::classify_lap_kind;
 use super::lap_segmenter::{
     average_speed, compute_lap_time_ms, downsample_traces, max_lap_dist_pct, segment_laps,
@@ -52,6 +58,14 @@ fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> Analyz
     } else {
         Vec::new()
     };
+    let (fuel_start, fuel_used) = fuel_stats(&group.frames);
+    let (lf_temp, rf_temp, lr_temp, rr_temp) = tire_averages(&group.frames);
+    let track_temp = track_temp_average(&group.frames);
+    let track_wetn = track_wetn_average(&group.frames);
+    let rel_humid = rel_humid_average(&group.frames);
+    let (air_temp, air_pres, air_dens) = air_averages(&group.frames);
+    let (wind_dir, wind_vel) = wind_averages(&group.frames);
+    let skies = skies_averages(&group.frames);
     let traces = if valid {
         downsample_traces(&group.frames)
     } else {
@@ -74,6 +88,15 @@ fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> Analyz
             rf_temp,
             lr_temp,
             rr_temp,
+            track_temp,
+            track_wetn,
+            rel_humid,
+            air_temp,
+            air_pres,
+            air_dens,
+            wind_dir,
+            wind_vel,
+            skies,
             sectors,
             traces,
         },
@@ -151,6 +174,15 @@ mod tests {
                 rf_temp: None,
                 lr_temp: None,
                 rr_temp: None,
+                track_temp: None,
+                track_wetn: None,
+                rel_humid: None,
+                air_temp: None,
+                air_pres: None,
+                air_dens: None,
+                wind_dir: None,
+                wind_vel: None,
+                skies: None,
                 sectors: Vec::new(),
                 traces: Vec::new(),
             },
@@ -178,6 +210,15 @@ mod tests {
                     rf_temp: 0.0,
                     lr_temp: 0.0,
                     rr_temp: 0.0,
+                    track_temp: 0.0,
+                    track_wetn: 0,
+                    rel_humid: 0.0,
+                    air_temp: 0.0,
+                    air_pres: 0.0,
+                    air_dens: 0.0,
+                    wind_dir: 0.0,
+                    wind_vel: 0.0,
+                    skies: 0.0,
                 }
             })
             .collect()

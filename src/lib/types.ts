@@ -86,6 +86,31 @@ export interface TireSummary {
   note: string;
 }
 
+export interface AirDensityLapSummary {
+  lapNumber: number;
+  airDens: number;
+}
+
+export interface AirDensitySummary {
+  laps: AirDensityLapSummary[];
+}
+
+export interface WeatherLapSummary {
+  lapNumber: number;
+  trackTemp: number | null;
+  airTemp: number | null;
+  airPres: number | null;
+  airDens: number | null;
+  relHumid: number | null;
+  windVel: number | null;
+  windDir: number | null;
+  trackWetn: number | null;
+}
+
+export interface WeatherSummary {
+  laps: WeatherLapSummary[];
+}
+
 export interface ImportStatus {
   active: boolean;
   currentFile: string | null;

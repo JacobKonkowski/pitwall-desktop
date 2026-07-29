@@ -18,8 +18,8 @@ use crate::hotkey::sync_hotkey;
 use crate::overlay::{close_desktop_overlay, is_desktop_overlay_open, open_desktop_overlay};
 use crate::settings::{load_settings, save_settings, AppSettings};
 use crate::storage::{
-    Database, FuelSummary, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail,
-    SessionSummary, TireSummary,
+    AirDensitySummary, Database, FuelSummary, ImportStatus, IracingConfigCheck, LapTrace,
+    SessionDetail, SessionSummary, TireSummary, WeatherSummary,
 };
 use crate::vr::{NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus};
 
@@ -85,6 +85,24 @@ pub fn get_tire_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Res
         .db
         .lock()
         .get_tire_summary(session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_air_density_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<AirDensitySummary, String> {
+    state
+        .db
+        .lock()
+        .get_air_density_summary(session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_weather_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<WeatherSummary, String> {
+    state
+        .db
+        .lock()
+        .get_weather_summary(session_id)
         .map_err(|e| e.to_string())
 }
 

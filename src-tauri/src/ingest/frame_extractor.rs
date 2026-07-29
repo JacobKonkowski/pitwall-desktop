@@ -20,6 +20,15 @@ pub struct FastFrameExtractor {
     rf_temp: VariableInfo,
     lr_temp: VariableInfo,
     rr_temp: VariableInfo,
+    track_temp: VariableInfo,
+    track_wetn: VariableInfo,
+    rel_humid: VariableInfo,
+    air_temp: VariableInfo,
+    air_pres: VariableInfo,
+    air_dens: VariableInfo,
+    wind_dir: VariableInfo,
+    wind_vel: VariableInfo,
+    skies: VariableInfo,
 }
 
 impl FastFrameExtractor {
@@ -47,6 +56,15 @@ impl FastFrameExtractor {
             rf_temp: req(schema, "RFtempCL")?,
             lr_temp: req(schema, "LRtempCL")?,
             rr_temp: req(schema, "RRtempCL")?,
+            track_temp: req(schema, "TrackTemp")?,
+            track_wetn: req(schema, "TrackWetness")?,
+            rel_humid: req(schema, "RelativeHumidity")?,
+            air_temp: req(schema, "AirTemp")?,
+            air_pres: req(schema, "AirPressure")?,
+            air_dens: req(schema, "AirDensity")?,
+            wind_dir: req(schema, "WindDir")?,
+            wind_vel: req(schema, "WindVel")?,
+            skies: req(schema, "Skies")?,
         })
     }
 
@@ -72,6 +90,15 @@ impl FastFrameExtractor {
             rf_temp: read_f32(data, &self.rf_temp),
             lr_temp: read_f32(data, &self.lr_temp),
             rr_temp: read_f32(data, &self.rr_temp),
+            track_temp: read_f32(data, &self.track_temp),
+            track_wetn: read_i32(data, &self.track_wetn),
+            rel_humid: read_f32(data, &self.rel_humid),
+            air_temp: read_f32(data, &self.air_temp),
+            air_pres: read_f32(data, &self.air_pres),
+            air_dens: read_f32(data, &self.air_dens),
+            wind_dir: read_f32(data, &self.wind_dir),
+            wind_vel: read_f32(data, &self.wind_vel),
+            skies: read_f32(data, &self.skies),
         }
     }
 }
