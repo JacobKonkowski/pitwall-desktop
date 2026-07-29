@@ -15,6 +15,8 @@ interface Props {
 }
 
 const COLORS = ["#4fc3f7", "#ffb74d", "#ef5350"];
+const THROTTLE_COLORS = ["#66bb6a", "#2e7d32", "#a5d6a7"];
+const BRAKE_COLORS = ["#ef5350", "#b71c1c", "#ff8a80"];
 
 function mergeTraces(traces: LapTrace[]) {
   if (traces.length === 0) return [];
@@ -96,7 +98,7 @@ export function LapCompareChart({ traces }: Props) {
                 type="monotone"
                 dataKey={`throttle_${i}`}
                 name={`Throttle L${t.lapNumber}`}
-                stroke={COLORS[i % COLORS.length]}
+                stroke={THROTTLE_COLORS[i % THROTTLE_COLORS.length]}
                 dot={false}
                 strokeWidth={1.5}
               />
@@ -107,7 +109,7 @@ export function LapCompareChart({ traces }: Props) {
                 type="monotone"
                 dataKey={`brake_${i}`}
                 name={`Brake L${t.lapNumber}`}
-                stroke={COLORS[i % COLORS.length]}
+                stroke={BRAKE_COLORS[i % BRAKE_COLORS.length]}
                 strokeDasharray="4 4"
                 dot={false}
                 strokeWidth={1.5}
