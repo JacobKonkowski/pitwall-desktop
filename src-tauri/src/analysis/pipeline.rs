@@ -9,7 +9,7 @@ use super::lap_segmenter::{
     MIN_LAP_MAX_PCT,
 };
 use super::lap_validity::{include_in_stats_ibt, metrics_from_frames, telemetry_passes_heuristics};
-use super::sector_splitter::compute_sector_times;
+use super::sector_splitter::{compute_sector_times, sector_count};
 use super::types::{LapFrames, RawFrame, SectorBoundary};
 use crate::storage::models::LapKind;
 use crate::storage::StoredLap;
@@ -43,15 +43,16 @@ fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> Analyz
     let lap_time_ms = compute_lap_time_ms(&group.frames);
     let lap_kind = classify_lap_kind(&group.frames);
     let metrics = metrics_from_frames(&group.frames, lap_time_ms);
-    let valid = include_in_stats_ibt(lap_kind, telemetry_passes_heuristics(&metrics));
-    let max_dist_pct = max_lap_dist_pct(&group.frames);
-    let (fuel_start, fuel_used) = fuel_stats(&group.frames);
-    let (lf_temp, rf_temp, lr_temp, rr_temp) = tire_averages(&group.frames);
-    let sectors = if valid {
+    let telemetry_valid = include_in_stats_ibt(lap_kind, telemetry_passes_heuristics(&metrics));
+    let sectors = if telemetry_valid {
         compute_sector_times(&group.frames, sector_boundaries)
     } else {
         Vec::new()
     };
+    let has_all_sectors = expected_sectors == 0 || sectors.len() == expected_sectors;
+    let valid = telemetry_valid && has_all_sectors;
+    let sectors = if valid { sectors } else { Vec::new() };
+    let max_dist_pct = max_lap_dist_pct(&group.frames);
     let traces = if valid {
         downsample_traces(&group.frames)
     } else {
