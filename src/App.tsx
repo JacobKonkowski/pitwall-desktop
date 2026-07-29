@@ -38,11 +38,23 @@ import "./App.css";
 
 type AppTab = "analyze" | "live" | "settings";
 const TAB_KEY = "pitwall-tab";
+const SIDEBAR_WIDTH_KEY = "pitwall-sidebar-width";
+const SIDEBAR_MIN_WIDTH = 260;
+const SIDEBAR_MAX_WIDTH = 800;
+const SIDEBAR_DEFAULT_WIDTH = 420;
 
 function loadTab(): AppTab {
   const saved = localStorage.getItem(TAB_KEY);
   if (saved === "live" || saved === "settings" || saved === "analyze") return saved;
   return "analyze";
+}
+
+function loadSidebarWidth(): number {
+  const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  if (Number.isFinite(saved) && saved >= SIDEBAR_MIN_WIDTH && saved <= SIDEBAR_MAX_WIDTH) {
+    return saved;
+  }
+  return SIDEBAR_DEFAULT_WIDTH;
 }
 
 function App() {
@@ -67,11 +79,39 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
 
   const setAppTab = (next: AppTab) => {
     setTab(next);
     localStorage.setItem(TAB_KEY, next);
   };
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setResizingSidebar(true);
+  }, []);
+
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    document.body.classList.add("sidebar-resizing");
+    const handleMouseMove = (e: MouseEvent) => {
+      const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, e.clientX));
+      setSidebarWidth(next);
+    };
+    const handleMouseUp = () => setResizingSidebar(false);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.classList.remove("sidebar-resizing");
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizingSidebar]);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -299,7 +339,7 @@ function App() {
         </main>
       ) : (
         <main className="layout">
-          <aside className="sidebar">
+          <aside className="sidebar" style={{ width: sidebarWidth }}>
             <SessionBrowser
               sessions={sessions}
               selectedId={selectedId}
@@ -310,6 +350,13 @@ function App() {
               onDeleteSession={handleDeleteSession}
               onClearDatabase={handleClearDatabase}
               loading={loading}
+            />
+            <div
+              className={`sidebar-resize-handle${resizingSidebar ? " active" : ""}`}
+              onMouseDown={handleSidebarResizeStart}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sessions panel"
             />
           </aside>
           <section className="main-content">
