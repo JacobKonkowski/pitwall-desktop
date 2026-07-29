@@ -43,12 +43,15 @@ fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> Analyz
     let lap_time_ms = compute_lap_time_ms(&group.frames);
     let lap_kind = classify_lap_kind(&group.frames);
     let metrics = metrics_from_frames(&group.frames, lap_time_ms);
+    let (fuel_start, fuel_used) = fuel_stats(&group.frames);
     let telemetry_valid = include_in_stats_ibt(lap_kind, telemetry_passes_heuristics(&metrics));
     let sectors = if telemetry_valid {
         compute_sector_times(&group.frames, sector_boundaries)
     } else {
         Vec::new()
     };
+    let (lf_temp, rf_temp, lr_temp, rr_temp) = tire_averages(&group.frames);
+    let expected_sectors = sector_count(sector_boundaries);
     let has_all_sectors = expected_sectors == 0 || sectors.len() == expected_sectors;
     let valid = telemetry_valid && has_all_sectors;
     let sectors = if valid { sectors } else { Vec::new() };
