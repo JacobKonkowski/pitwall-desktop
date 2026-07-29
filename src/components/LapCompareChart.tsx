@@ -28,7 +28,7 @@ function mergeTraces(traces: LapTrace[]) {
       const pt = trace.points[i];
       if (!pt) return;
       row.distPct = Math.round(pt.distPct * 1000) / 10;
-      row[`speed_${idx}`] = pt.speed;
+      row[`speed_${idx}`] = pt.speed * 3.6;
       row[`throttle_${idx}`] = pt.throttle * 100;
       row[`brake_${idx}`] = pt.brake * 100;
     });
@@ -58,13 +58,13 @@ export function LapCompareChart({ traces }: Props) {
       </div>
 
       <div className="chart-block">
-        <h3>Speed (m/s)</h3>
+        <h3>Speed (km/h)</h3>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
             <XAxis dataKey="distPct" unit="%" stroke="#888" />
             <YAxis stroke="#888" />
-            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} />
+            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v: number) => v.toFixed(1)} />
             <Legend />
             {traces.map((t, i) => (
               <Line
@@ -87,8 +87,8 @@ export function LapCompareChart({ traces }: Props) {
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
             <XAxis dataKey="distPct" unit="%" stroke="#888" />
-            <YAxis domain={[0, 100]} stroke="#888" />
-            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} />
+            <YAxis domain={[0, 100]} stroke="#888" tickFormatter={(v: number) => v.toFixed(1)} />
+            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v: number) => v.toFixed(1)} />
             <Legend />
             {traces.map((t, i) => (
               <Line
