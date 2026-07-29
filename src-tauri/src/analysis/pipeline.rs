@@ -58,6 +58,11 @@ fn analyze_lap(group: LapFrames, sector_boundaries: &[SectorBoundary]) -> Analyz
     } else {
         Vec::new()
     };
+    let expected_sectors = sector_count(sector_boundaries);
+    let has_all_sectors = expected_sectors == 0 || sectors.len() == expected_sectors;
+    let valid = telemetry_valid && has_all_sectors;
+    let sectors = if valid { sectors } else { Vec::new() };
+    let max_dist_pct = max_lap_dist_pct(&group.frames);
     let (fuel_start, fuel_used) = fuel_stats(&group.frames);
     let (lf_temp, rf_temp, lr_temp, rr_temp) = tire_averages(&group.frames);
     let track_temp = track_temp_average(&group.frames);
