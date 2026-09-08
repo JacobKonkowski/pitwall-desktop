@@ -258,6 +258,11 @@ button.btn-danger:hover:not(:disabled) {
   background: rgba(255, 193, 7, 0.08);
 }
 
+.data-table tbody tr.fastest-lap {
+  outline: 1px solid rgba(168, 85, 247, 0.7);
+  background: rgba(139, 92, 246, 0.12);
+}
+
 .data-table tbody tr.invalid-lap {
   opacity: 0.55;
 }
