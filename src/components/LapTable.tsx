@@ -79,11 +79,6 @@ export function LapTable({ laps, selectedLaps, highlightedLaps = [], onToggleLap
       }
     }
     return best;
-    const avgMs = flying.reduce((sum, l) => sum + l.lapTimeMs!, 0) / flying.length;
-    const threshold = avgMs * 1.25;
-    const eligible = flying.filter((l) => l.lapTimeMs! <= threshold);
-    if (eligible.length === 0) return null;
-    return eligible.reduce((best, l) => (l.lapTimeMs! < best.lapTimeMs! ? l : best)).id;
   }, [laps]);
 
   const colSpan = 8 + sectorCols.length;
