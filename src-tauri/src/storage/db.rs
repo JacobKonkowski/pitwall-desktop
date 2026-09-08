@@ -34,6 +34,15 @@ CREATE TABLE IF NOT EXISTS laps (
     rf_temp REAL,
     lr_temp REAL,
     rr_temp REAL,
+    track_temp REAL,
+    track_wetn REAL,
+    rel_humid REAL,
+    air_temp REAL,
+    air_pres REAL,
+    air_dens REAL,
+    wind_dir REAL,
+    wind_vel REAL,
+    skies REAL,
     UNIQUE(session_id, session_num, lap_number)
 );
 
@@ -162,8 +171,8 @@ impl Database {
         let session_id = tx.last_insert_rowid();
 
         let mut lap_stmt = tx.prepare(
-            "INSERT INTO laps (session_id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            "INSERT INTO laps (session_id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp, track_temp, track_wetn, rel_humid, air_temp, air_pres, air_dens, wind_dir, wind_vel, skies)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
         )?;
         let mut sector_stmt = tx.prepare(
             "INSERT INTO sectors (lap_id, sector_num, time_ms) VALUES (?1, ?2, ?3)",
@@ -190,6 +199,15 @@ impl Database {
                 lap.rf_temp,
                 lap.lr_temp,
                 lap.rr_temp,
+                lap.track_temp,
+                lap.track_wetn,
+                lap.rel_humid,
+                lap.air_temp,
+                lap.air_pres,
+                lap.air_dens,
+                lap.wind_dir,
+                lap.wind_vel,
+                lap.skies,
             ])?;
             let lap_id = tx.last_insert_rowid();
 
@@ -398,7 +416,7 @@ impl Database {
 
     fn get_laps_for_session(&self, session_id: i64, _best_lap_ms: Option<f64>) -> Result<Vec<LapSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp
+            "SELECT id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp, track_temp, track_wetn, rel_humid, air_temp, air_pres, air_dens, wind_dir, wind_vel, skies
              FROM laps WHERE session_id = ?1 ORDER BY session_num, lap_number",
         )?;
         let rows = stmt.query_map(params![session_id], |row| {
@@ -419,6 +437,15 @@ impl Database {
                 rf_temp: row.get(12)?,
                 lr_temp: row.get(13)?,
                 rr_temp: row.get(14)?,
+                track_temp: row.get(15)?,
+                track_wetn: row.get(16)?,
+                rel_humid: row.get(17)?,
+                air_temp: row.get(18)?,
+                air_pres: row.get(19)?,
+                air_dens: row.get(20)?,
+                wind_dir: row.get(21)?,
+                wind_vel: row.get(22)?,
+                skies: row.get(23)?,
                 sectors: Vec::new(),
                 delta_to_best_ms: None,
             })
@@ -557,6 +584,47 @@ impl Database {
             note: "Tire wear updates on some cars only after pit stops. Temps are lap averages.".into(),
         })
     }
+
+    pub fn get_air_density_summary(&self, session_id: i64) -> Result<AirDensitySummary> {
+        let detail = self
+            .get_session(session_id)?
+            .ok_or_else(|| anyhow::anyhow!("session not found"))?;
+        let laps = detail
+            .laps
+            .iter()
+            .filter(|lap| lap.valid)
+            .filter_map(|lap| {
+                Some(AirDensityLapSummary {
+                    lap_number: lap.lap_number,
+                    air_dens: lap.air_dens?,
+                })
+            })
+            .collect();
+        Ok(AirDensitySummary { laps })
+    }
+
+    pub fn get_weather_summary(&self, session_id: i64) -> Result<WeatherSummary> {
+        let detail = self
+            .get_session(session_id)?
+            .ok_or_else(|| anyhow::anyhow!("session not found"))?;
+        let laps = detail
+            .laps
+            .iter()
+            .filter(|lap| lap.valid)
+            .map(|lap| WeatherLapSummary {
+                lap_number: lap.lap_number,
+                track_temp: lap.track_temp,
+                air_temp: lap.air_temp,
+                air_pres: lap.air_pres,
+                air_dens: lap.air_dens,
+                rel_humid: lap.rel_humid,
+                wind_vel: lap.wind_vel,
+                wind_dir: lap.wind_dir,
+                track_wetn: lap.track_wetn,
+            })
+            .collect();
+        Ok(WeatherSummary { laps })
+    }
 }
 
 pub fn db_path() -> PathBuf {
@@ -591,17 +659,30 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
             rf_temp REAL,
             lr_temp REAL,
             rr_temp REAL,
+            track_temp REAL,
+            track_wetn REAL,
+            rel_humid REAL,
+            air_temp REAL,
+            air_pres REAL,
+            air_dens REAL,
+            wind_dir REAL,
+            wind_vel REAL,
+            skies REAL,
             UNIQUE(session_id, session_num, lap_number)
         );
         INSERT INTO laps_migrated (
             id, session_id, session_num, session_type, iracing_lap, lap_number,
             lap_time_ms, valid, fuel_start, fuel_used, avg_speed,
-            lf_temp, rf_temp, lr_temp, rr_temp
+            lf_temp, rf_temp, lr_temp, rr_temp,
+            track_temp, track_wetn, rel_humid,
+            air_temp, air_pres, air_dens, wind_dir, wind_vel, skies
         )
         SELECT
             id, session_id, 0, '', lap_number, lap_number,
             lap_time_ms, valid, fuel_start, fuel_used, avg_speed,
-            lf_temp, rf_temp, lr_temp, rr_temp
+            lf_temp, rf_temp, lr_temp, rr_temp,
+            track_temp, track_wetn, rel_humid,
+            air_temp, air_pres, air_dens, wind_dir, wind_vel, skies
         FROM laps;
         DROP TABLE laps;
         ALTER TABLE laps_migrated RENAME TO laps;
@@ -620,6 +701,15 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "ALTER TABLE sessions ADD COLUMN sector_boundaries_json TEXT NOT NULL DEFAULT '[]';",
         )?;
+    }
+
+    for col in &[
+        "track_temp", "track_wetn", "rel_humid", "air_temp",
+        "air_pres", "air_dens", "wind_dir", "wind_vel", "skies",
+    ] {
+        if !Database::table_has_column(conn, "laps", col)? {
+            conn.execute_batch(&format!("ALTER TABLE laps ADD COLUMN {col} REAL;"))?;
+        }
     }
 
     Ok(())

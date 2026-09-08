@@ -345,6 +345,15 @@ mod tests {
             rf_temp: None,
             lr_temp: None,
             rr_temp: None,
+            track_temp: None,
+            track_wetn: None,
+            rel_humid: None,
+            air_temp: None,
+            air_pres: None,
+            air_dens: None,
+            wind_dir: None,
+            wind_vel: None,
+            skies: None,
             sectors: sectors
                 .into_iter()
                 .map(|(sector_num, time_ms)| SectorTime { sector_num, time_ms })

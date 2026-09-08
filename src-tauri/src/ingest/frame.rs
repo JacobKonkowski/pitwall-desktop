@@ -32,6 +32,24 @@ pub struct AnalysisFrame {
     pub lr_temp: f32,
     #[field_name = "RRtempCL"]
     pub rr_temp: f32,
+    #[field_name = "TrackTemp"]
+    pub track_temp: f32,
+    #[field_name = "TrackWetness"]
+    pub track_wetn: i32,
+    #[field_name = "RelativeHumidity"]
+    pub rel_humid: f32,
+    #[field_name = "AirTemp"]
+    pub air_temp: f32,
+    #[field_name = "AirPressure"]
+    pub air_pres: f32,
+    #[field_name = "AirDensity"]
+    pub air_dens: f32,
+    #[field_name = "WindDir"]
+    pub wind_dir: f32,
+    #[field_name = "WindVel"]
+    pub wind_vel: f32,
+    #[field_name = "Skies"]
+    pub skies: f32,
 }
 
 impl From<AnalysisFrame> for crate::analysis::RawFrame {
@@ -52,6 +70,15 @@ impl From<AnalysisFrame> for crate::analysis::RawFrame {
             rf_temp: f.rf_temp,
             lr_temp: f.lr_temp,
             rr_temp: f.rr_temp,
+            track_temp: f.track_temp,
+            track_wetn: f.track_wetn,
+            rel_humid: f.rel_humid,
+            air_temp: f.air_temp,
+            air_pres: f.air_pres,
+            air_dens: f.air_dens,
+            wind_dir: f.wind_dir,
+            wind_vel: f.wind_vel,
+            skies: f.skies,
         }
     }
 }

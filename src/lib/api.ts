@@ -7,7 +7,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
+  AirDensitySummary,
   AppSettings,
+  WeatherSummary,
   AudioCoachStatus,
   CoachReport,
   CoachSummaryResult,
@@ -46,6 +48,14 @@ export async function getFuelSummary(sessionId: number): Promise<FuelSummary> {
 
 export async function getTireSummary(sessionId: number): Promise<TireSummary> {
   return invoke("get_tire_summary", { sessionId });
+}
+
+export async function getAirDensitySummary(sessionId: number): Promise<AirDensitySummary> {
+  return invoke("get_air_density_summary", { sessionId });
+}
+
+export async function getWeatherSummary(sessionId: number): Promise<WeatherSummary> {
+  return invoke("get_weather_summary", { sessionId });
 }
 
 export async function importIbt(path: string): Promise<string> {

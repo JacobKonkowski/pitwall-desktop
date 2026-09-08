@@ -5,19 +5,32 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import type { FuelSummary, TireSummary } from "../lib/types";
+import type { FuelSummary, LapSummary, TireSummary } from "../lib/types";
 
 interface Props {
   fuel: FuelSummary | null;
   tires: TireSummary | null;
+  laps?: LapSummary[];
 }
 
-export function FuelTirePanel({ fuel, tires }: Props) {
+export function FuelTirePanel({ fuel, tires, laps }: Props) {
+  const validLapNumbers = new Set(
+    (laps ?? []).filter((l) => l.valid).map((l) => l.lapNumber),
+  );
+  const validFuelUsage = (fuel?.laps ?? [])
+    .filter((l) => validLapNumbers.has(l.lapNumber))
+    .map((l) => l.fuelUsed);
+  const avgFuelUsed =
+    validFuelUsage.length > 0
+      ? validFuelUsage.reduce((sum, v) => sum + v, 0) / validFuelUsage.length
+      : null;
+
   return (
     <div className="fuel-tire-grid">
       <div className="panel">
@@ -38,6 +51,19 @@ export function FuelTirePanel({ fuel, tires }: Props) {
                 <YAxis stroke="#888" />
                 <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v: number) => v.toFixed(2)}/>
                 <Bar dataKey="fuelUsed" name="Fuel used (L)" fill="#66bb6a" />
+                {avgFuelUsed != null && (
+                  <ReferenceLine
+                    y={avgFuelUsed}
+                    stroke="#ffb74d"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: `Avg ${avgFuelUsed.toFixed(2)} L`,
+                      position: "insideTopRight",
+                      fill: "#ffb74d",
+                      fontSize: 11,
+                    }}
+                  />
+                )}
               </BarChart>
             </ResponsiveContainer>
             {fuel.laps.length > 0 && fuel.laps[fuel.laps.length - 1].lapsRemainingEstimate != null && (

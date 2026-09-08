@@ -75,6 +75,15 @@ pub struct LapSummary {
     pub rf_temp: Option<f64>,
     pub lr_temp: Option<f64>,
     pub rr_temp: Option<f64>,
+    pub track_temp: Option<f64>,
+    pub track_wetn: Option<f64>,
+    pub rel_humid: Option<f64>,
+    pub air_temp: Option<f64>,
+    pub air_pres: Option<f64>,
+    pub air_dens: Option<f64>,
+    pub wind_dir: Option<f64>,
+    pub wind_vel: Option<f64>,
+    pub skies: Option<f64>,
     pub sectors: Vec<SectorTime>,
     pub delta_to_best_ms: Option<f64>,
 }
@@ -136,6 +145,143 @@ pub struct TireLapSummary {
 pub struct TireSummary {
     pub laps: Vec<TireLapSummary>,
     pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackTempLapSummary {
+    pub lap_number: i32,
+    pub track_temp: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackTempSummary {
+    pub laps: Vec<TrackTempLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackWetnessLapSummary {
+    pub lap_number: i32,
+    pub track_wetn: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackWetnessSummary {
+    pub laps: Vec<TrackWetnessLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelativeHumidityLapSummary {
+    pub lap_number: i32,
+    pub rel_humid: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelativeHumiditySummary {
+    pub laps: Vec<RelativeHumidityLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirTemperatureLapSummary {
+    pub lap_number: i32,
+    pub air_temp: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirTemperatureSummary {
+    pub laps: Vec<AirTemperatureLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirPressureLapSummary {
+    pub lap_number: i32,
+    pub air_pres: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirPressureSummary {
+    pub laps: Vec<AirPressureLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirDensityLapSummary {
+    pub lap_number: i32,
+    pub air_dens: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirDensitySummary {
+    pub laps: Vec<AirDensityLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindDirectionLapSummary {
+    pub lap_number: i32,
+    pub wind_dir: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindDirectionSummary {
+    pub laps: Vec<WindDirectionLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindVelocityLapSummary {
+    pub lap_number: i32,
+    pub wind_vel: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindVelocitySummary {
+    pub laps: Vec<WindVelocityLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkiesLapSummary {
+    pub lap_number: i32,
+    pub skies: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkiesSummary {
+    pub laps: Vec<SkiesLapSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeatherLapSummary {
+    pub lap_number: i32,
+    pub track_temp: Option<f64>,
+    pub air_temp: Option<f64>,
+    pub air_pres: Option<f64>,
+    pub air_dens: Option<f64>,
+    pub rel_humid: Option<f64>,
+    pub wind_vel: Option<f64>,
+    pub wind_dir: Option<f64>,
+    pub track_wetn: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeatherSummary {
+    pub laps: Vec<WeatherLapSummary>,
 }
 
 /// One competitor row captured in a post-session standings snapshot.
@@ -234,6 +380,15 @@ pub struct StoredLap {
     pub rf_temp: Option<f64>,
     pub lr_temp: Option<f64>,
     pub rr_temp: Option<f64>,
+    pub track_temp: Option<f64>,
+    pub track_wetn: Option<f64>,
+    pub rel_humid: Option<f64>,
+    pub air_temp: Option<f64>,
+    pub air_pres: Option<f64>,
+    pub air_dens: Option<f64>,
+    pub wind_dir: Option<f64>,
+    pub wind_vel: Option<f64>,
+    pub skies: Option<f64>,
     pub sectors: Vec<(i32, f64)>,
     pub traces: Vec<TracePoint>,
 }

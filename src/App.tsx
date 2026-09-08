@@ -8,6 +8,7 @@ import {
   getLapTraces,
   getSession,
   getTireSummary,
+  getWeatherSummary,
   importFolder,
   importIbt,
   listSessions,
@@ -24,11 +25,13 @@ import type {
   SessionDetail,
   SessionSummary,
   TireSummary,
+  WeatherSummary,
 } from "./lib/types";
 import { CoachPanel } from "./components/CoachPanel";
 import { SessionStandingsPanel } from "./components/SessionStandingsPanel";
 import { ConfigBanner } from "./components/ConfigBanner";
 import { FuelTirePanel } from "./components/FuelTirePanel";
+import { WeatherPanel } from "./components/WeatherPanel";
 import { LapCompareChart } from "./components/LapCompareChart";
 import { LapTable } from "./components/LapTable";
 import { LivePanel } from "./components/LivePanel";
@@ -68,6 +71,7 @@ function App() {
   const [traces, setTraces] = useState<LapTrace[]>([]);
   const [fuel, setFuel] = useState<FuelSummary | null>(null);
   const [tires, setTires] = useState<TireSummary | null>(null);
+  const [weather, setWeather] = useState<WeatherSummary | null>(null);
   const [config, setConfig] = useState<IracingConfigCheck | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [importStatus, setImportStatus] = useState<ImportStatus>({
@@ -133,15 +137,18 @@ function App() {
       setHighlightedLaps([]);
       setTraces([]);
       if (data) {
-        const [fuelData, tireData] = await Promise.all([
+        const [fuelData, tireData, weatherData] = await Promise.all([
           getFuelSummary(sessionId),
           getTireSummary(sessionId),
+          getWeatherSummary(sessionId),
         ]);
         setFuel(fuelData);
         setTires(tireData);
+        setWeather(weatherData);
       } else {
         setFuel(null);
         setTires(null);
+        setWeather(null);
       }
     } catch (e) {
       setSessionError(String(e));
@@ -236,6 +243,7 @@ function App() {
         setDetail(null);
         setFuel(null);
         setTires(null);
+        setWeather(null);
       }
       await refreshSessions();
     } finally {
@@ -261,6 +269,7 @@ function App() {
       setTraces([]);
       setFuel(null);
       setTires(null);
+      setWeather(null);
       await refreshSessions();
     } finally {
       setLoading(false);
@@ -388,7 +397,8 @@ function App() {
                 />
                 <SessionStandingsPanel sessionId={detail.session.id} />
                 <LapCompareChart traces={traces} />
-                <FuelTirePanel fuel={fuel} tires={tires} />
+                <FuelTirePanel fuel={fuel} tires={tires} laps={detail.laps} />
+                <WeatherPanel weather={weather} />
               </>
             )}
           </section>
