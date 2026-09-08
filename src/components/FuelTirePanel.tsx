@@ -35,7 +35,7 @@ export function FuelTirePanel({ fuel, tires, laps }: Props) {
     <div className="fuel-tire-grid">
       <div className="panel">
         <div className="panel-header">
-          <h2>Fuel</h2>
+          <h2>Fuel (L)</h2>
           {fuel?.tankCapacity != null && (
             <span className="muted">Tank ~{fuel.tankCapacity.toFixed(1)} L</span>
           )}
@@ -49,7 +49,7 @@ export function FuelTirePanel({ fuel, tires, laps }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                 <XAxis dataKey="lapNumber" stroke="#888" />
                 <YAxis stroke="#888" />
-                <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} />
+                <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v: number) => v.toFixed(2)}/>
                 <Bar dataKey="fuelUsed" name="Fuel used (L)" fill="#66bb6a" />
                 {avgFuelUsed != null && (
                   <ReferenceLine
@@ -80,7 +80,7 @@ export function FuelTirePanel({ fuel, tires, laps }: Props) {
 
       <div className="panel">
         <div className="panel-header">
-          <h2>Tires</h2>
+          <h2>Tires (°C)</h2>
         </div>
         {!tires || tires.laps.length === 0 ? (
           <p className="muted">No tire temperature data for this session.</p>
@@ -91,7 +91,7 @@ export function FuelTirePanel({ fuel, tires, laps }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                 <XAxis dataKey="lapNumber" stroke="#888" />
                 <YAxis stroke="#888" />
-                <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} />
+                <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v: number) => v.toFixed(1)} />
                 <Legend />
                 <Line type="monotone" dataKey="lfTemp" name="LF" stroke="#ef5350" dot={false} />
                 <Line type="monotone" dataKey="rfTemp" name="RF" stroke="#42a5f5" dot={false} />

@@ -152,10 +152,34 @@ summary:focus-visible {
 }
 
 .sidebar {
+  position: relative;
   width: 420px;
+  flex-shrink: 0;
   border-right: 1px solid #2a2d35;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: #12151c;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.active {
+  background: #3b82f6;
+}
+
+body.sidebar-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .main-content {
@@ -256,6 +280,11 @@ button.btn-danger:hover:not(:disabled) {
 .data-table tbody tr.highlighted {
   outline: 1px solid rgba(255, 193, 7, 0.6);
   background: rgba(255, 193, 7, 0.08);
+}
+
+.data-table tbody tr.fastest-lap {
+  outline: 1px solid rgba(168, 85, 247, 0.7);
+  background: rgba(139, 92, 246, 0.12);
 }
 
 .data-table tbody tr.invalid-lap {
@@ -618,6 +647,11 @@ button.btn-danger:hover:not(:disabled) {
 
 .overlay-widget-vr {
   padding-left: 1.5rem;
+}
+
+.coach-panel-toggle {
+  cursor: pointer;
+  user-select: none;
 }
 
 .coach-panel .coach-stats {
