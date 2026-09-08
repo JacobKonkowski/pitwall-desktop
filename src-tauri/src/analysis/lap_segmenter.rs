@@ -182,6 +182,15 @@ mod tests {
                     rf_temp: 0.0,
                     lr_temp: 0.0,
                     rr_temp: 0.0,
+                    track_temp: 0.0,
+                    track_wetn: 0,
+                    rel_humid: 0.0,
+                    air_temp: 0.0,
+                    air_pres: 0.0,
+                    air_dens: 0.0,
+                    wind_dir: 0.0,
+                    wind_vel: 0.0,
+                    skies: 0.0,
                 }
             })
             .collect()
