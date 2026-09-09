@@ -11,5 +11,5 @@ pitwall-analysis = { path = "../pitwall-analysis" }
 anyhow = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
-dirs = "6"
+dirs = "7"
 chrono = { version = "0.4", features = ["serde"] }
