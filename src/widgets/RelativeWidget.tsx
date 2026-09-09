@@ -1,4 +1,4 @@
-import type { LiveSnapshot } from "../lib/types";
+import type { LiveSnapshot } from "../shared/types";
 import { positionLabel } from "./format";
 
 interface Props {

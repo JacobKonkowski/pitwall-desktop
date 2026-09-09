@@ -1,5 +1,5 @@
-import { formatLapTime } from "../lib/api";
-import type { LiveSnapshot } from "../lib/types";
+import { formatLapTime } from "../shared/format";
+import type { LiveSnapshot } from "../shared/types";
 import { deltaClass, fmtDelta, fmtGap, packLabel, positionLabel, sectorProgress } from "./format";
 
 interface Props {
@@ -50,15 +50,26 @@ export function CoachWidget({ snap, fieldPaceMode }: Props) {
         </div>
       </div>
       <div className="pw-coach-deltas">
-        <span className={deltaClass(snap.deltaToBestMs)}>{"\u0394"}B {fmtDelta(snap.deltaToBestMs)}</span>
-        <span className={deltaClass(snap.deltaToLastMs)}>{"\u0394"}L {fmtDelta(snap.deltaToLastMs)}</span>
+        <span className={deltaClass(snap.deltaToBestMs)}>
+          {"\u0394"}B {fmtDelta(snap.deltaToBestMs)}
+        </span>
+        <span className={deltaClass(snap.deltaToLastMs)}>
+          {"\u0394"}L {fmtDelta(snap.deltaToLastMs)}
+        </span>
         <FieldPace snap={snap} mode={fieldPaceMode} />
       </div>
-      {pack && <div className={`pw-coach-pack ${snap.packState === "clear" ? "fast" : "warn"}`}>{pack}</div>}
+      {pack && (
+        <div className={`pw-coach-pack ${snap.packState === "clear" ? "fast" : "warn"}`}>
+          {pack}
+        </div>
+      )}
       <div className="pw-coach-sectors">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="pw-sector">
-            <div className="pw-sector-fill" style={{ width: `${sectorProgress(snap, n)}%` }} />
+        {snap.sectors.map((sector) => (
+          <div key={sector.sectorNum} className="pw-sector">
+            <div
+              className="pw-sector-fill"
+              style={{ width: `${sectorProgress(snap, sector.sectorNum)}%` }}
+            />
           </div>
         ))}
       </div>

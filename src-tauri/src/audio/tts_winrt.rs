@@ -1,4 +1,4 @@
-#[cfg(windows)]
+﻿#[cfg(windows)]
 mod imp {
     use windows::core::HSTRING;
     use windows::Media::SpeechSynthesis::{SpeechSynthesizer, VoiceInformation};

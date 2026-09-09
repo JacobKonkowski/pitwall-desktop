@@ -1,82 +1,49 @@
 # Troubleshooting
 
-Consolidated fixes for common PitWall issues. Setup basics: [SETUP.md](SETUP.md).
+## Import / Analyze
 
----
+| Symptom | Check |
+|---------|--------|
+| No sessions | Disk recording (`irsdkEnableDisk=1`), Alt+L, watcher watching telemetry folder |
+| Empty after upgrade | Schema v2 drops old analysis tables — reimport IBTs |
+| Duplicate skip | Same file hash already imported |
+| Import stuck | `get_import_status`; restart app if a previous import crashed |
+| Odd duplicate lap times | Cleanup clears sticky times and drops phantom `Lap == 0` buckets — reopen the session or reimport. See [ANALYSIS.md](ANALYSIS.md) |
 
-## Live won't connect / "Waiting for iRacing"
+## Live telemetry
 
-- Set `irsdkEnableMem=1` in `Documents\iRacing\app.ini` under `[irsdk]`
-- Restart iRacing after editing `app.ini`
-- iRacing must be in an **active session** (not menu only)
-- Click **Start live monitor** before or after joining
-- Check Live tab message — `reconnecting` means backoff retry (normal briefly)
+| Symptom | Check |
+|---------|--------|
+| Never connects | `irsdkEnableMem=1`, iRacing running, Start live monitor |
+| Snapshot stale | Leave/rejoin session; restart monitor |
+| Demo only | Demo clock is synthetic — stop it before trusting sim data |
 
----
+## Audio coach
 
-## Sectors wrong or missing audio at sector end
+| Symptom | Check |
+|---------|--------|
+| Test Coach works, live silent | Missing WAVs under `resources/audio/coach/default/` — regenerate clips |
+| No Test Coach either | Windows speech / WinRT voices installed; coach not muted in settings |
+| Pack / clear wrong | Pack uses `CarLeftRight` enum; confirm on-track / not pit-road suppression |
+| Clip key missing | Phrase in `scripts/audio-phrases.txt` + regenerate; player skips missing files |
 
-- Sectors use iRacing YAML boundaries; sector 0 at start is ignored by design
-- S3 completes at lap end — see [LIVE_TELEMETRY.md](LIVE_TELEMETRY.md)
-- Mid-lap join infers current sector from lap distance %
-- If live sectors look wrong, confirm mem telemetry is enabled and you are on track
+```powershell
+.\scripts\generate-audio-clips.ps1 -Engine WinRT
+```
 
----
+## Native VR
 
-## Audio coach silent or missing phrases
+| Symptom | Check |
+|---------|--------|
+| Layer not ready | Install VR layer; DLL beside staged manifest; unset `PITWALL_VR_DISABLE` |
+| Blank headset | Other OpenXR API layers off; OpenXR (not OpenVR); restart iRacing after install |
+| Compositor false | Diagnostics use **producer write age**, not a layer heartbeat file. Fresh write age + layer installed ⇒ `compositorActive` proxy |
+| Test pattern missing | Start HUD with empty live track data; coach slot enabled |
+| Web preview | `http://127.0.0.1:17342/vr` after Start HUD in web mode or open preview |
 
-- Windows output device and volume
-- **Start live monitor** first, then **Start audio coach** (or enable auto-start)
-- Check per-category toggles and chatter level in Settings
-- Missing WAV → run clip export — [AUDIO_COACH.md](AUDIO_COACH.md)
-- WinRT failures fall back to logs; rebuild clips with `generate-audio-clips.ps1`
+The OpenXR layer performs **no disk I/O in `xrEndFrame`**. Do not expect `layer-heartbeat` files.
 
----
+## Debug
 
-## VR layer not loading / HUD invisible
-
-- iRacing display: **OpenXR** (not SteamVR-only)
-- Native mode: **Install VR layer**, restart iRacing
-- Check **VR layer diagnostics** in Live panel — DLL path, registry, `PITWALL_VR_DISABLE` unset
-- AppData staging path — [NATIVE_VR.md](NATIVE_VR.md)
-- Web fallback: OpenKneeboard Web Dashboard tab, URL `http://127.0.0.1:17342/vr`, live monitor running
-
----
-
-## Ollama summary fails
-
-- `ollama serve` running; model pulled (`ollama pull llama3.2`)
-- Settings URL `http://localhost:11434` and model name match
-- Post-session only — not used live
-
----
-
-## Import stuck, slow, or duplicates
-
-- Large IBT takes time — watch progress bar
-- Only one import at a time (`import_gate`)
-- Duplicates skipped by hash/path
-- **Scan Folder** imports everything in telemetry dir — can be slow
-
----
-
-## Build / dev errors
-
-| Error | Fix |
-|-------|-----|
-| `rustc` too old | `rustup update` (need 1.89+) |
-| Port 1420 in use | Close other Vite/Tauri instances |
-| `npm` not found | Install Node 18+ |
-| API docs fail CI | Run `npm run docs:api` locally |
-
----
-
-## Clear database
-
-**Debug builds only** — sidebar **Clear database**. Release builds reject `clear_database_cmd`.
-
----
-
-## Still stuck?
-
-Check [ARCHITECTURE.md](ARCHITECTURE.md) data flow, [API.md](API.md) for IPC, or open an issue with Live status message and log output (`RUST_LOG=pitwall_desktop_lib=debug`).
+- `clear_database_cmd` exists for wipe/reimport (no dedicated UI button in the shell).
+- Backend logs: `RUST_LOG=pitwall_desktop_lib=debug`.

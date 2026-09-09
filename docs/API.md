@@ -1,138 +1,79 @@
-# IPC API reference
+# API
 
-PitWall Desktop uses **Tauri invoke** (commands) and **events** between the Rust backend and React frontend. TypeScript wrappers live in [`src/lib/api.ts`](../src/lib/api.ts); Rust handlers in [`src-tauri/src/commands/mod.rs`](../src-tauri/src/commands/mod.rs).
+Frontend IPC lives in `src/shared/api.ts` and `src/shared/types.ts`. TypeDoc: `npm run docs:api` (entry points under `src/shared`).
 
-## Generate full API reference
+Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`.
 
-```powershell
-npm run docs:api
-```
+**34 commands** covering Analyze storage, Live, settings, audio coach, and VR/HUD.
 
-Opens locally (gitignored):
+## Analyze / storage
 
-| Output | Path |
-|--------|------|
-| Rust (rustdoc) | `docs/.api-out/rust/pitwall_desktop_lib/index.html` |
-| TypeScript (TypeDoc) | `docs/.api-out/ts/index.html` |
+| Command | TS helper | Notes |
+|---------|-----------|--------|
+| `list_sessions` | `listSessions` | Session summaries (display cleanup applied) |
+| `get_session` | `getSession` | Session + laps (display cleanup applied) |
+| `get_lap_traces` | `getLapTraces` | Trace points for one lap |
+| `compare_laps` | `compareLaps` | Two-lap comparison payload |
+| `import_ibt` | `importIbt` | Single file (pipeline cleanup on write) |
+| `import_folder_cmd` | `importFolder` | Folder scan |
+| `check_iracing_config_cmd` | `checkIracingConfig` | mem/disk flags |
+| `get_import_status` | `getImportStatus` | Watcher / import progress |
+| `pick_ibt_file` | `pickIbtFile` | Dialog |
+| `clear_database_cmd` | `clearDatabase` | Debug wipe |
+| `delete_session_cmd` | `deleteSession` | Per-session delete |
 
-On non-Windows: run `cargo doc --no-deps --lib` from `src-tauri/`, then `npx typedoc` from the repo root.
+## Live
 
----
+| Command | TS helper | Notes |
+|---------|-----------|--------|
+| `start_live_monitor` | `startLiveMonitor` | |
+| `stop_live_monitor` | `stopLiveMonitor` | |
+| `get_live_status` | `getLiveStatus` | |
+| `get_live_snapshot` | `getLiveSnapshot` | |
+| `start_demo_clock` | `startDemoClock` | Offline exercise |
+| `stop_demo_clock` | `stopDemoClock` | |
 
-## Commands (37)
+## Settings
 
-Arguments use **camelCase** in JSON from the frontend (Tauri serde convention).
+| Command | TS helper | Notes |
+|---------|-----------|--------|
+| `get_settings` | `getSettings` | Full `AppSettings` |
+| `save_settings_cmd` | `saveSettings` | Persists + may emit `settings-changed` |
 
-### Sessions and analysis
+## Audio
 
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `list_sessions` | `listSessions` | — | `SessionSummary[]` | All sessions, newest first |
-| `get_session` | `getSession` | `sessionId` | `SessionDetail \| null` | Laps, sectors, metadata |
-| `get_lap_traces` | `getLapTraces` | `lapIds` | `LapTrace[]` | Downsampled traces for compare chart |
-| `get_fuel_summary` | `getFuelSummary` | `sessionId` | `FuelSummary` | Per-lap fuel usage |
-| `get_tire_summary` | `getTireSummary` | `sessionId` | `TireSummary` | Per-lap tire temps |
-| `get_coach_report` | `getCoachReport` | `sessionId` | `CoachReport` | Rule-based insights (+ trace/standings when available) |
-| `get_session_standings` | `getSessionStandings` | `sessionId` | `SessionStandings \| null` | Linked live standings snapshot |
-| `generate_coach_summary` | `generateCoachSummary` | `sessionId` | `CoachSummaryResult` | Ollama AI summary |
+| Command | TS helper | Notes |
+|---------|-----------|--------|
+| `start_audio_coach` | `startAudioCoach` | |
+| `stop_audio_coach` | `stopAudioCoach` | |
+| `get_audio_coach_status` | `getAudioCoachStatus` | |
+| `get_audio_coach_message` | `getAudioCoachMessage` | |
+| `test_audio_coach` | `testAudioCoach` | TTS-only sample |
 
-### Import
+## VR / HUD
 
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `import_ibt` | `importIbt` | `path` | `string` | Import one IBT file |
-| `import_folder_cmd` | `importFolder` | — | `number` | Scan default telemetry folder |
-| `check_iracing_config_cmd` | `checkIracingConfig` | — | `IracingConfigCheck` | Validate `app.ini` |
-| `get_import_status` | `getImportStatus` | — | `ImportStatus` | Current import progress |
-| `pick_ibt_file` | `pickIbtFile` | — | `string \| null` | Native file picker |
-| `clear_database_cmd` | `clearDatabase` | — | `number` | **Debug builds only** — wipe DB |
+| Command | TS helper | Notes |
+|---------|-----------|--------|
+| `start_vr_overlay` | `startVrOverlay` | Native or web per settings |
+| `stop_vr_overlay` | `stopVrOverlay` | |
+| `get_vr_overlay_status` | `getVrOverlayStatus` | |
+| `get_native_vr_status` | `getNativeVrStatus` | Write age, overlay count, last error |
+| `is_vr_layer_installed` | `isVrLayerInstalled` | |
+| `install_vr_layer` | `installVrLayer` | |
+| `uninstall_vr_layer` | `uninstallVrLayer` | |
+| `get_vr_layer_diagnostics` | `getVrLayerDiagnostics` | Ready / DLL / issues |
+| `check_vr_hud_health` | `checkVrHudHealth` | Web HUD health |
+| `open_vr_hud_preview_cmd` | `openVrHudPreview` | Opens browser preview |
 
-### Live monitor
+## Events
 
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `start_live_monitor` | `startLiveMonitor` | — | — | Connect to iRacing; may auto-start VR/audio per settings |
-| `stop_live_monitor` | `stopLiveMonitor` | — | — | Stop live, VR, and audio |
-| `get_live_status` | `getLiveStatus` | — | `LiveStatus` | Connection state |
-| `get_live_snapshot` | `getLiveSnapshot` | — | `LiveSnapshot` | Latest telemetry snapshot |
+- Live snapshot / status updates (see Live page listeners)
+- `settings-changed` after save
 
-### Settings
+## Notes for contributors
 
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `get_settings` | `getSettings` | — | `AppSettings` | Load settings |
-| `save_settings_cmd` | `saveSettings` | `settings` | — | Persist settings |
+TS may still declare helpers for `patch_settings_cmd` / `list_tts_voices_cmd` — they are **not** in the Rust invoke handler until re-added.
 
-### Desktop overlay
+## Capabilities
 
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `open_desktop_overlay_cmd` | `openDesktopOverlay` | — | — | Open `live-overlay` window |
-| `close_desktop_overlay_cmd` | `closeDesktopOverlay` | — | — | Close overlay |
-| `is_desktop_overlay_open_cmd` | `isDesktopOverlayOpen` | — | `boolean` | Overlay window state |
-
-### VR overlay
-
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `start_vr_overlay` | `startVrOverlay` | — | — | Requires live monitor |
-| `stop_vr_overlay` | `stopVrOverlay` | — | — | Stop VR compositor / HUD server |
-| `get_vr_overlay_status` | `getVrOverlayStatus` | — | `VrOverlayStatus` | Active mode and URL |
-| `get_native_vr_status` | `getNativeVrStatus` | — | `NativeVrStatus` | SHM / layer health |
-| `is_vr_layer_installed` | `isVrLayerInstalled` | — | `boolean` | OpenXR registry check |
-| `install_vr_layer` | `installVrLayer` | — | — | Register implicit API layer |
-| `uninstall_vr_layer` | `uninstallVrLayer` | — | — | Remove layer registration |
-| `get_vr_layer_diagnostics` | `getVrLayerDiagnostics` | — | `VrLayerDiagnostics` | Install path, DLL, issues |
-| `check_vr_hud_health` | `checkVrHudHealth` | — | `boolean` | Web fallback HTTP probe |
-| `open_vr_hud_preview_cmd` | `openVrHudPreview` | — | — | Browser preview of web HUD |
-
-### Audio coach
-
-| Command | TS wrapper | Args | Returns | Purpose |
-|---------|------------|------|---------|---------|
-| `start_audio_coach` | `startAudioCoach` | — | — | Requires live monitor |
-| `stop_audio_coach` | `stopAudioCoach` | — | — | Stop speech queue |
-| `get_audio_coach_status` | `getAudioCoachStatus` | — | `AudioCoachStatus` | Active + last message |
-| `get_audio_coach_message` | `getAudioCoachMessage` | — | `string` | Last spoken line |
-
----
-
-## Events (4)
-
-Subscribe via `listen()` in [`api.ts`](../src/lib/api.ts).
-
-| Event | Payload | Emitter | Rate / trigger |
-|-------|---------|---------|----------------|
-| `import-status` | `ImportStatus` | `import_ibt`, `import_runner` | During import |
-| `import-complete` | `sessionId: number` | `import_runner` | Successful import |
-| `live-telemetry` | `LiveSnapshot` | `live/mod.rs` | ~10 Hz while connected |
-| `live-status` | `LiveStatus` | `live/mod.rs` | ~10 Hz while connected |
-
----
-
-## Type index
-
-Serde types are defined in Rust and mirrored in [`src/lib/types.ts`](../src/lib/types.ts).
-
-| Type | Rust module | Notes |
-|------|-------------|-------|
-| `AppSettings` | `settings/mod.rs` | Full field list in [DATA_MODEL.md](DATA_MODEL.md) |
-| `LiveSnapshot` | `live/snapshot.rs` | Live telemetry + field data |
-| `LiveStatus` | `live/snapshot.rs` | `LiveConnectionState` + message |
-| `SessionDetail` | `storage/` | Session + laps |
-| `CoachReport` | `analysis/coach.rs` | Post-session insights |
-| `SessionStandings` | `storage/` | Post-disconnect field snapshot |
-| `ImportStatus` | `storage/` | Import progress |
-| `AudioCoachStatus` | `audio/mod.rs` | Runtime audio state |
-| `VrOverlayStatus`, `NativeVrStatus`, `VrLayerDiagnostics` | `vr/` | VR modes and diagnostics |
-
-For struct fields, run `npm run docs:api` and open the rustdoc / TypeDoc pages above.
-
----
-
-## Tauri capabilities
-
-| File | Window | Permissions |
-|------|--------|-------------|
-| `capabilities/default.json` | `main` | `core:default`, `dialog:default` |
-| `capabilities/overlay.json` | `live-overlay` | `core:default` |
+Main window uses `src-tauri/capabilities/default.json`.

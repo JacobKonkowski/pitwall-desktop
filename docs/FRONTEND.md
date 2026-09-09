@@ -1,96 +1,33 @@
 # Frontend
 
-React 19 + TypeScript + Vite. Two HTML entry points share widgets and types with the Rust backend via Tauri IPC.
+## Entry
 
----
+`index.html` → `src/main.tsx` → `shell/AppShell.tsx`.
 
-## Entry points
+## Layout
 
-| HTML | TS entry | Window |
-|------|----------|--------|
-| `index.html` | `main.tsx` | Main — Analyze \| Live tabs |
-| `overlay.html` | `overlay.tsx` | `live-overlay` — desktop pop-out |
-
-Built as a Vite multi-page app (`vite.config.ts`, dev port **1420**).
-
----
-
-## Main app structure
-
-[`App.tsx`](../src/App.tsx) — tab shell:
-
-- **Analyze** — `SessionBrowser`, `LapTable`, compare chart, fuel/tire, coach, standings
-- **Live** — `ConfigBanner`, `LivePanel`, `SessionLeaderboard`
-
-[`LivePanel.tsx`](../src/components/LivePanel.tsx) — live controls, settings, overlay/VR/audio toggles.
-
----
-
-## Event-driven live UI
-
-Prefer events over polling:
-
-```typescript
-onLiveTelemetry((snap) => { /* update UI */ });
-onLiveStatus((status) => { /* connection state */ });
+```
+src/
+  shell/           AppShell, FeatureNav
+  features/
+    registry.ts    Feature[] — Analyze + Live
+    analyze/       AnalyzePage, browser, laps, compare, insights, fuel…
+    live/          LivePage, SessionLeaderboard
+  shared/          api.ts, types.ts, format, toast
+  widgets/         Coach, Standings, Relative, Radar + widgets.css
+  styles/          tokens.css, app.css
 ```
 
-Same pattern in [`OverlayView.tsx`](../src/components/OverlayView.tsx) for the pop-out window.
+Adding a surface: create `features/<id>/`, export a `Feature`, append to `registry.ts`. Nav appears automatically when more than one feature is registered.
 
-Import progress: `onImportStatus`, `onImportComplete`.
+## IPC
 
----
+All `invoke` wrappers and shared DTOs live in **`src/shared/`** (not `src/lib/`). Typedoc entry points match that layout.
 
-## Widget system
+## Widgets
 
-[`src/widgets/`](../src/widgets/) — shared by desktop overlay and VR reference layout:
-
-| Index | Kind | Component |
-|-------|------|-----------|
-| 0 | coach | `CoachWidget` |
-| 1 | standings | `StandingsWidget` |
-| 2 | relative | `RelativeWidget` |
-| 3 | radar | `RadarWidget` |
-
-`settings.overlayLayout` drives enabled state, desktop pixel placement, and VR offset/scale/opacity. Index matches Rust `WIDGET_*` constants and OpenXR layer slots.
-
----
-
-## API layer
-
-[`src/lib/api.ts`](../src/lib/api.ts) — `invoke()` per Tauri command + `listen()` helpers.
-
-[`src/lib/types.ts`](../src/lib/types.ts) — mirrors Rust `serde` structs (`camelCase`).
-
-Run `npm run docs:api` for TypeDoc output. Contract table: [API.md](API.md).
-
----
-
-## Component map
-
-| File | When to read |
-|------|--------------|
-| `SessionBrowser.tsx` | Import, session list, clear DB |
-| `LapTable.tsx` | Lap selection, sectors, coach highlights |
-| `LapCompareChart.tsx` | Two-lap Recharts traces |
-| `CoachPanel.tsx` | Rule insights + Ollama button |
-| `SessionStandingsPanel.tsx` | Linked live standings |
-| `SessionLeaderboard.tsx` | Live field table |
-| `OverlayView.tsx` | Draggable widget shell |
-| `widgets/*.tsx` | Individual HUD panels |
-
----
+Widgets render coach / standings / relative / radar for the Live in-app preview and share shapes with VR SHM slots.
 
 ## Styling
 
-- `App.css` — main window
-- `overlay.css` — transparent overlay window
-- `widgets/widgets.css` — shared widget chrome
-
----
-
-## Related docs
-
-- [API.md](API.md) — commands and events
-- [FEATURES.md](FEATURES.md) — user-facing UI tour
-- [NATIVE_VR.md](NATIVE_VR.md) — VR compositor (C++ layer reads same widget config)
+Global look: `src/styles/`. Widget-specific: `src/widgets/widgets.css`.

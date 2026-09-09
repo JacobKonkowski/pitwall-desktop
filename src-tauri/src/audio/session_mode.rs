@@ -1,4 +1,4 @@
-/// Session type classification for coach message gating.
+﻿/// Session type classification for coach message gating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionMode {
     Practice,

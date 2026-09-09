@@ -1,9 +1,10 @@
+//! Pre-resolved variable offsets for fast per-frame extraction (no allocation).
+
 use anyhow::{Context, Result};
 use pitwall::{VarData, VariableInfo, VariableSchema};
 
 use crate::analysis::RawFrame;
 
-/// Pre-resolved variable offsets for fast per-frame extraction (no FramePacket/allocation).
 pub struct FastFrameExtractor {
     session_num: Option<VariableInfo>,
     lap: VariableInfo,
@@ -16,10 +17,14 @@ pub struct FastFrameExtractor {
     fuel_level: VariableInfo,
     on_pit_road: VariableInfo,
     session_time: VariableInfo,
-    lf_temp: VariableInfo,
-    rf_temp: VariableInfo,
-    lr_temp: VariableInfo,
-    rr_temp: VariableInfo,
+    // Optional: present in modern IBT files, absent in older ones.
+    lap_last_lap_time: Option<VariableInfo>,
+    delta_best_ok: Option<VariableInfo>,
+    delta_session_best_ok: Option<VariableInfo>,
+    lf_temp: Option<VariableInfo>,
+    rf_temp: Option<VariableInfo>,
+    lr_temp: Option<VariableInfo>,
+    rr_temp: Option<VariableInfo>,
 }
 
 impl FastFrameExtractor {
@@ -29,6 +34,13 @@ impl FastFrameExtractor {
                 .get_variable(name)
                 .cloned()
                 .with_context(|| format!("telemetry variable '{name}' not found in IBT"))
+        }
+
+        fn tire_temp(schema: &VariableSchema, mid: &str, carcass: &str) -> Option<VariableInfo> {
+            schema
+                .get_variable(mid)
+                .or_else(|| schema.get_variable(carcass))
+                .cloned()
         }
 
         Ok(Self {
@@ -43,10 +55,13 @@ impl FastFrameExtractor {
             fuel_level: req(schema, "FuelLevel")?,
             on_pit_road: req(schema, "OnPitRoad")?,
             session_time: req(schema, "SessionTime")?,
-            lf_temp: req(schema, "LFtempCL")?,
-            rf_temp: req(schema, "RFtempCL")?,
-            lr_temp: req(schema, "LRtempCL")?,
-            rr_temp: req(schema, "RRtempCL")?,
+            lap_last_lap_time: schema.get_variable("LapLastLapTime").cloned(),
+            delta_best_ok: schema.get_variable("LapDeltaToBestLap_OK").cloned(),
+            delta_session_best_ok: schema.get_variable("LapDeltaToSessionBestLap_OK").cloned(),
+            lf_temp: tire_temp(schema, "LFtempM", "LFtempCM"),
+            rf_temp: tire_temp(schema, "RFtempM", "RFtempCM"),
+            lr_temp: tire_temp(schema, "LRtempM", "LRtempCM"),
+            rr_temp: tire_temp(schema, "RRtempM", "RRtempCM"),
         })
     }
 
@@ -68,10 +83,16 @@ impl FastFrameExtractor {
             fuel_level: read_f32(data, &self.fuel_level),
             on_pit_road: read_bool(data, &self.on_pit_road),
             session_time: read_f64(data, &self.session_time),
-            lf_temp: read_f32(data, &self.lf_temp),
-            rf_temp: read_f32(data, &self.rf_temp),
-            lr_temp: read_f32(data, &self.lr_temp),
-            rr_temp: read_f32(data, &self.rr_temp),
+            lap_last_lap_time: self.lap_last_lap_time.as_ref().map(|v| read_f32(data, v)),
+            delta_best_ok: self.delta_best_ok.as_ref().map(|v| read_bool(data, v)),
+            delta_session_best_ok: self
+                .delta_session_best_ok
+                .as_ref()
+                .map(|v| read_bool(data, v)),
+            lf_temp: self.lf_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
+            rf_temp: self.rf_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
+            lr_temp: self.lr_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
+            rr_temp: self.rr_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
         }
     }
 }

@@ -1,0 +1,192 @@
+import { Fragment, useMemo } from "react";
+import type { LapSummary } from "../../shared/types";
+import {
+  deltaClass,
+  formatDelta,
+  formatLapTime,
+  formatLiters,
+  formatTemp,
+} from "../../shared/format";
+
+interface Props {
+  laps: LapSummary[];
+  candidateLapId: number | null;
+  referenceLapId: number | null;
+  onSelectCandidate: (id: number) => void;
+  onSelectReference: (id: number) => void;
+}
+
+interface Group {
+  sessionNum: number;
+  sessionType: string;
+  laps: LapSummary[];
+}
+
+function groupBySubsession(laps: LapSummary[]): Group[] {
+  const groups: Group[] = [];
+  for (const lap of laps) {
+    let group = groups.find((g) => g.sessionNum === lap.sessionNum);
+    if (!group) {
+      group = { sessionNum: lap.sessionNum, sessionType: lap.sessionType, laps: [] };
+      groups.push(group);
+    }
+    group.laps.push(lap);
+  }
+  return groups;
+}
+
+/** Best pace-eligible sector times within a sub-session, keyed by sectorNum. */
+function bestSectors(laps: LapSummary[]): Map<number, number> {
+  const best = new Map<number, number>();
+  for (const lap of laps) {
+    if (!lap.paceEligible) continue;
+    for (const s of lap.sectors) {
+      const prev = best.get(s.sectorNum);
+      if (prev == null || s.timeMs < prev) best.set(s.sectorNum, s.timeMs);
+    }
+  }
+  return best;
+}
+
+function sectorClass(
+  timeMs: number | undefined,
+  bestMs: number | undefined,
+  paceEligible: boolean,
+): string {
+  if (timeMs == null || bestMs == null || !paceEligible) return "num";
+  if (Math.abs(timeMs - bestMs) < 1) return "num fast";
+  if (timeMs > bestMs) return "num slow";
+  return "num";
+}
+
+/** Flag cell reflecting the sim's own pace judgement. */
+function OkFlag({ lap }: { lap: LapSummary }) {
+  if (lap.paceEligible) return <span className="flag ok" title="Both _OK flags true">✓</span>;
+  if (lap.deltaBestOk === null && lap.deltaSessionBestOk === null)
+    return <span className="flag unknown" title="_OK channel not in this IBT">?</span>;
+  return <span className="flag no" title="Sim marked this lap's delta invalid">✗</span>;
+}
+
+function PitCell({ lap }: { lap: LapSummary }) {
+  if (!lap.onPitRoadStart && !lap.onPitRoadEnd) return <span className="muted">—</span>;
+  return (
+    <span style={{ display: "inline-flex", gap: 4 }}>
+      {lap.onPitRoadStart ? (
+        <span className="pill pit" title="Started on pit road">out</span>
+      ) : null}
+      {lap.onPitRoadEnd ? (
+        <span className="pill pit" title="Ended on pit road">in</span>
+      ) : null}
+    </span>
+  );
+}
+
+export function LapTable({
+  laps,
+  candidateLapId,
+  referenceLapId,
+  onSelectCandidate,
+  onSelectReference,
+}: Props) {
+  const groups = useMemo(() => groupBySubsession(laps), [laps]);
+  const maxSector = useMemo(
+    () => laps.reduce((m, l) => Math.max(m, ...l.sectors.map((s) => s.sectorNum), 0), 0),
+    [laps],
+  );
+  const sectorNums = Array.from({ length: maxSector }, (_, i) => i + 1);
+  // Lap, Time, Δ Best, sectors…, OK, Pit, Fuel, LF, RF, LR, RR
+  const colSpan = 3 + sectorNums.length + 2 + 5;
+
+  return (
+    <div className="table-scroll">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Lap</th>
+            <th className="num">Time</th>
+            <th className="num">Δ Best</th>
+            {sectorNums.map((n) => (
+              <th key={n} className="num">
+                S{n}
+              </th>
+            ))}
+            <th>OK</th>
+            <th>Pit</th>
+            <th className="num">Fuel</th>
+            <th className="num">LF</th>
+            <th className="num">RF</th>
+            <th className="num">LR</th>
+            <th className="num">RR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group) => {
+            const best = bestSectors(group.laps);
+            return (
+              <Fragment key={group.sessionNum}>
+                {groups.length > 1 ? (
+                  <tr className="subsession-row">
+                    <td colSpan={colSpan}>{group.sessionType}</td>
+                  </tr>
+                ) : null}
+                {group.laps.map((lap) => {
+                  const classes = [
+                    lap.id === candidateLapId ? "candidate" : "",
+                    lap.id === referenceLapId ? "reference" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+                  const sectorByNum = new Map(lap.sectors.map((s) => [s.sectorNum, s.timeMs]));
+                  return (
+                    <tr
+                      key={lap.id}
+                      className={classes}
+                      title="Click = candidate · Shift/right-click = reference"
+                      onClick={(e) => {
+                        if (e.shiftKey) {
+                          e.preventDefault();
+                          onSelectReference(lap.id);
+                          return;
+                        }
+                        onSelectCandidate(lap.id);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onSelectReference(lap.id);
+                      }}
+                    >
+                      <td>{lap.lapNumber}</td>
+                      <td className="num">{formatLapTime(lap.lapTimeMs)}</td>
+                      <td className={`num ${deltaClass(lap.deltaToBestMs)}`}>
+                        {formatDelta(lap.deltaToBestMs)}
+                      </td>
+                      {sectorNums.map((n) => {
+                        const t = sectorByNum.get(n);
+                        return (
+                          <td key={n} className={sectorClass(t, best.get(n), lap.paceEligible)}>
+                            {t != null ? (t / 1000).toFixed(3) : "—"}
+                          </td>
+                        );
+                      })}
+                      <td>
+                        <OkFlag lap={lap} />
+                      </td>
+                      <td>
+                        <PitCell lap={lap} />
+                      </td>
+                      <td className="num">{formatLiters(lap.fuelUsed)}</td>
+                      <td className="num">{formatTemp(lap.lfTemp)}</td>
+                      <td className="num">{formatTemp(lap.rfTemp)}</td>
+                      <td className="num">{formatTemp(lap.lrTemp)}</td>
+                      <td className="num">{formatTemp(lap.rrTemp)}</td>
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

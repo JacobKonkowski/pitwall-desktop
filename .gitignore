@@ -36,3 +36,6 @@ src-tauri/resources/openxr-layer/*.dll
 
 # Generated API docs (npm run docs:api)
 docs/.api-out/
+
+# Local extract of old WIP for reference (do not commit)
+.ref-e63f54a/

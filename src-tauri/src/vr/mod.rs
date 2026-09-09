@@ -1,11 +1,14 @@
-//! In-headset HUD for iRacing VR.
+﻿//! In-headset HUD for iRacing VR.
 //!
 //! Two modes share one service:
 //! * **Native** (default) — writes the live snapshot into shared memory for the
 //!   `pitwall-openxr-layer` DLL, which composites quads directly in the headset.
-//!   No OpenKneeboard or RaceLab required.
-//! * **Web** (fallback) — serves the HUD over HTTP for an OpenKneeboard Web
-//!   Dashboard tab.
+//! * **Web** (fallback) — serves the HUD over HTTP for browser / OpenKneeboard preview.
+//!
+//! Diagnostics are producer-side only: the layer does not write a heartbeat file
+//! (no disk I/O in `xrEndFrame`). `compositor_active` is therefore a proxy —
+//! fresh SHM publishes while the layer is installed — not proof the compositor
+//! drew a frame.
 
 mod hud_server;
 mod layer_install;
@@ -18,34 +21,8 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::live::LiveService;
+use crate::live::{LiveService, LiveSnapshot};
 use crate::settings::AppSettings;
-
-// #region agent log
-fn agent_debug(hypothesis_id: &str, location: &str, message: &str, data: serde_json::Value) {
-    use std::io::Write;
-    let payload = serde_json::json!({
-        "sessionId": "68355e",
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0),
-        "runId": "pre-fix",
-        "source": "pitwall"
-    });
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(r"c:\Users\jrkon\Projects\pitwall-desktop\debug-68355e.log")
-    {
-        let _ = writeln!(f, "{payload}");
-    }
-}
-// #endregion
 
 pub use hud_server::{check_hud_health, hud_url, open_hud_preview, HUD_PORT};
 pub use layer_install::{
@@ -58,6 +35,10 @@ pub struct VrOverlayService {
     status: Mutex<VrOverlayStatus>,
     /// Wall-clock ms of the most recent native frame published to shared memory.
     last_frame_ms: Mutex<Option<u64>>,
+    /// Overlay slots enabled in the last published block.
+    last_overlay_count: Mutex<u32>,
+    /// Last native-loop error (cleared on successful start).
+    last_error: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -78,14 +59,19 @@ pub struct VrOverlayStatus {
 pub struct NativeVrStatus {
     pub active: bool,
     pub layer_installed: bool,
-    /// True when the OpenXR layer has composited recently (heartbeat file).
+    /// Proxy: telemetry is publishing freshly and the layer is installed.
+    /// The layer no longer writes a disk heartbeat; this is not a compositor ACK.
     pub compositor_active: bool,
     /// True when PitWall is publishing telemetry to shared memory.
     pub telemetry_publishing: bool,
     /// Age of the last published telemetry frame in ms (None if nothing published yet).
     pub last_frame_age_ms: Option<u64>,
-    /// Age of the last layer compositor heartbeat in ms (None if layer never ran).
-    pub layer_heartbeat_age_ms: Option<u64>,
+    /// Same as `last_frame_age_ms` — producer write age into SHM.
+    pub write_age_ms: Option<u64>,
+    /// Enabled overlay slots in the last published SHM block.
+    pub overlay_count: u32,
+    /// Last native-loop error, if any.
+    pub last_error: Option<String>,
 }
 
 impl VrOverlayService {
@@ -98,6 +84,8 @@ impl VrOverlayService {
                 ..Default::default()
             }),
             last_frame_ms: Mutex::new(None),
+            last_overlay_count: Mutex::new(0),
+            last_error: Mutex::new(None),
         }
     }
 
@@ -115,20 +103,21 @@ impl VrOverlayService {
     pub fn native_status(&self) -> NativeVrStatus {
         let now = now_ms();
         let last = *self.last_frame_ms.lock();
-        let layer_heartbeat_age_ms = layer_install::layer_heartbeat_age_ms(now);
-        let telemetry_publishing = last
-            .map(|t| now.saturating_sub(t) < 2000)
-            .unwrap_or(false);
-        let compositor_active = layer_heartbeat_age_ms
-            .map(|age| age < 2000)
-            .unwrap_or(false);
+        let write_age_ms = last.map(|t| now.saturating_sub(t));
+        let telemetry_publishing = write_age_ms.map(|age| age < 2000).unwrap_or(false);
+        let layer_installed = layer_install::is_layer_installed();
+        // Without a layer-side ACK, treat fresh publishes + installed layer as the
+        // best available "compositor likely active" signal for the Live panel.
+        let compositor_active = telemetry_publishing && layer_installed;
         NativeVrStatus {
             active: self.is_active(),
-            layer_installed: layer_install::is_layer_installed(),
+            layer_installed,
             compositor_active,
             telemetry_publishing,
-            last_frame_age_ms: last.map(|t| now.saturating_sub(t)),
-            layer_heartbeat_age_ms,
+            last_frame_age_ms: write_age_ms,
+            write_age_ms,
+            overlay_count: *self.last_overlay_count.lock(),
+            last_error: self.last_error.lock().clone(),
         }
     }
 
@@ -137,6 +126,7 @@ impl VrOverlayService {
             token.cancel();
         }
         *self.last_frame_ms.lock() = None;
+        *self.last_overlay_count.lock() = 0;
         let mode = self.status.lock().mode.clone();
         *self.status.lock() = VrOverlayStatus {
             active: false,
@@ -157,6 +147,7 @@ impl VrOverlayService {
         let native = settings.vr_mode != "web";
         let token = CancellationToken::new();
         *self.cancel.lock() = Some(token.clone());
+        *self.last_error.lock() = None;
 
         if native {
             self.start_native(live, settings, token);
@@ -177,7 +168,9 @@ impl VrOverlayService {
         let service = Arc::clone(self);
         thread::spawn(move || {
             if let Err(e) = hud_server::run_hud_server(service.clone(), live, token) {
-                service.status.lock().message = format!("HUD server error: {e:#}");
+                let msg = format!("HUD server error: {e:#}");
+                *service.last_error.lock() = Some(msg.clone());
+                service.status.lock().message = msg;
                 service.status.lock().active = false;
             }
             *service.cancel.lock() = None;
@@ -207,7 +200,9 @@ impl VrOverlayService {
         let service = Arc::clone(self);
         thread::spawn(move || {
             if let Err(e) = run_native_loop(service.clone(), live, settings, token) {
-                service.status.lock().message = format!("Native VR error: {e:#}");
+                let msg = format!("Native VR error: {e:#}");
+                *service.last_error.lock() = Some(msg.clone());
+                service.status.lock().message = msg;
                 service.status.lock().active = false;
             }
             *service.cancel.lock() = None;
@@ -230,9 +225,9 @@ fn field_pace_ordinal(mode: &str) -> u32 {
     }
 }
 
-/// Publish the live snapshot to shared memory at ~30 Hz until cancelled. The
-/// placement is re-read from settings each tick so the in-app sliders move the
-/// HUD live.
+/// Publish the live snapshot to shared memory at ~30 Hz until cancelled.
+/// When live data is empty, publishes a test pattern with the coach quad enabled
+/// at the default VIEW pose (~1.2 m forward).
 fn run_native_loop(
     service: Arc<VrOverlayService>,
     live: Arc<LiveService>,
@@ -240,20 +235,11 @@ fn run_native_loop(
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
     let mut writer = shm::ShmWriter::open()?;
-    let _ = initial; // settings are re-read each tick below
-    // #region agent log
-    agent_debug(
-        "F",
-        "vr/mod.rs:run_native_loop",
-        "native shm writer opened",
-        serde_json::json!({ "shmName": shm::SHM_NAME }),
-    );
-    // #endregion
-    let mut tick: u64 = 0;
+    let _ = initial;
 
     while !cancel.is_cancelled() {
         let settings = crate::settings::load_settings();
-        let snap = live.snapshot.lock().clone();
+        let mut snap = live.snapshot.lock().clone();
         let layout = &settings.overlay_layout;
         let mut slots = [shm::SlotPlacement {
             enabled: false,
@@ -269,32 +255,51 @@ fn run_native_loop(
                 opacity: w.vr_opacity.clamp(0.0, 1.0),
             };
         }
-        let field_pace = field_pace_ordinal(&layout.field_pace_mode);
-        writer.publish(shm::build_block(&snap, &slots, field_pace));
-        *service.last_frame_ms.lock() = Some(now_ms());
 
-        // #region agent log
-        tick += 1;
-        if tick % 30 == 0 {
-            let enabled: Vec<bool> = slots.iter().map(|s| s.enabled).collect();
-            agent_debug(
-                "F",
-                "vr/mod.rs:run_native_loop",
-                "shm publish tick",
-                serde_json::json!({
-                    "lap": snap.lap,
-                    "track": snap.track,
-                    "onPitRoad": snap.on_pit_road,
-                    "enabledWidgets": enabled,
-                    "liveState": format!("{:?}", live.status.lock().state),
-                }),
-            );
+        // Test pattern: ensure coach is visible with default VIEW pose when idle.
+        if snap.track.is_empty() && snap.lap <= 0 {
+            snap = test_pattern_snapshot();
+            slots[shm::KIND_COACH as usize] = shm::SlotPlacement {
+                enabled: true,
+                vertical_offset: 0.0,
+                scale: 1.0,
+                opacity: 1.0,
+            };
         }
-        // #endregion
+
+        let field_pace = field_pace_ordinal(&layout.field_pace_mode);
+        let block = shm::build_block(&snap, &slots, field_pace);
+        let overlay_count = slots.iter().filter(|s| s.enabled).count() as u32;
+        writer.publish(block);
+        *service.last_frame_ms.lock() = Some(now_ms());
+        *service.last_overlay_count.lock() = overlay_count;
 
         thread::sleep(Duration::from_millis(33));
     }
 
     *service.last_frame_ms.lock() = None;
+    *service.last_overlay_count.lock() = 0;
     Ok(())
+}
+
+fn test_pattern_snapshot() -> LiveSnapshot {
+    LiveSnapshot {
+        track: "VR Test".into(),
+        car: "Test".into(),
+        session_type: "Practice".into(),
+        lap: 1,
+        lap_time_ms: 45_000.0,
+        last_lap_ms: Some(89_123.0),
+        best_lap_ms: Some(88_500.0),
+        delta_to_best_ms: Some(623.0),
+        fuel_level: 32.0,
+        speed: 55.0,
+        lap_dist_pct: 0.45,
+        current_sector: 2,
+        on_track: true,
+        pits_open: true,
+        player_position: Some(5),
+        player_class_position: Some(3),
+        ..Default::default()
+    }
 }

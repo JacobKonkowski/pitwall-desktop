@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub struct WidgetPlacement {
     pub vr_offset_y: f32,
     /// VR quad scale multiplier.
     pub vr_scale: f32,
-    /// VR quad opacity, 0.0–1.0.
+    /// VR quad opacity, 0.0ΓÇô1.0.
     pub vr_opacity: f32,
 }
 
@@ -125,8 +125,6 @@ impl OverlayLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
-    pub ollama_url: String,
-    pub ollama_model: String,
     pub overlay_x: i32,
     pub overlay_y: i32,
     pub overlay_width: u32,
@@ -138,7 +136,7 @@ pub struct AppSettings {
     pub vr_mode: String,
     /// Vertical placement of the native HUD in meters (positive = higher).
     pub vr_hud_offset: f32,
-    /// Native HUD opacity, 0.0–1.0.
+    /// Native HUD opacity, 0.0ΓÇô1.0.
     pub vr_hud_opacity: f32,
     /// Optional global recenter hotkey (e.g. "Ctrl+F10"); empty = disabled.
     pub vr_recenter_hotkey: String,
@@ -149,7 +147,7 @@ pub struct AppSettings {
     pub audio_coach_enabled: bool,
     /// Speech rate for Windows TTS (0.5 = slow, 1.0 = normal, up to 6.0).
     pub audio_coach_rate: f32,
-    /// Speech volume (0.0–1.0).
+    /// Speech volume (0.0ΓÇô1.0).
     pub audio_coach_volume: f32,
     pub audio_coach_fuel_threshold: f32,
     pub audio_pack_alerts_enabled: bool,
@@ -161,16 +159,44 @@ pub struct AppSettings {
     pub audio_strategy_enabled: bool,
     pub audio_race_clock_enabled: bool,
     pub audio_pits_open_enabled: bool,
-    pub audio_pack_clear_enabled: bool,
     #[serde(default)]
     pub audio_coach_chatter_level: ChatterLevel,
+    /// WinRT voice display name; empty = system default.
+    #[serde(default)]
+    pub audio_coach_voice: String,
+    #[serde(default = "default_true")]
+    pub audio_session_intro_enabled: bool,
+    #[serde(default = "default_true")]
+    pub audio_position_callouts_enabled: bool,
+    #[serde(default = "default_true")]
+    pub audio_tyre_alerts_enabled: bool,
+    #[serde(default = "default_true")]
+    pub audio_invalid_lap_enabled: bool,
+    #[serde(default)]
+    pub audio_radio_effects_enabled: bool,
+    #[serde(default = "default_true")]
+    pub audio_pack_precursors_enabled: bool,
+    #[serde(default = "default_fuel_sensitivity")]
+    pub audio_fuel_strategy_sensitivity: String,
+    #[serde(default)]
+    pub audio_inter_message_gap_ms: i32,
+    #[serde(default)]
+    pub audio_voice_commands_enabled: bool,
+    #[serde(default)]
+    pub audio_voice_push_to_talk_key: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_fuel_sensitivity() -> String {
+    "normal".into()
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            ollama_url: "http://localhost:11434".into(),
-            ollama_model: "llama3.2".into(),
             overlay_x: 100,
             overlay_y: 100,
             overlay_width: 720,
@@ -196,8 +222,18 @@ impl Default for AppSettings {
             audio_strategy_enabled: true,
             audio_race_clock_enabled: true,
             audio_pits_open_enabled: true,
-            audio_pack_clear_enabled: false,
             audio_coach_chatter_level: ChatterLevel::Normal,
+            audio_coach_voice: String::new(),
+            audio_session_intro_enabled: true,
+            audio_position_callouts_enabled: true,
+            audio_tyre_alerts_enabled: true,
+            audio_invalid_lap_enabled: true,
+            audio_radio_effects_enabled: false,
+            audio_pack_precursors_enabled: true,
+            audio_fuel_strategy_sensitivity: "normal".into(),
+            audio_inter_message_gap_ms: 0,
+            audio_voice_commands_enabled: false,
+            audio_voice_push_to_talk_key: String::new(),
         }
     }
 }

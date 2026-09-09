@@ -1,9 +1,9 @@
-//! Producer half of the PitWall VR shared-memory contract.
+﻿//! Producer half of the PitWall VR shared-memory contract.
 //!
 //! Writes a compact mirror of [`LiveSnapshot`](crate::live::LiveSnapshot) plus
 //! per-overlay placement into a named Windows file mapping that the
 //! `pitwall-openxr-layer` DLL reads each frame. The binary layout MUST match
-//! `openxr-layer/include/pitwall_vr_shm.h` exactly — every field is 4 bytes (or
+//! `openxr-layer/include/pitwall_vr_shm.h` exactly ΓÇö every field is 4 bytes (or
 //! a char array of length divisible by 4) so neither side needs explicit
 //! packing, and 64-bit values are split into lo/hi `u32` pairs.
 
@@ -15,6 +15,7 @@ pub const SHM_NAME: &str = r"Local\PitWallVR";
 
 pub const MAX_OVERLAYS: usize = 4;
 pub const MAX_COMPETITORS: usize = 64;
+pub const MAX_SECTORS: usize = 3;
 pub const NUM_LEN: usize = 8;
 pub const NAME_LEN: usize = 40;
 pub const TRACK_LEN: usize = 64;
@@ -92,8 +93,8 @@ pub struct PwSnapshot {
     pub session_time_remain_s: f32,
     pub on_track: u32,
     pub field_pace_mode: u32,
-    pub sector_pct: [f32; 3],
-    pub sector_done: [u32; 3],
+    pub sector_pct: [f32; MAX_SECTORS],
+    pub sector_done: [u32; MAX_SECTORS],
     pub competitor_count: u32,
     pub track: [u8; TRACK_LEN],
     pub session_type: [u8; SESSION_LEN],
@@ -207,10 +208,16 @@ pub fn build_block(
     copy_str(&snap.track, &mut s.track);
     copy_str(&snap.session_type, &mut s.session_type);
 
-    for n in 0..3 {
-        let sector = snap.sectors.iter().find(|x| x.sector_num == (n as i32 + 1));
-        s.sector_done[n] = sector.map(|x| x.completed as u32).unwrap_or(0);
-        s.sector_pct[n] = sector_progress(snap, n as i32 + 1);
+    // Header v1: fixed 3 sector slots (no sector_count field).
+    for n in 0..MAX_SECTORS {
+        let sector_num = (n as i32) + 1;
+        if let Some(sec) = snap.sectors.iter().find(|x| x.sector_num == sector_num) {
+            s.sector_done[n] = sec.completed as u32;
+            s.sector_pct[n] = sector_progress(snap, sector_num);
+        } else {
+            s.sector_done[n] = 0;
+            s.sector_pct[n] = 0.0;
+        }
     }
 
     let count = snap.competitors.len().min(MAX_COMPETITORS);
@@ -264,7 +271,7 @@ fn pack_ordinal(p: PackState) -> u32 {
     }
 }
 
-/// Progress (0..1) of the given sector, mirroring the web HUD logic.
+/// Progress (0..1) of the given sector using snapshot boundaries.
 fn sector_progress(snap: &LiveSnapshot, sector_num: i32) -> f32 {
     if let Some(sec) = snap.sectors.iter().find(|x| x.sector_num == sector_num) {
         if sec.completed {
@@ -274,9 +281,14 @@ fn sector_progress(snap: &LiveSnapshot, sector_num: i32) -> f32 {
     if snap.current_sector != sector_num {
         return 0.0;
     }
-    let bounds = [0.0_f32, 0.33, 0.66, 1.0];
-    let start = bounds[(sector_num - 1).clamp(0, 3) as usize];
-    let end = bounds[sector_num.clamp(0, 3) as usize];
+    let bounds = if snap.sector_boundaries.len() >= 2 {
+        &snap.sector_boundaries
+    } else {
+        &[0.0_f64, 0.33, 0.66, 1.0][..]
+    };
+    let idx = (sector_num - 1).max(0) as usize;
+    let start = bounds.get(idx).copied().unwrap_or(0.0) as f32;
+    let end = bounds.get(idx + 1).copied().unwrap_or(1.0) as f32;
     let span = end - start;
     if span <= 0.0 {
         return 0.0;

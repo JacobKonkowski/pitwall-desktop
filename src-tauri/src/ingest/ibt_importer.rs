@@ -1,3 +1,9 @@
+//! IBT file -> [`AnalyzedSession`] parsing and persistence.
+//!
+//! This is the only place that touches the raw file. It resolves session metadata
+//! (track, car, sectors, sub-session labels) from the YAML, streams frames through
+//! [`FastFrameExtractor`], and hands them to the pure analysis pipeline.
+
 use anyhow::{Context, Result};
 use pitwall::ibt::IbtReader;
 use pitwall::schema::SessionInfoParser;
@@ -8,8 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::info;
 
-use crate::analysis::{analyze_session, SectorBoundary};
-use crate::storage::StoredLap;
+use crate::analysis::{analyze_session, AnalyzedSession, SectorBoundary, SessionMeta};
 
 use super::frame_extractor::FastFrameExtractor;
 
@@ -20,33 +25,19 @@ pub struct ImportResult {
     pub skipped: bool,
 }
 
-pub struct ParsedSession {
-    pub track: String,
-    pub car: String,
-    pub session_date: String,
-    pub laps: Vec<StoredLap>,
-}
-
 pub type ProgressCallback = Box<dyn Fn(f64, String) + Send>;
 
 pub fn import_ibt_file(
     db: &crate::storage::Database,
     path: &Path,
-    parsed: ParsedSession,
+    session: AnalyzedSession,
     hash: &str,
     elapsed_ms: u128,
 ) -> Result<ImportResult> {
     let path_str = path.to_string_lossy().to_string();
-    let lap_count = parsed.laps.len();
+    let lap_count = session.laps.len();
     let store_start = Instant::now();
-    let session_id = db.insert_session(
-        &path_str,
-        hash,
-        &parsed.track,
-        &parsed.car,
-        &parsed.session_date,
-        &parsed.laps,
-    )?;
+    let session_id = db.insert_session(&path_str, hash, &session)?;
     info!(
         "Stored session {} ({} laps) in {} ms",
         session_id,
@@ -61,14 +52,14 @@ pub fn import_ibt_file(
     })
 }
 
-pub async fn parse_ibt_file(path: &Path) -> Result<(ParsedSession, String, u128)> {
+pub async fn parse_ibt_file(path: &Path) -> Result<(AnalyzedSession, String, u128)> {
     parse_ibt_file_with_progress(path, None).await
 }
 
 pub async fn parse_ibt_file_with_progress(
     path: &Path,
     progress: Option<ProgressCallback>,
-) -> Result<(ParsedSession, String, u128)> {
+) -> Result<(AnalyzedSession, String, u128)> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || parse_ibt_file_fast(&path, progress))
         .await
@@ -78,7 +69,7 @@ pub async fn parse_ibt_file_with_progress(
 pub fn parse_ibt_file_fast(
     path: &Path,
     progress: Option<ProgressCallback>,
-) -> Result<(ParsedSession, String, u128)> {
+) -> Result<(AnalyzedSession, String, u128)> {
     let started = Instant::now();
     let hash = file_identity_hash(path)?;
 
@@ -99,13 +90,14 @@ pub fn parse_ibt_file_fast(
 
     report_progress(&progress, 5.0, format!("Reading {total_frames} frames..."));
 
-    let session = parse_session_info(&reader, path)?;
-
-    let track = session.weekend_info.track_display_name.clone();
-    let car = extract_car_name(&session);
-    let session_date = extract_session_date(path);
-    let sector_boundaries = extract_sectors(&session);
-    let session_labels = build_session_labels(&session);
+    let session_info = parse_session_info(&reader, path)?;
+    let meta = SessionMeta {
+        track: session_info.weekend_info.track_display_name.clone(),
+        car: extract_car_name(&session_info),
+        session_date: extract_session_date(path),
+        sector_boundaries: extract_sectors(&session_info),
+        session_labels: build_session_labels(&session_info),
+    };
 
     let extractor = FastFrameExtractor::from_schema(reader.variables())?;
 
@@ -117,11 +109,7 @@ pub fn parse_ibt_file_fast(
         let idx = frames.len();
         if idx > 0 && idx % progress_interval == 0 {
             let pct = 5.0 + (idx as f64 / total_frames as f64) * 60.0;
-            report_progress(
-                &progress,
-                pct,
-                format!("Reading frames... {idx}/{total_frames}"),
-            );
+            report_progress(&progress, pct, format!("Reading frames... {idx}/{total_frames}"));
         }
         frames.push(extractor.extract(&frame_data));
     }
@@ -131,14 +119,15 @@ pub fn parse_ibt_file_fast(
         read_start.elapsed().as_millis()
     );
 
-    report_progress(&progress, 70.0, format!("Analyzing {} laps...", frames.len()));
+    report_progress(&progress, 70.0, format!("Analyzing {} frames...", frames.len()));
 
     let analyze_start = Instant::now();
-    let analyzed = analyze_session(frames, sector_boundaries, session_labels);
+    let analyzed = analyze_session(frames, &meta);
     info!(
         "Analyzed {} laps across {} iRacing sub-sessions in {} ms",
-        analyzed.len(),
+        analyzed.laps.len(),
         analyzed
+            .laps
             .iter()
             .map(|l| l.session_num)
             .collect::<HashSet<_>>()
@@ -151,16 +140,7 @@ pub fn parse_ibt_file_fast(
     let elapsed_ms = started.elapsed().as_millis();
     info!("IBT import parse total: {} ms for {}", elapsed_ms, path.display());
 
-    Ok((
-        ParsedSession {
-            track,
-            car,
-            session_date,
-            laps: analyzed,
-        },
-        hash,
-        elapsed_ms,
-    ))
+    Ok((analyzed, hash, elapsed_ms))
 }
 
 fn parse_session_info(reader: &IbtReader, path: &Path) -> Result<SessionInfo> {
@@ -171,7 +151,8 @@ fn parse_session_info(reader: &IbtReader, path: &Path) -> Result<SessionInfo> {
         }
     }
 
-    let data = std::fs::read(path).with_context(|| format!("re-read IBT for session YAML: {}", path.display()))?;
+    let data = std::fs::read(path)
+        .with_context(|| format!("re-read IBT for session YAML: {}", path.display()))?;
     let header = reader.header();
     if header.session_info_len <= 0 {
         anyhow::bail!("IBT contains no session info block");
@@ -197,24 +178,31 @@ fn report_progress(progress: &Option<ProgressCallback>, pct: f64, message: impl 
 pub fn save_parsed_ibt(
     db: &crate::storage::Database,
     path: &Path,
-    parsed: ParsedSession,
+    session: AnalyzedSession,
     hash: &str,
     elapsed_ms: u128,
 ) -> Result<ImportResult> {
     let path_str = path.to_string_lossy().to_string();
-    if db.hash_exists(hash)? || db.path_exists(&path_str)? {
-        info!("Skipping already-imported IBT: {}", path.display());
+    if let Some(session_id) = db
+        .find_session_id_by_hash(hash)?
+        .or(db.find_session_id_by_path(&path_str)?)
+    {
+        info!(
+            "Skipping already-imported IBT: {} (session {session_id})",
+            path.display()
+        );
         return Ok(ImportResult {
-            session_id: 0,
+            session_id,
             lap_count: 0,
             elapsed_ms: 0,
             skipped: true,
         });
     }
-    import_ibt_file(db, path, parsed, hash, elapsed_ms)
+    import_ibt_file(db, path, session, hash, elapsed_ms)
 }
 
-/// Fast dedup key — avoids reading the entire IBT twice (IbtReader already loads it).
+/// Fast dedup key from path + size + mtime (not a content SHA-256 of the IBT bytes).
+/// Avoids reading the entire IBT twice (`IbtReader` already loads it).
 pub fn file_identity_hash(path: &Path) -> Result<String> {
     let meta = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
     let modified = meta
@@ -271,12 +259,14 @@ fn extract_car_name(session: &SessionInfo) -> String {
     "Unknown Car".into()
 }
 
+/// Sector split lines from the session YAML. Empty when the file provides none —
+/// we do not invent equal-thirds boundaries.
 fn extract_sectors(session: &SessionInfo) -> Vec<SectorBoundary> {
     let Some(split) = &session.split_time_info else {
-        return default_sectors();
+        return Vec::new();
     };
     let Some(sectors) = &split.sectors else {
-        return default_sectors();
+        return Vec::new();
     };
 
     sectors
@@ -288,19 +278,6 @@ fn extract_sectors(session: &SessionInfo) -> Vec<SectorBoundary> {
             })
         })
         .collect()
-}
-
-fn default_sectors() -> Vec<SectorBoundary> {
-    vec![
-        SectorBoundary {
-            sector_num: 1,
-            start_pct: 0.33,
-        },
-        SectorBoundary {
-            sector_num: 2,
-            start_pct: 0.66,
-        },
-    ]
 }
 
 fn extract_session_date(path: &Path) -> String {

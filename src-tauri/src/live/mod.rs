@@ -1,7 +1,11 @@
-//! Live iRacing telemetry: connection loop, snapshot, sectors, competitors.
+﻿//! Live iRacing telemetry: connection loop, snapshot, sectors, competitors.
 mod car_idx_frame;
 mod competitors;
+mod lap_signals;
 mod pack;
+mod player_frame;
+mod sector_state;
+mod session_meta;
 mod snapshot;
 mod tracker;
 
@@ -19,25 +23,31 @@ use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use crate::analysis::types::SectorBoundary;
-use crate::analysis::sector_splitter::normalize_sector_boundaries;
 use crate::commands::AppState;
-use crate::ingest::frame::AnalysisFrame;
+use crate::telemetry::SectorBoundary;
 
 use self::car_idx_frame::CarIdxFrame;
+use self::competitors::lap_seconds_to_ms;
+use self::lap_signals::include_in_stats_live;
+use self::player_frame::AnalysisFrame;
+use self::sector_state::{extract_sector_boundaries, normalize_sector_boundaries, region_starts};
 use self::tracker::LiveTracker;
 
 /// How far back we look for IBT files to auto-import when a live session ends.
 const POST_SESSION_IBT_MAX_AGE_SECS: u64 = 600;
+/// Wait this long after a frame-stream drop before treating it as a real session
+/// end. Brief SDK reconnects within this window keep traffic history and skip
+/// premature IBT import.
+const SESSION_END_DEBOUNCE: Duration = Duration::from_secs(12);
 
 pub struct LiveService {
     pub status: Mutex<LiveStatus>,
     pub snapshot: Mutex<LiveSnapshot>,
-    /// Lap numbers completed while side-by-side with another car. Accumulated
-    /// across the live session and flushed into the post-session standings
-    /// snapshot on disconnect.
+    pub session_meta: Mutex<Option<crate::audio::SessionMeta>>,
+    /// Lap numbers completed while side-by-side with another car.
     pub traffic_laps: Mutex<Vec<i32>>,
     cancel: Mutex<Option<CancellationToken>>,
+    demo_cancel: Mutex<Option<CancellationToken>>,
 }
 
 impl LiveService {
@@ -45,17 +55,22 @@ impl LiveService {
         Self {
             status: Mutex::new(LiveStatus::default()),
             snapshot: Mutex::new(LiveSnapshot::default()),
+            session_meta: Mutex::new(None),
             traffic_laps: Mutex::new(Vec::new()),
             cancel: Mutex::new(None),
+            demo_cancel: Mutex::new(None),
         }
     }
 
     pub fn is_running(&self) -> bool {
-        self.cancel.lock().is_some()
+        self.cancel.lock().is_some() || self.demo_cancel.lock().is_some()
     }
 
     pub fn stop(&self) {
         if let Some(token) = self.cancel.lock().take() {
+            token.cancel();
+        }
+        if let Some(token) = self.demo_cancel.lock().take() {
             token.cancel();
         }
         *self.status.lock() = LiveStatus {
@@ -65,8 +80,12 @@ impl LiveService {
     }
 
     pub fn start(self: &Arc<Self>, app: AppHandle, state: Arc<AppState>) {
-        if self.is_running() {
+        if self.cancel.lock().is_some() {
             return;
+        }
+        // Prefer real iRacing over demo when both requested.
+        if let Some(token) = self.demo_cancel.lock().take() {
+            token.cancel();
         }
         let token = CancellationToken::new();
         *self.cancel.lock() = Some(token.clone());
@@ -82,48 +101,69 @@ impl LiveService {
         });
     }
 
-    /// Save a snapshot of the final standings (plus traffic laps) so the
-    /// post-session coach can compare the player against the field.
-    fn persist_standings(&self, state: &Arc<AppState>) {
-        let snap = self.snapshot.lock().clone();
-        if snap.track.is_empty() || snap.competitors.is_empty() {
+    /// Publish a synthetic [`LiveSnapshot`] at 10 Hz without iRacing (HUD / coach smoke test).
+    pub fn start_demo(self: &Arc<Self>, app: AppHandle) {
+        if self.is_running() {
             return;
         }
-        let traffic_laps = self.traffic_laps.lock().clone();
-        let competitors = snap
-            .competitors
-            .iter()
-            .filter(|c| c.position > 0 || c.best_lap_ms.is_some())
-            .map(|c| crate::storage::CompetitorStanding {
-                position: c.position,
-                class_position: c.class_position,
-                car_number: c.car_number.clone(),
-                driver_name: c.driver_name.clone(),
-                class_id: c.class_id,
-                class_color: c.class_color.clone(),
-                best_lap_ms: c.best_lap_ms,
-                is_player: c.is_player,
-            })
-            .collect();
-        let now = chrono::Utc::now().to_rfc3339();
-        let standings = crate::storage::SessionStandings {
-            id: 0,
-            session_id: None,
-            track: snap.track.clone(),
-            session_type: snap.session_type.clone(),
-            session_date: now.clone(),
-            session_fastest_ms: snap.session_fastest_lap_ms,
-            player_best_ms: snap.best_lap_ms,
-            player_position: snap.player_position,
-            player_class_position: snap.player_class_position,
-            competitors,
-            traffic_laps,
-            created_at: now,
+        let token = CancellationToken::new();
+        *self.demo_cancel.lock() = Some(token.clone());
+        *self.status.lock() = LiveStatus {
+            state: LiveConnectionState::Connected,
+            message: "Demo clock (no iRacing)".into(),
         };
-        if let Err(e) = state.db.lock().insert_standings(&standings) {
-            warn!("Failed to persist standings snapshot: {e:#}");
-        } else {
-            info!("Saved post-session standings snapshot for {}", snap.track);
+
+        let service = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            let mut tick: u64 = 0;
+            let mut interval = tokio::time::interval(Duration::from_millis(100));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            while !token.is_cancelled() {
+                interval.tick().await;
+                tick = tick.wrapping_add(1);
+                let t = tick as f64 * 0.1;
+                let lap = ((t / 90.0) as i32) + 1;
+                let lap_frac = (t % 90.0) / 90.0;
+                let snap = LiveSnapshot {
+                    track: "Demo Track".into(),
+                    car: "Demo Car".into(),
+                    session_type: "Practice".into(),
+                    lap,
+                    lap_time_ms: (t % 90.0) * 1000.0,
+                    last_lap_ms: if lap > 1 { Some(89_500.0) } else { None },
+                    last_lap_valid: lap > 1,
+                    best_lap_ms: if lap > 1 { Some(88_200.0) } else { None },
+                    delta_to_best_ms: Some(((t % 90.0) - 88.2) * 1000.0),
+                    fuel_level: (40.0 - t * 0.02).max(5.0) as f32,
+                    speed: (40.0 + (t * 0.7).sin() * 15.0) as f32,
+                    lap_dist_pct: lap_frac as f32,
+                    current_sector: ((lap_frac * 3.0) as i32).clamp(1, 3),
+                    sector_boundaries: vec![0.0, 0.33, 0.66, 1.0],
+                    on_track: true,
+                    pits_open: true,
+                    player_position: Some(3),
+                    player_class_position: Some(2),
+                    pack_state: PackState::Clear,
+                    ..Default::default()
+                };
+                *service.snapshot.lock() = snap.clone();
+                let status = service.status.lock().clone();
+                let _ = app.emit("live-telemetry", &snap);
+                let _ = app.emit("live-status", &status);
+            }
+            *service.demo_cancel.lock() = None;
+        });
+    }
+
+    pub fn stop_demo(&self) {
+        if let Some(token) = self.demo_cancel.lock().take() {
+            token.cancel();
+        }
+        if self.cancel.lock().is_none() {
+            *self.status.lock() = LiveStatus {
+                state: LiveConnectionState::Disconnected,
+                message: "Demo clock stopped".into(),
+            };
         }
     }
 
@@ -134,7 +174,6 @@ impl LiveService {
         };
     }
 
-    /// Sleep for `dur` unless cancelled. Returns true if cancelled.
     async fn sleep_or_cancel(cancel: &CancellationToken, dur: Duration) -> bool {
         tokio::select! {
             _ = cancel.cancelled() => true,
@@ -142,16 +181,25 @@ impl LiveService {
         }
     }
 
-    /// Outer reconnect loop: keeps trying to connect to iRacing with exponential
-    /// backoff and recovers from dropped frame streams without manual restart.
     async fn run_loop(self: Arc<Self>, app: AppHandle, state: Arc<AppState>, cancel: CancellationToken) {
         info!("Starting live telemetry monitor");
         let min_backoff = Duration::from_secs(1);
         let max_backoff = Duration::from_secs(5);
         let mut backoff = min_backoff;
         let mut attempted = false;
+        let mut pending_session_end: Option<std::time::Instant> = None;
+        let mut last_track = String::new();
 
         while !cancel.is_cancelled() {
+            if let Some(ended_at) = pending_session_end {
+                if ended_at.elapsed() >= SESSION_END_DEBOUNCE {
+                    info!("Session end debounce elapsed — scanning IBT");
+                    spawn_post_session_import(app.clone(), Arc::clone(&state));
+                    pending_session_end = None;
+                    self.traffic_laps.lock().clear();
+                }
+            }
+
             if attempted {
                 self.set_status(
                     LiveConnectionState::Reconnecting,
@@ -173,18 +221,47 @@ impl LiveService {
             };
 
             attempted = true;
-            let received = self.run_session(&app, &state, &connection, &cancel).await;
-            if received {
-                self.persist_standings(&state);
-            }
+            let preserve_traffic = pending_session_end
+                .map(|t| t.elapsed() < SESSION_END_DEBOUNCE)
+                .unwrap_or(false);
+            let result = self
+                .run_session(&app, &state, &connection, &cancel, preserve_traffic)
+                .await;
+
             if cancel.is_cancelled() {
+                if result.had_frames || pending_session_end.is_some() {
+                    spawn_post_session_import(app.clone(), Arc::clone(&state));
+                }
                 break;
             }
 
-            // A clean session (frames seen) means iRacing was healthy; reset backoff
-            // so the next reconnect is quick.
-            if received {
+            if result.had_frames {
                 backoff = min_backoff;
+                if preserve_traffic {
+                    info!("Reconnected within debounce — prior stream end treated as transport blip");
+                }
+
+                let track_changed = !last_track.is_empty()
+                    && !result.track.is_empty()
+                    && last_track != result.track;
+                if !result.track.is_empty() {
+                    last_track = result.track.clone();
+                }
+
+                if track_changed {
+                    info!("Track changed across reconnect — finalizing previous session");
+                    spawn_post_session_import(app.clone(), Arc::clone(&state));
+                    pending_session_end = None;
+                    self.traffic_laps.lock().clear();
+                } else if result.stream_ended {
+                    pending_session_end = Some(std::time::Instant::now());
+                    info!(
+                        "Frame stream ended; deferring session finalize for {:?}",
+                        SESSION_END_DEBOUNCE
+                    );
+                } else {
+                    pending_session_end = None;
+                }
             }
 
             self.set_status(
@@ -192,6 +269,9 @@ impl LiveService {
                 "iRacing session ended — waiting to reconnect...",
             );
             if Self::sleep_or_cancel(&cancel, backoff).await {
+                if pending_session_end.is_some() {
+                    spawn_post_session_import(app.clone(), Arc::clone(&state));
+                }
                 break;
             }
             backoff = (backoff * 2).min(max_backoff);
@@ -200,35 +280,36 @@ impl LiveService {
         info!("Live monitor stopped");
     }
 
-    /// Run a single connection until the frame stream ends or we are cancelled.
-    /// Returns true if at least one frame was received during this session.
     async fn run_session(
         &self,
         app: &AppHandle,
         state: &Arc<AppState>,
         connection: &LiveConnection,
         cancel: &CancellationToken,
-    ) -> bool {
+        preserve_traffic: bool,
+    ) -> SessionRunResult {
         let mut frame_stream = connection.subscribe::<AnalysisFrame>(UpdateRate::Max(10));
         let mut car_idx_stream = connection.subscribe::<CarIdxFrame>(UpdateRate::Max(4));
         let mut session_stream = Box::pin(connection.session_updates());
 
         let mut tracker = LiveTracker::new();
         let mut sector_bounds: Vec<SectorBoundary> = Vec::new();
+        let mut prev_sector_bounds: Vec<SectorBoundary> = Vec::new();
         let mut got_frame = false;
         let mut ever_got_frame = false;
         let mut latest_car_idx: Option<CarIdxFrame> = None;
         let mut tracked_lap = 0;
         let mut current_lap_in_traffic = false;
 
-        // Fresh connection: clear any traffic laps from a previous session.
-        self.traffic_laps.lock().clear();
+        if !preserve_traffic {
+            self.traffic_laps.lock().clear();
+        }
 
-        // Session YAML may already be parsed before we subscribe; pick it up now
-        // so track/car/roster are populated on the first frame.
         if let Some(session) = connection.current_session() {
             sector_bounds = extract_sector_boundaries(&session);
+            log_sector_bounds_if_changed(&session, &sector_bounds, &mut prev_sector_bounds, "loaded");
             tracker.set_session_meta(&session);
+            *self.session_meta.lock() = Some(session_meta::build_session_meta(&session));
         }
 
         let mut emit_tick = tokio::time::interval(Duration::from_millis(100));
@@ -238,16 +319,27 @@ impl LiveService {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     info!("Live monitor cancelled");
-                    return ever_got_frame;
+                    return SessionRunResult {
+                        had_frames: ever_got_frame,
+                        stream_ended: false,
+                        track: tracker.track().to_string(),
+                    };
                 }
                 session = session_stream.next() => {
                     if let Some(session) = session {
                         sector_bounds = extract_sector_boundaries(&session);
+                        log_sector_bounds_if_changed(
+                            &session,
+                            &sector_bounds,
+                            &mut prev_sector_bounds,
+                            "updated",
+                        );
                         let prev_track = tracker.track().to_string();
                         tracker.set_session_meta(&session);
-                        // New track means a new session: drop carried-over deltas/bests.
+                        *self.session_meta.lock() = Some(session_meta::build_session_meta(&session));
                         if !prev_track.is_empty() && prev_track != tracker.track() {
                             info!("Track changed ({prev_track} -> {}), resetting tracker", tracker.track());
+                            spawn_post_session_import(app.clone(), Arc::clone(state));
                             tracker.reset_session();
                             tracker.set_session_meta(&session);
                             self.traffic_laps.lock().clear();
@@ -274,16 +366,12 @@ impl LiveService {
                                 }
                             }
                             self.set_status(LiveConnectionState::Connected, "Receiving telemetry");
-                            let bounds = normalize_sector_boundaries(&sector_bounds);
-                            if let Some(car_idx) = &latest_car_idx {
-                                tracker.note_iracing_lap_ok(car_idx.completed_lap_ok());
-                            }
-                            let mut snap = tracker.snapshot_from_frame(&f, &bounds);
+                            let bounds = &sector_bounds;
+                            let mut snap = tracker.snapshot_from_frame(&f, bounds);
                             if let Some(car_idx) = &latest_car_idx {
                                 merge_car_idx(&mut snap, &tracker, car_idx);
                             }
 
-                            // Record laps that were run side-by-side with traffic.
                             if snap.pack_state.is_traffic() {
                                 current_lap_in_traffic = true;
                             }
@@ -299,10 +387,11 @@ impl LiveService {
                         }
                         None => {
                             warn!("Live frame stream ended");
-                            if ever_got_frame {
-                                spawn_post_session_import(app.clone(), Arc::clone(state));
-                            }
-                            return ever_got_frame;
+                            return SessionRunResult {
+                                had_frames: ever_got_frame,
+                                stream_ended: true,
+                                track: tracker.track().to_string(),
+                            };
                         }
                     }
                 }
@@ -319,11 +408,35 @@ impl LiveService {
     }
 }
 
-/// Merge multi-car and session-wide telemetry from the CarIdx stream into the
-/// snapshot built from the player's frame.
+struct SessionRunResult {
+    had_frames: bool,
+    stream_ended: bool,
+    track: String,
+}
+
+fn log_sector_bounds_if_changed(
+    session: &SessionInfo,
+    bounds: &[SectorBoundary],
+    prev: &mut Vec<SectorBoundary>,
+    event: &str,
+) {
+    if bounds == *prev {
+        return;
+    }
+    if let Some(raw) = session.split_time_info.as_ref().and_then(|s| s.sectors.as_ref()) {
+        info!(
+            raw_sectors = ?raw.iter().map(|s| (s.sector_num, s.sector_start_pct)).collect::<Vec<_>>(),
+            region_starts = ?region_starts(bounds),
+            splits = ?normalize_sector_boundaries(bounds),
+            "Sector boundaries {event} from session YAML"
+        );
+    } else {
+        info!("Sector boundaries suppressed: no SplitTimeInfo.Sectors in session YAML");
+    }
+    *prev = bounds.to_vec();
+}
+
 fn merge_car_idx(snap: &mut LiveSnapshot, tracker: &LiveTracker, frame: &CarIdxFrame) {
-    // Prefer the roster's player index; fall back to the telemetry value before
-    // the session YAML has been parsed.
     let player_car_idx = if tracker.player_car_idx() >= 0 {
         tracker.player_car_idx()
     } else {
@@ -351,11 +464,28 @@ fn merge_car_idx(snap: &mut LiveSnapshot, tracker: &LiveTracker, frame: &CarIdxF
     snap.session_time_remain_s = (frame.session_time_remain >= 0.0).then_some(frame.session_time_remain);
     snap.pits_open = frame.pits_open;
     snap.on_track = frame.on_track;
+
+    if let Some(ms) = lap_seconds_to_ms(Some(frame.current_lap_time)) {
+        snap.lap_time_ms = ms;
+    }
+    snap.last_lap_ms = lap_seconds_to_ms(Some(frame.player_last_lap_time));
+    snap.best_lap_ms = lap_seconds_to_ms(Some(frame.player_best_lap_time));
+    if frame.delta_best_ok {
+        snap.delta_to_best_ms = Some(frame.delta_best as f64 * 1000.0);
+    }
+    if frame.delta_last_ok {
+        snap.delta_to_last_ms = Some(frame.delta_last as f64 * 1000.0);
+    }
+
+    if let Some(flying) = tracker.last_finished_flying() {
+        snap.last_lap_valid = include_in_stats_live(
+            flying,
+            tracker.last_finished_completed(),
+            frame.completed_lap_ok(),
+        );
+    }
 }
 
-/// After a live session ends, scan the telemetry folder for recently written IBT
-/// files and import any not yet in the database. Complements the filesystem
-/// watcher, which can miss `Create` events when iRacing writes via OneDrive.
 fn spawn_post_session_import(app: AppHandle, state: Arc<AppState>) {
     tauri::async_runtime::spawn(async move {
         let dir = crate::ingest::default_telemetry_dir();
@@ -379,29 +509,9 @@ fn spawn_post_session_import(app: AppHandle, state: Arc<AppState>) {
             if !recent {
                 continue;
             }
-            // run_import skips files already imported (hash/path check), so this is
-            // safe to call on every recent file.
             if let Err(e) = crate::ingest::run_import(&app, &state, path.clone()).await {
                 warn!("Post-session import of {} failed: {e:#}", path.display());
             }
         }
     });
-}
-
-fn extract_sector_boundaries(session: &SessionInfo) -> Vec<SectorBoundary> {
-    let Some(split) = &session.split_time_info else {
-        return Vec::new();
-    };
-    let Some(sectors) = &split.sectors else {
-        return Vec::new();
-    };
-    sectors
-        .iter()
-        .filter_map(|s| {
-            Some(SectorBoundary {
-                sector_num: s.sector_num?,
-                start_pct: s.sector_start_pct?,
-            })
-        })
-        .collect()
 }

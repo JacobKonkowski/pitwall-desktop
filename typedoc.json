@@ -1,6 +1,6 @@
-{
+﻿{
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["src/lib/api.ts", "src/lib/types.ts"],
+  "entryPoints": ["src/shared/api.ts", "src/shared/types.ts"],
   "out": "docs/.api-out/ts",
   "excludePrivate": true,
   "excludeInternal": true,

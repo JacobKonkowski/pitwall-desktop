@@ -1,3 +1,5 @@
+//! SQLite persistence for analyzed sessions.
+
 pub mod db;
 pub mod models;
 

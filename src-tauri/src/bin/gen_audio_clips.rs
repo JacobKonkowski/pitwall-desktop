@@ -1,4 +1,4 @@
-//! Dev-only: batch-export coach WAV clips from `scripts/audio-phrases.txt`.
+﻿//! Dev-only: batch-export coach WAV clips from `scripts/audio-phrases.txt`.
 //!
 //! **Not invoked by the PitWall app at runtime.** Use while developing to bake
 //! neural WinRT speech into committed WAV files.

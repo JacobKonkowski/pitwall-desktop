@@ -8,7 +8,7 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 
 **Context:** iRacing exposes a sector marker at the start/finish line that does not represent a timed sector.
 
-**Decision:** Both live (`tracker.rs`) and post-session (`sector_splitter.rs`) skip sector 0 crossings at 0% lap distance.
+**Decision:** Both live (`tracker.rs`) and post-session (`analysis/sectors.rs`) skip sector 0 crossings at 0% lap distance.
 
 **Consequences:** S1/S2/S3 align with in-sim sector times; no spurious sub-second "sector" at lap start.
 
@@ -44,13 +44,13 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 
 ---
 
-## Path B: clips for fixed phrases, WinRT for numbers
+## Clips for fixed phrases, WinRT for numbers
 
-**Context:** Neural TTS in-process adds latency, GPU/CPU load, and packaging complexity during a race.
+**Context:** Heavy in-process synthesis adds latency and packaging complexity during a race.
 
-**Decision:** Ship WAV clips for flags/pack/fuel phrases; WinRT synthesizes only dynamic numbers/strings at runtime. Neural voices used only in `gen-audio-clips` at dev time.
+**Decision:** Ship WAV clips for flags/pack/fuel phrases; WinRT synthesizes only dynamic numbers/strings at runtime. Offline clip bake uses `gen-audio-clips` at dev time.
 
-**Consequences:** Predictable latency; voice quality depends on committed WAVs; no ONNX in the hot path.
+**Consequences:** Predictable latency; voice quality depends on committed WAVs.
 
 ---
 
@@ -71,16 +71,6 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 **Decision:** Seqlock protocol in `shm.rs` / `pitwall_vr_shm.h` — reader retries on torn reads.
 
 **Consequences:** No mutex in the compositor hot path; occasional retry on conflict.
-
----
-
-## Standings link by track + recency
-
-**Context:** Live disconnect and IBT import are separate events with no shared session ID from iRacing.
-
-**Decision:** Match `session_standings` to imported IBT by track name and import time window.
-
-**Consequences:** Occasional mismatch if multiple sessions same track same day; good enough for amateur coaching.
 
 ---
 

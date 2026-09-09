@@ -1,28 +1,30 @@
 //! PitWall Desktop — Tauri backend library.
 //!
-//! Modules: [`commands`] (IPC), [`ingest`], [`analysis`], [`live`], [`audio`], [`vr`], [`storage`], [`settings`].
+//! Layered core: [`telemetry`] -> [`analysis`] -> [`ingest`]/[`storage`] ->
+//! [`commands`]. Live telemetry, Path B audio coach, and native OpenXR VR are
+//! restored for the usable rebuild milestone (no desktop overlay window, no Ollama).
 pub mod analysis;
 pub mod audio;
-pub mod coach;
 pub mod commands;
 pub mod ingest;
 pub mod live;
-pub mod overlay;
 pub mod settings;
 pub mod storage;
+pub mod telemetry;
 pub mod vr;
 
 use std::sync::Arc;
 
-use commands::AppState;
+use crate::commands::AppState;
 use ingest::start_watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("pitwall_desktop_lib=info,pitwall=warn")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("pitwall_desktop_lib=info,pitwall=warn")
+            }),
         )
         .try_init();
 
@@ -39,26 +41,27 @@ pub fn run() {
             commands::list_sessions,
             commands::get_session,
             commands::get_lap_traces,
-            commands::get_fuel_summary,
-            commands::get_tire_summary,
+            commands::compare_laps,
             commands::import_ibt,
             commands::import_folder_cmd,
             commands::check_iracing_config_cmd,
             commands::get_import_status,
             commands::pick_ibt_file,
             commands::clear_database_cmd,
+            commands::delete_session_cmd,
             commands::start_live_monitor,
             commands::stop_live_monitor,
             commands::get_live_status,
             commands::get_live_snapshot,
-            commands::get_coach_report,
-            commands::get_session_standings,
-            commands::generate_coach_summary,
+            commands::start_demo_clock,
+            commands::stop_demo_clock,
             commands::get_settings,
             commands::save_settings_cmd,
-            commands::open_desktop_overlay_cmd,
-            commands::close_desktop_overlay_cmd,
-            commands::is_desktop_overlay_open_cmd,
+            commands::start_audio_coach,
+            commands::stop_audio_coach,
+            commands::get_audio_coach_status,
+            commands::get_audio_coach_message,
+            commands::test_audio_coach,
             commands::start_vr_overlay,
             commands::stop_vr_overlay,
             commands::get_vr_overlay_status,
@@ -69,10 +72,6 @@ pub fn run() {
             commands::get_vr_layer_diagnostics,
             commands::check_vr_hud_health,
             commands::open_vr_hud_preview_cmd,
-            commands::start_audio_coach,
-            commands::stop_audio_coach,
-            commands::get_audio_coach_status,
-            commands::get_audio_coach_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

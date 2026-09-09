@@ -1,8 +1,21 @@
+//! SQLite storage. Persists [`AnalyzedSession`] products and serves read models.
+//!
+//! Schema is versioned via `PRAGMA user_version`. The lap analysis rewrite is
+//! schema **v2**: the laps table now stores raw iRacing facts (`_OK` flags,
+//! pit-road samples, distance coverage) instead of a `valid` flag or `lap_kind`.
+//! Opening an older database drops the analysis tables and requires a reimport.
+
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::PathBuf;
 
+use crate::analysis::{
+    clear_sticky_times_in_place, is_phantom_lap, pace_eligible_from, AnalyzedSession, TracePoint,
+};
+
 use super::models::*;
+
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
@@ -25,8 +38,13 @@ CREATE TABLE IF NOT EXISTS laps (
     iracing_lap INTEGER NOT NULL DEFAULT 0,
     lap_number INTEGER NOT NULL,
     lap_time_ms REAL,
-    valid INTEGER NOT NULL DEFAULT 1,
-    lap_kind TEXT NOT NULL DEFAULT 'flying',
+    delta_best_ok INTEGER,
+    delta_session_best_ok INTEGER,
+    on_pit_road_start INTEGER NOT NULL DEFAULT 0,
+    on_pit_road_end INTEGER NOT NULL DEFAULT 0,
+    lap_dist_pct_min REAL,
+    lap_dist_pct_max REAL,
+    pace_eligible INTEGER NOT NULL DEFAULT 0,
     fuel_start REAL,
     fuel_used REAL,
     avg_speed REAL,
@@ -56,25 +74,9 @@ CREATE TABLE IF NOT EXISTS lap_traces (
     steering REAL NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS session_standings (
-    id INTEGER PRIMARY KEY,
-    session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
-    track TEXT NOT NULL DEFAULT '',
-    session_type TEXT NOT NULL DEFAULT '',
-    session_date TEXT NOT NULL DEFAULT '',
-    session_fastest_ms REAL,
-    player_best_ms REAL,
-    player_position INTEGER,
-    player_class_position INTEGER,
-    competitors_json TEXT NOT NULL DEFAULT '[]',
-    traffic_laps_json TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL
-);
-
 CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(session_id);
 CREATE INDEX IF NOT EXISTS idx_sectors_lap ON sectors(lap_id);
 CREATE INDEX IF NOT EXISTS idx_traces_lap ON lap_traces(lap_id);
-CREATE INDEX IF NOT EXISTS idx_standings_session ON session_standings(session_id);
 ";
 
 pub struct Database {
@@ -88,21 +90,29 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(&path).context("open sqlite database")?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
-        conn.execute_batch(SCHEMA)?;
-        migrate_schema(&conn)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
+        Self::migrate(&conn)?;
         Ok(Self { conn })
     }
 
-    fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
-        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            if row.get::<_, String>(1)? == column {
-                return Ok(true);
-            }
+    /// Version-gated migration. Anything older than the current lap-analysis
+    /// schema is dropped and recreated (the source IBT files can be reimported).
+    fn migrate(conn: &Connection) -> Result<()> {
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version < SCHEMA_VERSION {
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS session_standings;
+                 DROP TABLE IF EXISTS lap_traces;
+                 DROP TABLE IF EXISTS sectors;
+                 DROP TABLE IF EXISTS laps;
+                 DROP TABLE IF EXISTS sessions;",
+            )?;
+            conn.execute_batch(SCHEMA)?;
+            conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
+        } else {
+            conn.execute_batch(SCHEMA)?;
         }
-        Ok(false)
+        Ok(())
     }
 
     pub fn hash_exists(&self, hash: &str) -> Result<bool> {
@@ -123,44 +133,74 @@ impl Database {
         Ok(count > 0)
     }
 
+    /// Look up an existing session by file identity hash (path+size+mtime key).
+    pub fn find_session_id_by_hash(&self, hash: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT id FROM sessions WHERE file_hash = ?1 LIMIT 1",
+                params![hash],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Look up an existing session by absolute IBT path.
+    pub fn find_session_id_by_path(&self, path: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT id FROM sessions WHERE ibt_path = ?1 LIMIT 1",
+                params![path],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Persist an analyzed session and all of its laps/sectors/traces.
     pub fn insert_session(
         &self,
         ibt_path: &str,
         file_hash: &str,
-        track: &str,
-        car: &str,
-        session_date: &str,
-        laps: &[StoredLap],
+        session: &AnalyzedSession,
     ) -> Result<i64> {
         let imported_at = chrono::Utc::now().to_rfc3339();
-        let valid_laps: Vec<_> = laps.iter().filter(|l| l.valid && l.lap_time_ms.is_some()).collect();
-        let best_lap_ms = valid_laps
-            .iter()
-            .filter_map(|l| l.lap_time_ms)
-            .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let lap_count = laps.len() as i32;
+        let best_lap_ms = session.best_lap_ms();
+        let lap_count = session.laps.len() as i32;
 
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO sessions (ibt_path, file_hash, track, car, session_date, lap_count, best_lap_ms, imported_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![ibt_path, file_hash, track, car, session_date, lap_count, best_lap_ms, imported_at],
+            params![
+                ibt_path,
+                file_hash,
+                session.track,
+                session.car,
+                session.session_date,
+                lap_count,
+                best_lap_ms,
+                imported_at
+            ],
         )?;
         let session_id = tx.last_insert_rowid();
 
         let mut lap_stmt = tx.prepare(
-            "INSERT INTO laps (session_id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            "INSERT INTO laps (
+                session_id, session_num, session_type, iracing_lap, lap_number, lap_time_ms,
+                delta_best_ok, delta_session_best_ok, on_pit_road_start, on_pit_road_end,
+                lap_dist_pct_min, lap_dist_pct_max, pace_eligible,
+                fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         )?;
-        let mut sector_stmt = tx.prepare(
-            "INSERT INTO sectors (lap_id, sector_num, time_ms) VALUES (?1, ?2, ?3)",
-        )?;
+        let mut sector_stmt =
+            tx.prepare("INSERT INTO sectors (lap_id, sector_num, time_ms) VALUES (?1, ?2, ?3)")?;
         let mut trace_stmt = tx.prepare(
             "INSERT INTO lap_traces (lap_id, dist_pct, speed, throttle, brake, gear, steering)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
 
-        for lap in laps {
+        for lap in &session.laps {
             lap_stmt.execute(params![
                 session_id,
                 lap.session_num,
@@ -168,8 +208,13 @@ impl Database {
                 lap.iracing_lap,
                 lap.lap_number,
                 lap.lap_time_ms,
-                lap.valid as i32,
-                lap.lap_kind.as_str(),
+                lap.delta_best_ok.map(|b| b as i32),
+                lap.delta_session_best_ok.map(|b| b as i32),
+                lap.on_pit_road_start as i32,
+                lap.on_pit_road_end as i32,
+                lap.lap_dist_pct_min as f64,
+                lap.lap_dist_pct_max as f64,
+                lap.pace_eligible() as i32,
                 lap.fuel_start,
                 lap.fuel_used,
                 lap.avg_speed,
@@ -183,7 +228,6 @@ impl Database {
             for (sector_num, time_ms) in &lap.sectors {
                 sector_stmt.execute(params![lap_id, sector_num, time_ms])?;
             }
-
             for point in &lap.traces {
                 trace_stmt.execute(params![
                     lap_id,
@@ -204,110 +248,23 @@ impl Database {
         Ok(session_id)
     }
 
-    /// Remove all imported sessions and related lap data.
     pub fn clear_all(&self) -> Result<usize> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
+        let count: i64 =
+            self.conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
         self.conn.execute_batch(
             "DELETE FROM lap_traces;
              DELETE FROM sectors;
              DELETE FROM laps;
-             DELETE FROM sessions;
-             DELETE FROM session_standings;",
+             DELETE FROM sessions;",
         )?;
         Ok(count as usize)
     }
 
-    /// Persist a post-session standings snapshot. Returns the new row id.
-    pub fn insert_standings(&self, standings: &SessionStandings) -> Result<i64> {
-        let competitors_json = serde_json::to_string(&standings.competitors)?;
-        let traffic_laps_json = serde_json::to_string(&standings.traffic_laps)?;
-        self.conn.execute(
-            "INSERT INTO session_standings (
-                session_id, track, session_type, session_date, session_fastest_ms,
-                player_best_ms, player_position, player_class_position,
-                competitors_json, traffic_laps_json, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![
-                standings.session_id,
-                standings.track,
-                standings.session_type,
-                standings.session_date,
-                standings.session_fastest_ms,
-                standings.player_best_ms,
-                standings.player_position,
-                standings.player_class_position,
-                competitors_json,
-                traffic_laps_json,
-                standings.created_at,
-            ],
-        )?;
-        Ok(self.conn.last_insert_rowid())
-    }
-
-    /// Link the most recent unlinked standings snapshot for the same track to a
-    /// freshly imported IBT session, so the post-session view can show the field.
-    pub fn link_standings_to_session(&self, session_id: i64) -> Result<bool> {
-        let track: String = match self.conn.query_row(
-            "SELECT track FROM sessions WHERE id = ?1",
-            params![session_id],
-            |row| row.get(0),
-        ) {
-            Ok(t) => t,
-            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
-            Err(e) => return Err(e.into()),
-        };
-
-        let standings_id: Option<i64> = self
+    pub fn delete_session(&self, session_id: i64) -> Result<bool> {
+        let affected = self
             .conn
-            .query_row(
-                "SELECT id FROM session_standings
-                 WHERE session_id IS NULL AND track = ?1
-                 ORDER BY created_at DESC LIMIT 1",
-                params![track],
-                |row| row.get(0),
-            )
-            .ok();
-
-        if let Some(id) = standings_id {
-            self.conn.execute(
-                "UPDATE session_standings SET session_id = ?1 WHERE id = ?2",
-                params![session_id, id],
-            )?;
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
-    pub fn get_standings_for_session(&self, session_id: i64) -> Result<Option<SessionStandings>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, session_id, track, session_type, session_date, session_fastest_ms,
-                    player_best_ms, player_position, player_class_position,
-                    competitors_json, traffic_laps_json, created_at
-             FROM session_standings WHERE session_id = ?1
-             ORDER BY created_at DESC LIMIT 1",
-        )?;
-        let mut rows = stmt.query(params![session_id])?;
-        let Some(row) = rows.next()? else {
-            return Ok(None);
-        };
-        let competitors_json: String = row.get(9)?;
-        let traffic_laps_json: String = row.get(10)?;
-        Ok(Some(SessionStandings {
-            id: row.get(0)?,
-            session_id: row.get(1)?,
-            track: row.get(2)?,
-            session_type: row.get(3)?,
-            session_date: row.get(4)?,
-            session_fastest_ms: row.get(5)?,
-            player_best_ms: row.get(6)?,
-            player_position: row.get(7)?,
-            player_class_position: row.get(8)?,
-            competitors: serde_json::from_str(&competitors_json).unwrap_or_default(),
-            traffic_laps: serde_json::from_str(&traffic_laps_json).unwrap_or_default(),
-            created_at: row.get(11)?,
-        }))
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?;
+        Ok(affected > 0)
     }
 
     pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
@@ -315,27 +272,27 @@ impl Database {
             "SELECT id, ibt_path, track, car, session_date, lap_count, best_lap_ms, imported_at
              FROM sessions ORDER BY imported_at DESC",
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(SessionSummary {
-                id: row.get(0)?,
-                ibt_path: row.get(1)?,
-                track: row.get(2)?,
-                car: row.get(3)?,
-                session_date: row.get(4)?,
-                lap_count: row.get(5)?,
-                best_lap_ms: row.get(6)?,
-                imported_at: row.get(7)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        let rows = stmt.query_map([], row_to_session_summary)?;
+        let mut sessions = rows.collect::<Result<Vec<_>, _>>()?;
+        // Align list cards with display cleanup (phantoms / sticky / coverage).
+        for session in &mut sessions {
+            let mut laps = self.load_lap_summaries(session.id)?;
+            apply_lap_display_cleanup(&mut laps);
+            session.lap_count = laps.len() as i32;
+            session.best_lap_ms = best_pace_eligible_ms(&laps);
+        }
+        Ok(sessions)
     }
 
     pub fn get_session(&self, session_id: i64) -> Result<Option<SessionDetail>> {
-        let session = match self.get_session_summary(session_id)? {
+        let mut session = match self.get_session_summary(session_id)? {
             Some(s) => s,
             None => return Ok(None),
         };
-        let laps = self.get_laps_for_session(session_id, session.best_lap_ms)?;
+        let laps = self.get_laps_for_session(session_id)?;
+        // Refresh summary fields from cleaned display rows (covers pre-cleanup imports).
+        session.lap_count = laps.len() as i32;
+        session.best_lap_ms = best_pace_eligible_ms(&laps);
         Ok(Some(SessionDetail { session, laps }))
     }
 
@@ -345,29 +302,21 @@ impl Database {
              FROM sessions WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![session_id])?;
-        if let Some(row) = rows.next()? {
-            Ok(Some(SessionSummary {
-                id: row.get(0)?,
-                ibt_path: row.get(1)?,
-                track: row.get(2)?,
-                car: row.get(3)?,
-                session_date: row.get(4)?,
-                lap_count: row.get(5)?,
-                best_lap_ms: row.get(6)?,
-                imported_at: row.get(7)?,
-            }))
-        } else {
-            Ok(None)
+        match rows.next()? {
+            Some(row) => Ok(Some(row_to_session_summary(row)?)),
+            None => Ok(None),
         }
     }
 
-    fn get_laps_for_session(&self, session_id: i64, _best_lap_ms: Option<f64>) -> Result<Vec<LapSummary>> {
+    fn load_lap_summaries(&self, session_id: i64) -> Result<Vec<LapSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, session_num, session_type, iracing_lap, lap_number, lap_time_ms, valid, lap_kind, fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp
+            "SELECT id, session_num, session_type, iracing_lap, lap_number, lap_time_ms,
+                    delta_best_ok, delta_session_best_ok, on_pit_road_start, on_pit_road_end,
+                    lap_dist_pct_min, lap_dist_pct_max, pace_eligible,
+                    fuel_start, fuel_used, avg_speed, lf_temp, rf_temp, lr_temp, rr_temp
              FROM laps WHERE session_id = ?1 ORDER BY session_num, lap_number",
         )?;
         let rows = stmt.query_map(params![session_id], |row| {
-            let lap_kind_str: String = row.get(7)?;
             Ok(LapSummary {
                 id: row.get(0)?,
                 session_num: row.get(1)?,
@@ -375,24 +324,36 @@ impl Database {
                 iracing_lap: row.get(3)?,
                 lap_number: row.get(4)?,
                 lap_time_ms: row.get(5)?,
-                valid: row.get::<_, i32>(6)? != 0,
-                lap_kind: LapKind::from_str(&lap_kind_str).unwrap_or(LapKind::Flying),
-                fuel_start: row.get(8)?,
-                fuel_used: row.get(9)?,
-                avg_speed: row.get(10)?,
-                lf_temp: row.get(11)?,
-                rf_temp: row.get(12)?,
-                lr_temp: row.get(13)?,
-                rr_temp: row.get(14)?,
+                delta_best_ok: row.get::<_, Option<i64>>(6)?.map(|v| v != 0),
+                delta_session_best_ok: row.get::<_, Option<i64>>(7)?.map(|v| v != 0),
+                on_pit_road_start: row.get::<_, i64>(8)? != 0,
+                on_pit_road_end: row.get::<_, i64>(9)? != 0,
+                lap_dist_pct_min: row.get(10)?,
+                lap_dist_pct_max: row.get(11)?,
+                pace_eligible: row.get::<_, i64>(12)? != 0,
+                fuel_start: row.get(13)?,
+                fuel_used: row.get(14)?,
+                avg_speed: row.get(15)?,
+                lf_temp: row.get(16)?,
+                rf_temp: row.get(17)?,
+                lr_temp: row.get(18)?,
+                rr_temp: row.get(19)?,
                 sectors: Vec::new(),
                 delta_to_best_ms: None,
             })
         })?;
-        let mut laps: Vec<LapSummary> = rows.collect::<Result<Vec<_>, _>>()?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
 
-        let mut best_by_subsession: std::collections::HashMap<i32, f64> = std::collections::HashMap::new();
+    fn get_laps_for_session(&self, session_id: i64) -> Result<Vec<LapSummary>> {
+        let mut laps = self.load_lap_summaries(session_id)?;
+        apply_lap_display_cleanup(&mut laps);
+
+        // Fastest pace-eligible lap per sub-session sets the delta baseline.
+        let mut best_by_subsession: std::collections::HashMap<i32, f64> =
+            std::collections::HashMap::new();
         for lap in &laps {
-            if lap.valid {
+            if lap.pace_eligible {
                 if let Some(lt) = lap.lap_time_ms {
                     best_by_subsession
                         .entry(lap.session_num)
@@ -407,10 +368,9 @@ impl Database {
         }
 
         for lap in &mut laps {
-            // Only valid laps get a delta to best; invalid out/pit/partial laps
-            // would otherwise show a misleading gap against the valid-only baseline.
-            lap.delta_to_best_ms = match (lap.valid, lap.lap_time_ms, best_by_subsession.get(&lap.session_num)) {
-                (true, Some(lt), Some(best)) if lt > 0.0 && *best > 0.0 => Some(lt - best),
+            lap.delta_to_best_ms = match (lap.lap_time_ms, best_by_subsession.get(&lap.session_num))
+            {
+                (Some(lt), Some(best)) if lt > 0.0 && *best > 0.0 => Some(lt - best),
                 _ => None,
             };
             lap.sectors = self.get_sectors(lap.id)?;
@@ -439,89 +399,111 @@ impl Database {
                 params![lap_id],
                 |row| row.get(0),
             )?;
-            let mut stmt = self.conn.prepare(
-                "SELECT dist_pct, speed, throttle, brake, gear, steering
-                 FROM lap_traces WHERE lap_id = ?1 ORDER BY dist_pct",
-            )?;
-            let points = stmt
-                .query_map(params![lap_id], |row| {
-                    Ok(TracePoint {
-                        dist_pct: row.get(0)?,
-                        speed: row.get(1)?,
-                        throttle: row.get(2)?,
-                        brake: row.get(3)?,
-                        gear: row.get(4)?,
-                        steering: row.get(5)?,
-                    })
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
             traces.push(LapTrace {
                 lap_id: *lap_id,
                 lap_number,
-                points,
+                points: self.get_trace_points(*lap_id)?,
             });
         }
         Ok(traces)
     }
 
-    pub fn get_fuel_summary(&self, session_id: i64) -> Result<FuelSummary> {
-        let detail = self
-            .get_session(session_id)?
-            .ok_or_else(|| anyhow::anyhow!("session not found"))?;
-        let mut laps = Vec::new();
-        let mut prev_remaining: Option<f64> = None;
-
-        for lap in &detail.laps {
-            if !lap.valid {
-                continue;
-            }
-            if let (Some(fuel_start), Some(fuel_used)) = (lap.fuel_start, lap.fuel_used) {
-                let fuel_remaining = fuel_start - fuel_used;
-                let laps_remaining_estimate = if fuel_used > 0.01 {
-                    Some(fuel_remaining / fuel_used)
-                } else {
-                    prev_remaining
-                };
-                prev_remaining = laps_remaining_estimate;
-                laps.push(FuelLapSummary {
-                    lap_number: lap.lap_number,
-                    fuel_used,
-                    fuel_remaining,
-                    laps_remaining_estimate,
-                });
-            }
-        }
-
-        Ok(FuelSummary {
-            laps,
-            tank_capacity: detail.laps.first().and_then(|l| l.fuel_start),
-        })
-    }
-
-    pub fn get_tire_summary(&self, session_id: i64) -> Result<TireSummary> {
-        let detail = self
-            .get_session(session_id)?
-            .ok_or_else(|| anyhow::anyhow!("session not found"))?;
-        let laps = detail
-            .laps
-            .iter()
-            .filter(|lap| lap.valid)
-            .filter_map(|lap| {
-                Some(TireLapSummary {
-                    lap_number: lap.lap_number,
-                    lf_temp: lap.lf_temp?,
-                    rf_temp: lap.rf_temp?,
-                    lr_temp: lap.lr_temp?,
-                    rr_temp: lap.rr_temp?,
+    fn get_trace_points(&self, lap_id: i64) -> Result<Vec<TracePoint>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT dist_pct, speed, throttle, brake, gear, steering
+             FROM lap_traces WHERE lap_id = ?1 ORDER BY dist_pct",
+        )?;
+        let points = stmt
+            .query_map(params![lap_id], |row| {
+                Ok(TracePoint {
+                    dist_pct: row.get(0)?,
+                    speed: row.get(1)?,
+                    throttle: row.get(2)?,
+                    brake: row.get(3)?,
+                    gear: row.get(4)?,
+                    steering: row.get(5)?,
                 })
-            })
-            .collect();
-
-        Ok(TireSummary {
-            laps,
-            note: "Tire wear updates on some cars only after pit stops. Temps are lap averages.".into(),
-        })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(points)
     }
+
+    /// Data needed to compare a single lap: `(lap_time_ms, sectors, traces)`.
+    pub fn get_lap_compare_data(
+        &self,
+        lap_id: i64,
+    ) -> Result<(Option<f64>, Vec<(i32, f64)>, Vec<TracePoint>)> {
+        let lap_time_ms: Option<f64> = self.conn.query_row(
+            "SELECT lap_time_ms FROM laps WHERE id = ?1",
+            params![lap_id],
+            |row| row.get(0),
+        )?;
+        let sectors = self
+            .get_sectors(lap_id)?
+            .into_iter()
+            .map(|s| (s.sector_num, s.time_ms))
+            .collect();
+        let traces = self.get_trace_points(lap_id)?;
+        Ok((lap_time_ms, sectors, traces))
+    }
+}
+
+fn apply_lap_display_cleanup(laps: &mut Vec<LapSummary>) {
+    laps.retain(|l| {
+        let max = l.lap_dist_pct_max.unwrap_or(0.0) as f32;
+        !is_phantom_lap(l.iracing_lap, max)
+    });
+
+    {
+        use std::collections::HashMap;
+        let mut counters: HashMap<i32, i32> = HashMap::new();
+        for lap in laps.iter_mut() {
+            let n = counters.entry(lap.session_num).or_insert(0);
+            *n += 1;
+            lap.lap_number = *n;
+        }
+    }
+
+    clear_sticky_times_in_place(
+        laps,
+        |l| l.session_num,
+        |l| l.lap_time_ms,
+        |l, t| l.lap_time_ms = t,
+        |l| l.lap_dist_pct_max.unwrap_or(0.0) as f32,
+        |l| l.delta_best_ok,
+        |l| l.delta_session_best_ok,
+    );
+
+    for lap in laps.iter_mut() {
+        let max = lap.lap_dist_pct_max.unwrap_or(0.0) as f32;
+        lap.pace_eligible = pace_eligible_from(
+            lap.lap_time_ms,
+            lap.delta_best_ok,
+            lap.delta_session_best_ok,
+            max,
+        );
+    }
+}
+
+fn best_pace_eligible_ms(laps: &[LapSummary]) -> Option<f64> {
+    laps.iter()
+        .filter(|l| l.pace_eligible)
+        .filter_map(|l| l.lap_time_ms)
+        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+
+fn row_to_session_summary(row: &rusqlite::Row) -> rusqlite::Result<SessionSummary> {
+    Ok(SessionSummary {
+        id: row.get(0)?,
+        ibt_path: row.get(1)?,
+        track: row.get(2)?,
+        car: row.get(3)?,
+        session_date: row.get(4)?,
+        lap_count: row.get(5)?,
+        best_lap_ms: row.get(6)?,
+        imported_at: row.get(7)?,
+    })
 }
 
 pub fn db_path() -> PathBuf {
@@ -529,53 +511,4 @@ pub fn db_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join("pitwall-desktop")
         .join("pitwall.db")
-}
-
-fn migrate_schema(conn: &Connection) -> Result<()> {
-    if !Database::table_has_column(conn, "laps", "session_num")? {
-        conn.execute_batch(
-            "
-        CREATE TABLE laps_migrated (
-            id INTEGER PRIMARY KEY,
-            session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-            session_num INTEGER NOT NULL DEFAULT 0,
-            session_type TEXT NOT NULL DEFAULT '',
-            iracing_lap INTEGER NOT NULL DEFAULT 0,
-            lap_number INTEGER NOT NULL,
-            lap_time_ms REAL,
-            valid INTEGER NOT NULL DEFAULT 1,
-            lap_kind TEXT NOT NULL DEFAULT 'flying',
-            fuel_start REAL,
-            fuel_used REAL,
-            avg_speed REAL,
-            lf_temp REAL,
-            rf_temp REAL,
-            lr_temp REAL,
-            rr_temp REAL,
-            UNIQUE(session_id, session_num, lap_number)
-        );
-        INSERT INTO laps_migrated (
-            id, session_id, session_num, session_type, iracing_lap, lap_number,
-            lap_time_ms, valid, fuel_start, fuel_used, avg_speed,
-            lf_temp, rf_temp, lr_temp, rr_temp
-        )
-        SELECT
-            id, session_id, 0, '', lap_number, lap_number,
-            lap_time_ms, valid, fuel_start, fuel_used, avg_speed,
-            lf_temp, rf_temp, lr_temp, rr_temp
-        FROM laps;
-        DROP TABLE laps;
-        ALTER TABLE laps_migrated RENAME TO laps;
-        CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(session_id);
-        ",
-        )?;
-    }
-
-    if !Database::table_has_column(conn, "laps", "lap_kind")? {
-        conn.execute_batch(
-            "ALTER TABLE laps ADD COLUMN lap_kind TEXT NOT NULL DEFAULT 'flying';",
-        )?;
-    }
-
-    Ok(())
 }

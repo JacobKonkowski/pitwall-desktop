@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 
 /// Spotter pack state derived from the iRacing `CarLeftRight` enum.
 ///

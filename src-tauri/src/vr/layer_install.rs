@@ -1,4 +1,4 @@
-//! Register / unregister the PitWall OpenXR API layer with the loader.
+﻿//! Register / unregister the PitWall OpenXR API layer with the loader.
 //!
 //! OpenXR discovers implicit API layers from per-user registry values under
 //! `HKCU\Software\Khronos\OpenXR\1\ApiLayers\Implicit`: the value name is the
@@ -33,8 +33,6 @@ pub struct VrLayerDiagnostics {
     pub iracing_open_xr_vr_mode: Option<u32>,
     /// Whether OpenXREnabled=1 in rendererDX11OpenXR.ini.
     pub iracing_open_xr_enabled: Option<bool>,
-    /// Milliseconds since the layer last composited a frame (None if never).
-    pub layer_heartbeat_age_ms: Option<u64>,
     pub issues: Vec<String>,
 }
 
@@ -43,19 +41,6 @@ pub fn dll_path_for_manifest(manifest_path: &str) -> PathBuf {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(LAYER_DLL)
-}
-
-pub fn layer_heartbeat_path() -> Option<PathBuf> {
-    std::env::var("LOCALAPPDATA")
-        .ok()
-        .map(|base| PathBuf::from(base).join("pitwall-desktop").join("layer-heartbeat"))
-}
-
-pub fn layer_heartbeat_age_ms(now_ms: u64) -> Option<u64> {
-    let path = layer_heartbeat_path()?;
-    let text = std::fs::read_to_string(path).ok()?;
-    let ts: u64 = text.trim().parse().ok()?;
-    Some(now_ms.saturating_sub(ts))
 }
 
 pub fn iracing_documents_dir() -> Option<PathBuf> {
@@ -108,8 +93,8 @@ fn append_iracing_vr_issues(issues: &mut Vec<String>) -> (Option<u32>, Option<bo
         if open_xr_vr_mode == Some(0) {
             issues.push(
                 "iRacing rendererDX11OpenXR.ini last saved VRMode=0 (often stale while the sim \
-                 is running). If you are already in OpenXR VR, ignore this — check whether the \
-                 layer heartbeat is updating instead."
+                 is running). If you are already in OpenXR VR, ignore this — confirm telemetry \
+                 publishing and that the layer is installed instead."
                     .into(),
             );
         }
@@ -268,33 +253,6 @@ mod windows_impl {
         Ok(())
     }
 
-    // #region agent log
-    fn agent_debug_install(message: &str, data: serde_json::Value) {
-        use std::io::Write;
-        let ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let line = serde_json::json!({
-            "sessionId": "68355e",
-            "hypothesisId": "H",
-            "location": "vr/layer_install.rs:install_layer",
-            "message": message,
-            "data": data,
-            "timestamp": ms,
-            "runId": "pre-fix",
-            "source": "pitwall",
-        });
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(r"c:\Users\jrkon\Projects\pitwall-desktop\debug-68355e.log")
-        {
-            let _ = writeln!(f, "{line}");
-        }
-    }
-    // #endregion
-
     /// Full path to our registered manifest, if any.
     pub fn find_registered_manifest_path() -> Option<String> {
         let Some(hkey) = open_key(KEY_READ) else {
@@ -379,7 +337,8 @@ mod windows_impl {
             );
         } else if let Some(reg) = &registered_path {
             let reg_lower = reg.to_lowercase();
-            if reg_lower.contains("\\target\\") || reg_lower.contains("\\pitwall-desktop\\openxr-layer\\build\\")
+            if reg_lower.contains("\\target\\")
+                || reg_lower.contains("\\pitwall-desktop\\openxr-layer\\build\\")
             {
                 issues.push(
                     "Layer registry points at a PitWall build folder. Click Reinstall VR layer \
@@ -395,9 +354,7 @@ mod windows_impl {
 
         let layer_disabled = env_var_set("PITWALL_VR_DISABLE");
         if layer_disabled {
-            issues.push(
-                "PITWALL_VR_DISABLE is set — unset it and restart iRacing.".into(),
-            );
+            issues.push("PITWALL_VR_DISABLE is set — unset it and restart iRacing.".into());
         }
 
         if let Ok(text) = std::fs::read_to_string(check_manifest) {
@@ -412,13 +369,10 @@ mod windows_impl {
 
         let (iracing_open_xr_vr_mode, iracing_open_xr_enabled) =
             append_iracing_vr_issues(&mut issues);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let layer_heartbeat_age_ms = layer_heartbeat_age_ms(now);
 
-        let ready = registered && dll_present && !layer_disabled
+        let ready = registered
+            && dll_present
+            && !layer_disabled
             && !issues.iter().any(|i| i.contains("PITWALL_VR_ENABLE"));
 
         VrLayerDiagnostics {
@@ -430,7 +384,6 @@ mod windows_impl {
             ready,
             iracing_open_xr_vr_mode,
             iracing_open_xr_enabled,
-            layer_heartbeat_age_ms,
             issues,
         }
     }
@@ -466,18 +419,6 @@ mod windows_impl {
         }
 
         register_manifest(&reg_path)?;
-
-        // #region agent log
-        agent_debug_install(
-            "layer installed to staged path",
-            serde_json::json!({
-                "registryPath": reg_path,
-                "stagedDll": staged_manifest.parent().unwrap_or(Path::new(".")).join(LAYER_DLL).display().to_string(),
-                "removedOldRegistrations": old_regs,
-            }),
-        );
-        // #endregion
-
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 # Live telemetry
 
-The live monitor connects to iRacing shared memory, builds a rich `LiveSnapshot`, emits UI events at 10 Hz, publishes VR shared memory at ~30 Hz, and persists standings on disconnect.
+The live monitor connects to iRacing shared memory, builds a rich `LiveSnapshot`, emits UI events at 10 Hz, publishes VR shared memory at ~30 Hz, and can auto-import a recent IBT after disconnect.
 
 ---
 
@@ -11,7 +11,7 @@ The live monitor connects to iRacing shared memory, builds a rich `LiveSnapshot`
 1. `Pitwall::connect().await` — shared-memory connection
 2. On failure: `Reconnecting` state with exponential backoff
 3. On success: `Connected`; session intro for audio; sector boundaries from YAML
-4. On disconnect: persist standings, scan recent IBT for auto-import, reset snapshot
+4. On disconnect: scan recent IBT for auto-import, reset snapshot
 
 States (`LiveConnectionState`): `disconnected`, `waitingForSession`, `reconnecting`, `connected`, `error`.
 
@@ -30,7 +30,7 @@ States (`LiveConnectionState`): `disconnected`, `waitingForSession`, `reconnecti
 
 ## Sector tracking
 
-`LiveTracker` ([`tracker.rs`](../src-tauri/src/live/tracker.rs)) detects sector crossings by **lap distance %** edge crossing (aligned with post-session [`sector_splitter.rs`](../src-tauri/src/analysis/sector_splitter.rs)):
+`LiveTracker` ([`tracker.rs`](../src-tauri/src/live/tracker.rs)) detects sector crossings by **lap distance %** edge crossing (aligned with post-session [`analysis/sectors.rs`](../src-tauri/src/analysis/sectors.rs) / live [`sector_state.rs`](../src-tauri/src/live/sector_state.rs)):
 
 - Sector 0 at 0% is ignored
 - Sector 3 completes at lap end (not only at a YAML boundary)
@@ -51,7 +51,7 @@ Live sector times feed the audio coach and overlay widgets.
 - **Pack** — [`pack.rs`](../src-tauri/src/live/pack.rs) from `CarLeftRight` (Int32 enum)
 - **Flags, incidents, fuel, session remain, pits open, on-track**
 
-Traffic laps (side-by-side per `pack_state.is_traffic()`) accumulate for the standings snapshot.
+Traffic laps (side-by-side per `pack_state.is_traffic()`) accumulate for live coaching context.
 
 ---
 
@@ -67,9 +67,9 @@ UI can also poll `get_live_snapshot` on demand.
 
 ---
 
-## Standings persistence
+## Demo clock
 
-On disconnect, `persist_standings` writes `session_standings` (field JSON + traffic lap list). When an IBT from the same track imports within a recency window, the row links to `sessions.id` for coach `session_pace` / `traffic_pace` insights.
+`start_demo_clock` / `stop_demo_clock` drive a synthetic clock on the Live page for offline UI / SHM test-pattern checks without iRacing.
 
 ---
 

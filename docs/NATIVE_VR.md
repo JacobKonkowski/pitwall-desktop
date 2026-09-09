@@ -1,12 +1,8 @@
 # Native In-Headset VR
 
-PitWall renders its HUD **inside the headset** through its own OpenXR API layer —
-the same mechanism RaceLab VR and OpenKneeboard use — so you do not need
-OpenKneeboard, RaceLab, or SteamVR overlays to see PitWall in VR.
+PitWall’s goal for VR is a self-contained **in-headset HUD**: coach, standings, relative, and radar composited into the OpenXR frame while you drive. The desktop app publishes live data; PitWall’s OpenXR API layer draws the panels inside the iRacing OpenXR process.
 
-This reverses the June 2026 no-go in [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md).
-That document remains accurate about *why* the work is hard; this one is the
-implementation and setup guide.
+Historical design research: [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md). This guide is the current setup and architecture.
 
 ## Architecture
 
@@ -20,7 +16,7 @@ PitWall desktop (Tauri/Rust)              iRacing (OpenXR app)
                                               appends XrCompositionLayerQuad
                                                 |
                                                 v
-                                         Meta / SteamVR / VDXR runtime
+                                         OpenXR runtime (Quest Link, SteamVR OpenXR, VDXR, …)
 ```
 
 - **Producer:** [`src-tauri/src/vr/shm.rs`](../src-tauri/src/vr/shm.rs) writes a
@@ -32,17 +28,16 @@ PitWall desktop (Tauri/Rust)              iRacing (OpenXR app)
   reads the block, draws each enabled overlay with Direct2D/DirectWrite, and
   appends an `XrCompositionLayerQuad`.
 
-The HTTP HUD in [`hud_server.rs`](../src-tauri/src/vr/hud_server.rs) stays as the
-browser preview and the visual reference the Direct2D renderer mirrors. Sending
-pre-rendered pixels over shared memory (cross-process GPU texture sharing) was
-deliberately avoided in v1 for robustness; the layer draws from the snapshot.
+The HTTP HUD in [`hud_server.rs`](../src-tauri/src/vr/hud_server.rs) is the
+browser preview and the visual reference the Direct2D renderer mirrors. The layer
+draws from the shared snapshot (not pre-rendered GPU textures) for robustness.
 
 ## Why a separate native DLL
 
 A Tauri/Rust process cannot composite over another OpenXR app from the outside.
-`XR_EXTX_overlay` is unsupported on consumer runtimes, so the only viable path
-is an **implicit OpenXR API layer** loaded into the iRacing process by the
-OpenXR loader. See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md) for the full rationale.
+Consumer runtimes do not support a portable overlay extension for this use case,
+so PitWall installs an **implicit OpenXR API layer** that the loader injects into
+the iRacing process. See [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md) for the research trail.
 
 ## Build the layer
 
@@ -109,35 +104,25 @@ after installing so the loader picks up the layer.
 Set `PITWALL_VR_DISABLE=1` to bypass the layer without unregistering it. The layer
 loads automatically once registered (no extra environment variable required).
 
+**Compatibility note:** only one OpenXR API layer should composite overlays for a
+given session. If the headset stays blank or the sim fails to start, disable other
+implicit API layers, confirm iRacing is in **OpenXR** (not OpenVR), then retry.
+
 ## Quest 3 + Meta Link setup
 
 1. Connect the Quest 3 via Meta Link (or Air Link) and set iRacing to **OpenXR**.
 2. In PitWall: Settings → **VR mode: Native**, install the VR layer, start the
    in-headset HUD, then launch iRacing and get on track.
 3. Under Settings → **Overlay widgets**, enable the widgets you want and tune
-   each one's **VR height / scale / opacity**. Widgets are head-locked (no
-   recenter step, unlike the web fallback).
+   each one's **VR height / scale / opacity**. Widgets are head-locked.
 4. Choose **Field pace (coach)** (session best, optimal, or both) for the FLD/OPT
    readout on the coach widget.
 
-## Migrating off RaceLab
-
-PitWall VR is built to **replace** RaceLab VR, not sit beside it:
-
-1. Disable RaceLab's VR overlay before enabling PitWall native — only one API
-   layer compositor should be driving the same overlay surface while you test.
-2. Run PitWall native and enable the widgets you want under
-   Settings → Overlay widgets.
-3. With coach, standings, relative, and radar all available, RaceLab can be
-   uninstalled.
-
 ## Overlay widgets
 
-PitWall ships one shared widget catalog. The same enable flags and field-pace
-preference drive both the desktop pop-out and the in-headset HUD, so a widget
-you turn on appears on both surfaces. Each widget keeps separate placement per
-surface: pixel position/size on the desktop (drag and resize the panel), and a
-VR height / scale / opacity you tune under Settings → Overlay widgets.
+PitWall ships one shared widget catalog. Enable flags and field-pace preference
+drive the Live in-app preview, the native layer, and the web HUD at `:17342`.
+VR placement (height / scale / opacity) is tuned under Settings → Overlay widgets.
 
 The protocol carries four head-locked overlay slots; the slot index equals the
 widget kind, so each keeps a stable, correctly-sized swapchain:
@@ -153,21 +138,19 @@ Disabled widgets are published with `enabled = 0` and skipped by the compositor.
 The web preview renders the same four layouts
 (`/vr?layout=ironman|standings|relative|radar`).
 
-## Desktop overlay
+## In-app and web preview
 
-The desktop pop-out (Pop out overlay) is a transparent always-on-top window that
-renders the same enabled widgets with the same React components used for the
-in-app preview. Drag any widget by its top edge to move it and drag the
-bottom-right corner to resize it; positions persist per widget. Drag an empty
-area of the window to move the whole overlay. Enable or disable widgets and set
-field pace from the main window under Settings → Overlay widgets.
+Enable or disable VR widget slots and field pace from Live / settings (`overlayLayout`).
+The Live page shows an in-app coach preview; the same slot config drives the native
+layer and the browser HUD at `http://127.0.0.1:17342/vr`.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
-| HUD not visible in VR | iRacing in OpenXR mode? Layer installed and iRacing restarted? `PITWALL_VR_DISABLE` unset? |
+| HUD not visible in VR | iRacing in OpenXR mode? Layer installed and iRacing restarted? Other API layers off? `PITWALL_VR_DISABLE` unset? |
 | "VR layer not installed" persists | Run **Install VR layer** again; confirm the registry value under the Implicit ApiLayers key |
-| Black screen / crash on launch | Disable other API layers (RaceLab VR, OpenXR Toolkit) and retry to isolate load-order conflicts |
-| HUD shows but no data | Live monitor running and connected? Compositor status in the panel should read active |
-| Spotter pack line never shows | Requires the `CarLeftRight` Int32 fix (shipped) and traffic alongside you |
+| Black screen / crash on launch | Disable other implicit OpenXR API layers and retry to isolate load-order conflicts |
+| HUD shows but no data | Live monitor running? Diagnostics **write age** should stay low while HUD is started |
+| Compositor always false | Layer does not write a heartbeat file; status uses producer write age + layer installed |
+| Spotter pack line never shows | Requires on-track traffic and `CarLeftRight` mapping in `live/pack.rs` |

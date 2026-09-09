@@ -50,15 +50,16 @@ pub async fn run_import(app: &AppHandle, state: &Arc<AppState>, path: PathBuf) -
         let _ = app_progress.emit("import-status", state_progress.import_status.lock().clone());
     }) as ProgressCallback);
 
-    let (parsed, hash, elapsed_ms) = parse_ibt_file_with_progress(&path, progress)
+    let (analyzed, hash, elapsed_ms) = parse_ibt_file_with_progress(&path, progress)
         .await
         .context("parse IBT")?;
 
-    let trace_points: usize = parsed.laps.iter().map(|l| l.traces.len()).sum();
+    let trace_points: usize = analyzed.laps.iter().map(|l| l.traces.len()).sum();
+    let lap_count = analyzed.laps.len();
     info!(
         "Parsed {} — {} laps, {} trace points; saving to database",
         path.display(),
-        parsed.laps.len(),
+        lap_count,
         trace_points
     );
     set_status(
@@ -67,26 +68,21 @@ pub async fn run_import(app: &AppHandle, state: &Arc<AppState>, path: PathBuf) -
         Some(path_label.clone()),
         true,
         92.0,
-        format!("Saving {} laps to database...", parsed.laps.len()),
+        format!("Saving {lap_count} laps to database..."),
     );
 
     let state_save = state.clone();
     let path_save = path.clone();
     let result = tokio::task::spawn_blocking(move || {
         let db = state_save.db.lock();
-        save_parsed_ibt(&db, &path_save, parsed, &hash, elapsed_ms)
+        save_parsed_ibt(&db, &path_save, analyzed, &hash, elapsed_ms)
     })
     .await
     .context("save task join")??;
 
     finish_status(app, state, &result);
-    if !result.skipped {
-        // Best-effort: attach a matching live standings snapshot to this session.
-        if let Err(e) = state.db.lock().link_standings_to_session(result.session_id) {
-            info!("Standings link skipped: {e:#}");
-        }
-        let _ = app.emit("import-complete", result.session_id);
-    }
+    // Always emit so the UI can select the session (including skip-of-existing).
+    let _ = app.emit("import-complete", result.session_id);
     Ok(result)
 }
 
@@ -94,10 +90,13 @@ fn try_skip_import(state: &Arc<AppState>, path: &Path) -> Result<Option<ImportRe
     let hash = file_identity_hash(path)?;
     let path_str = path.to_string_lossy().to_string();
     let db = state.db.lock();
-    if db.hash_exists(&hash)? || db.path_exists(&path_str)? {
-        info!("Skipping already-imported IBT: {}", path.display());
+    let existing_id = db
+        .find_session_id_by_hash(&hash)?
+        .or(db.find_session_id_by_path(&path_str)?);
+    if let Some(session_id) = existing_id {
+        info!("Skipping already-imported IBT: {} (session {session_id})", path.display());
         return Ok(Some(ImportResult {
-            session_id: 0,
+            session_id,
             lap_count: 0,
             elapsed_ms: 0,
             skipped: true,

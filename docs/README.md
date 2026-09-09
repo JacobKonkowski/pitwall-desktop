@@ -1,64 +1,44 @@
-# PitWall Desktop — Documentation
+# PitWall documentation hub
 
-PitWall is a Windows Tauri app for iRacing: post-session IBT analysis, live telemetry, rule-based coaching, optional Ollama summaries, desktop overlays, native VR HUD, and a hybrid audio race engineer.
+PitWall Desktop helps you get faster in iRacing: **Analyze** your IBT telemetry after a session, and **Live** coach + HUD while you drive (voice callouts and an in-headset OpenXR panel).
 
-**Last updated:** June 2026 (v0.1.0, Path B audio).
+## Guides
 
----
+| Doc | Contents |
+|-----|----------|
+| [SETUP.md](SETUP.md) | Prerequisites, first run, race-night checklist |
+| [FEATURES.md](FEATURES.md) | What Analyze and Live do |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Import, live, audio, VR |
+| [API.md](API.md) | Tauri commands + frontend IPC (`src/shared`) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Modules, feature registry, data flow |
+| [DATA_MODEL.md](DATA_MODEL.md) | SQLite schema v2, settings |
+| [FRONTEND.md](FRONTEND.md) | `features/`, `shared/`, `widgets/`, shell |
 
-## For drivers and users
+## Deep dives
 
-| Doc | What you'll learn |
-|-----|-------------------|
-| [SETUP.md](SETUP.md) | Install, iRacing `app.ini`, first import, live monitor, VR, Ollama |
-| [FEATURES.md](FEATURES.md) | What each tab and overlay does, in plain language |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Live won't connect, silent audio, VR layer, sectors, import |
-| [COMPARISON.md](COMPARISON.md) | Live field data vs your IBT — what's possible |
-| [NATIVE_VR.md](NATIVE_VR.md) | Native in-headset HUD — build, install, Quest Link |
+| Doc | Contents |
+|-----|----------|
+| [AUDIO_COACH.md](AUDIO_COACH.md) | WAV clips + TTS, priorities, clip export |
+| [NATIVE_VR.md](NATIVE_VR.md) | OpenXR layer, shared memory, install |
+| [LIVE_TELEMETRY.md](LIVE_TELEMETRY.md) | Live service, demo clock, auto-import |
+| [COMPARISON.md](COMPARISON.md) | Live field awareness (leaderboard, gaps, pack) |
+| [ANALYSIS.md](ANALYSIS.md) | IBT pipeline, lap cleanup, pace eligibility |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev conventions |
+| [DESIGN_NOTES.md](DESIGN_NOTES.md) | Product and SDK design choices |
 
-**Quick path:** SETUP → FEATURES → drive → TROUBLESHOOTING if something breaks.
+## Historical
 
----
+| Doc | Note |
+|-----|------|
+| [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md) | Research notes that led to the native OpenXR layer. Not a setup guide. |
 
-## For contributors
+## Keep in sync when changing code
 
-| Doc | What you'll learn |
-|-----|-------------------|
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev commands, tests, CI, doc maintenance |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System map — modules, data flow, audit status |
-| [API.md](API.md) | Tauri commands, events, types (`npm run docs:api` for rustdoc + TypeDoc) |
-| [AUDIO_COACH.md](AUDIO_COACH.md) | Path B speech pipeline, messages, clip export |
-| [LIVE_TELEMETRY.md](LIVE_TELEMETRY.md) | Live loop, sectors, competitors, VR SHM |
-| [ANALYSIS.md](ANALYSIS.md) | IBT import, lap/sector pipeline, post-session coach |
-| [FRONTEND.md](FRONTEND.md) | React entry points, widgets, events |
-| [DATA_MODEL.md](DATA_MODEL.md) | SQLite schema, settings fields, on-disk paths |
-| [DESIGN_NOTES.md](DESIGN_NOTES.md) | Why we made specific technical choices |
+- Commands → `src-tauri/src/commands/mod.rs`, `src/shared/api.ts`, [API.md](API.md)
+- Types → `src/shared/types.ts`, [DATA_MODEL.md](DATA_MODEL.md)
+- Live UI → `src/features/live/LivePage.tsx`
+- Analyze UI → `src/features/analyze/*`
+- Analysis cleanup / pace rules → `src-tauri/src/analysis/cleanup.rs`, [ANALYSIS.md](ANALYSIS.md)
+- Feature list → `src/features/registry.ts`
 
-**Quick path:** CONTRIBUTING → ARCHITECTURE → area deep-dive for your change.
-
----
-
-## Other references
-
-| Location | Topic |
-|----------|-------|
-| [openxr-layer/README.md](../openxr-layer/README.md) | C++ OpenXR layer build |
-| [scripts/](../scripts/) | Audio clip generation, helpers |
-| [VR_NATIVE_SPIKE.md](VR_NATIVE_SPIKE.md) | Historical OpenXR research (see NATIVE_VR for current path) |
-
----
-
-## Keeping docs in sync
-
-When you change code, update the matching doc:
-
-| Code change | Update |
-|-------------|--------|
-| New Tauri command / event | `commands/mod.rs` doc comment, `api.ts`, **API.md** |
-| New serde / IPC type | `types.ts`, rustdoc, **DATA_MODEL.md** if persisted |
-| New `AppSettings` field | **DATA_MODEL.md**, SETUP or LivePanel if user-facing |
-| New audio message / clip | **AUDIO_COACH.md**, `scripts/audio-phrases.txt` |
-| Live telemetry field | **LIVE_TELEMETRY.md**, COMPARISON if SDK-related |
-| VR SHM layout | **NATIVE_VR.md**, `pitwall_vr_shm.h` |
-
-Run `npm run docs:api` locally after IPC changes to verify rustdoc and TypeDoc still build.
+Last updated: September 2026.

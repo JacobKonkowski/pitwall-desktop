@@ -1,73 +1,37 @@
-# Features (user guide)
+# Features
 
-What PitWall does on each tab and overlay, in plain language.
+PitWall exposes two features via `src/features/registry.ts`: **Analyze** and **Live**.
 
----
+## Analyze
 
-## Analyze tab (after the session)
+| Capability | Notes |
+|------------|--------|
+| Session browser | Lists imported IBTs; delete per session |
+| Import | File / folder pickers; folder watcher auto-import |
+| Config tip | Reminds when disk recording looks disabled |
+| Lap table | Session type grouping; sectors; `paceEligible` (official time + both `_OK` flags + near-full coverage) |
+| Compare | Two-lap traces via `compare_laps` |
+| Fuel / tire panels | From stored lap aggregates |
+| Insights strip | Deterministic client-side bullets from your laps |
 
-1. **Import telemetry** — Scan Folder, pick a file, or leave PitWall open while driving (auto-import from `Documents\iRacing\telemetry\`).
-2. **Pick a session** — Sidebar lists track, car, date, lap count.
-3. **Lap table** — Practice / qual / race groups, sector times (S1–S2–S3), delta to your best, lap kind (flying vs pit).
-4. **Compare** — Select two laps for speed / throttle / brake traces.
-5. **Fuel & tires** — Per-lap charts; tire note: some cars update wear only in pits.
-6. **Coach** — Automatic rule-based tips (consistency, weak sectors, fuel, pace vs field, traffic).
-7. **Standings** — Who you raced against, if a live snapshot linked to this IBT.
-8. **AI summary** — Optional Ollama paragraph (needs Ollama running locally).
+Phantom reset buckets and sticky duplicate lap times are cleaned in the analysis pipeline (and when loading older sessions). See [ANALYSIS.md](ANALYSIS.md).
 
----
+## Live
 
-## Live tab (in the session)
+| Capability | Notes |
+|------------|--------|
+| Live monitor | Shared-memory telemetry snapshot + status |
+| Leaderboard | Positions, best/last, gaps |
+| Coach preview | Last coach message + widget preview |
+| Audio coach | Rule engine priorities; WAV clips + WinRT TTS |
+| Test Coach | One-shot TTS path (works without WAV assets) |
+| Demo clock | Synthetic session clock / offline exercise |
+| Native VR HUD | OpenXR API layer + shared memory (default `vrMode: native`) |
+| Web HUD | HTTP server `:17342` for browser preview |
+| Layer install / diagnostics | Registry stage, DLL presence, producer write age |
 
-1. **Start live monitor** — Connects to iRacing shared memory (~10 Hz UI).
-2. **Metrics** — Lap time, deltas, sectors, fuel, temps, flags.
-3. **Leaderboard** — Overall or class view; gaps vs your pace.
-4. **Desktop overlay** — Pop-out transparent window with draggable widgets (coach, standings, relative, radar).
-5. **In-headset HUD** — Native OpenXR layer (default) or OpenKneeboard web fallback.
-6. **Audio coach** — Spoken race engineer (WAV + Windows speech). Toggle categories and chatter level in Settings.
+Overlay layout settings configure **VR widget slots** (coach / standings / relative / radar). The Live page shows an in-app coach preview; the same slot config drives the native layer and the web HUD.
 
-Settings on the Live tab control Ollama, overlay layout, VR mode, and all audio toggles.
+## Settings
 
----
-
-## Overlay widgets
-
-Four slots shared between desktop pop-out and VR:
-
-| Widget | Shows |
-|--------|-------|
-| Coach | Lap time, deltas, sector, fuel, field pace, flag badge |
-| Standings | Compact leaderboard |
-| Relative | Cars ahead/behind |
-| Radar | Pack / spotter-style view |
-
-Enable and position under **Settings → Overlay widgets**.
-
----
-
-## VR modes
-
-| Mode | What you need |
-|------|----------------|
-| **Native** (default) | OpenXR in iRacing, PitWall VR layer installed — see [NATIVE_VR.md](NATIVE_VR.md) |
-| **Web fallback** | OpenKneeboard Web Dashboard tab at `http://127.0.0.1:17342/vr` |
-
----
-
-## What PitWall does not do
-
-- MoTeC export or external telemetry services (Garage61, VRS)
-- Other drivers' sector times or traces live (iRacing SDK limit)
-- Real-time LLM coaching while driving
-- Multi-car IBT analysis in one view
-- 4-wide pack detection
-
-See [README](../README.md) out-of-scope list for future ideas.
-
----
-
-## Related docs
-
-- [SETUP.md](SETUP.md) — how to enable each feature
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — when something does not work
-- [COMPARISON.md](COMPARISON.md) — live vs post-session data
+Persisted via `get_settings` / `save_settings_cmd`. Live page exposes common audio toggles and VR actions. Full `AppSettings` includes VR mode/opacity, overlay layout, and coach chatter / category flags.

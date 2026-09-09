@@ -1,6 +1,7 @@
-//! Path B audio coach: WAV clips + WinRT TTS for dynamic numbers.
+﻿//! Path B audio coach: WAV clips + WinRT TTS for dynamic numbers.
 mod clip_phrases;
 mod coach;
+pub mod engine;
 mod manifest;
 mod phrasing;
 mod player;
@@ -10,6 +11,8 @@ mod speech;
 pub mod tts_winrt;
 
 pub use clip_phrases::load_phrases_file;
+pub use engine::{RaceContext, RaceEngine, SessionMeta, RuleSet};
+pub use speech::SpeechPlan;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,7 +29,7 @@ use coach::CoachEngine;
 use manifest::ClipManifest;
 use player::AudioPlayer;
 use queue::SpeechQueue;
-use speech::SpeechPlan;
+use speech::SpeechUnit;
 
 pub struct AudioCoachService {
     cancel: Mutex<Option<CancellationToken>>,
@@ -89,6 +92,16 @@ impl AudioCoachService {
     pub fn last_message(&self) -> String {
         self.last_message.lock().clone()
     }
+
+    /// Speak a fixed test line without requiring live iRacing.
+    pub fn speak_test(self: &Arc<Self>) {
+        let service = Arc::clone(self);
+        thread::spawn(move || {
+            if let Err(e) = run_speak_test(service) {
+                tracing::warn!("Audio coach test failed: {e:#}");
+            }
+        });
+    }
 }
 
 fn coach_clips_dir() -> PathBuf {
@@ -107,6 +120,18 @@ fn coach_clips_dir() -> PathBuf {
     dev
 }
 
+fn run_speak_test(service: Arc<AudioCoachService>) -> anyhow::Result<()> {
+    let clips_dir = coach_clips_dir();
+    let manifest = ClipManifest::load(clips_dir)?;
+    let settings = load_settings();
+    let player = AudioPlayer::new(manifest, settings.audio_coach_rate, settings.audio_coach_volume)?;
+    let plan = SpeechPlan::sequence(vec![
+        SpeechUnit::Tts("PitWall coach online.".into()),
+        SpeechUnit::Tts("Last lap, one minute twenty nine point four five two.".into()),
+    ]);
+    play(&player, &service, &plan, &settings)
+}
+
 fn run_audio_loop(
     service: Arc<AudioCoachService>,
     live: Arc<LiveService>,
@@ -120,6 +145,7 @@ fn run_audio_loop(
     let mut queue = SpeechQueue::new(3);
     let mut applied_rate = f32::NAN;
     let mut applied_volume = f32::NAN;
+    let mut applied_voice = String::new();
 
     while !cancel.is_cancelled() {
         let settings = load_settings();
@@ -128,7 +154,12 @@ fn run_audio_loop(
             &settings,
             &mut applied_rate,
             &mut applied_volume,
+            &mut applied_voice,
         );
+
+        if let Some(meta) = live.session_meta.lock().clone() {
+            engine.set_session_meta(meta);
+        }
 
         let snap = live.snapshot.lock().clone();
         if let Some(plan) = engine.poll(&snap, &settings) {
@@ -139,11 +170,12 @@ fn run_audio_loop(
             if cancel.is_cancelled() {
                 break;
             }
-            play(&player, &service, &plan)?;
+            play(&player, &service, &plan, &settings)?;
             if let Some(plan) = engine.poll(&snap, &settings) {
                 queue.push(plan.0, plan.1);
             }
-            thread::sleep(Duration::from_millis(200));
+            let gap_ms = settings.audio_inter_message_gap_ms.max(0) as u64;
+            thread::sleep(Duration::from_millis(200 + gap_ms));
             continue;
         }
 
@@ -157,18 +189,26 @@ fn apply_voice_settings(
     settings: &AppSettings,
     applied_rate: &mut f32,
     applied_volume: &mut f32,
+    applied_voice: &mut String,
 ) {
-    if (settings.audio_coach_rate - *applied_rate).abs() > f32::EPSILON {
-        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume);
+    let voice = settings.audio_coach_voice.clone();
+    if (settings.audio_coach_rate - *applied_rate).abs() > f32::EPSILON
+        || (settings.audio_coach_volume - *applied_volume).abs() > f32::EPSILON
+        || voice != *applied_voice
+    {
+        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume, &voice);
         *applied_rate = settings.audio_coach_rate;
         *applied_volume = settings.audio_coach_volume;
-    } else if (settings.audio_coach_volume - *applied_volume).abs() > f32::EPSILON {
-        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume);
-        *applied_volume = settings.audio_coach_volume;
+        *applied_voice = voice;
     }
 }
 
-fn play(player: &AudioPlayer, service: &AudioCoachService, plan: &SpeechPlan) -> anyhow::Result<()> {
+fn play(
+    player: &AudioPlayer,
+    service: &AudioCoachService,
+    plan: &SpeechPlan,
+    _settings: &AppSettings,
+) -> anyhow::Result<()> {
     let line = plan.display_text();
     tracing::info!("Audio coach: {line}");
     *service.last_message.lock() = line;
