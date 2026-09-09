@@ -61,7 +61,7 @@ jobs:
           tool: cargo-deny
 
       - name: cargo deny (licenses/advisories)
-        run: cargo deny check --workspace
+        run: cargo deny check
 
       - name: Build API docs (smoke)
         run: npm run docs:api
