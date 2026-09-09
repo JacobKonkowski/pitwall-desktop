@@ -3,6 +3,7 @@ name = "pitwall-desktop"
 version = "0.1.0"
 description = "Post-session iRacing telemetry analysis"
 authors = ["jrkon"]
+license.workspace = true
 edition = "2021"
 default-run = "pitwall-desktop"
 

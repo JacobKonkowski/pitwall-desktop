@@ -3,6 +3,7 @@ name = "pitwall-monitor"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+license.workspace = true
 description = "Desktop monitor overlay windows for PitWall widgets"
 
 [dependencies]

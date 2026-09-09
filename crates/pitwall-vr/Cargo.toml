@@ -3,6 +3,7 @@ name = "pitwall-vr"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+license.workspace = true
 description = "In-headset HUD for iRacing VR"
 
 [dependencies]

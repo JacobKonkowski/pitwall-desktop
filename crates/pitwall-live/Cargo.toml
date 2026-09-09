@@ -3,6 +3,7 @@ name = "pitwall-live"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+license.workspace = true
 description = "Live iRacing telemetry connection and snapshot"
 
 [dependencies]

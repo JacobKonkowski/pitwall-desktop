@@ -3,6 +3,7 @@ name = "pitwall-ingest"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+license.workspace = true
 description = "IBT file discovery, parsing, and import orchestration"
 
 [dependencies]
