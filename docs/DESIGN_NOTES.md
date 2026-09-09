@@ -4,23 +4,13 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 
 ---
 
-## Sector splits: iRacing SplitTimeInfo model
+## Sector 0 at 0% is ignored
 
-**Context:** iRacing session YAML lists `SplitTimeInfo.Sectors[]` with `SectorStartPct` marking where each timed region **begins** (sector 0 at 0%). Track layouts vary (3, 4, or more sectors). The previous engine capped interior splits at two, hardcoded S1–S3 in the UI, and computed lap times from `SessionTime` deltas.
+**Context:** iRacing exposes a sector marker at the start/finish line that does not represent a timed sector.
 
-**Decision:** [`sector_splitter.rs`](../src-tauri/src/analysis/sector_splitter.rs) builds region starts from YAML (includes 0%, drops ~100% finish marker), derives N sectors dynamically, and times crossings from `LapDistPct` + `SessionTime`. Display uses 1-indexed labels S1..SN. `current_sector_from_pct` follows the SDK pattern (max region where `pct > start`). When YAML has no sector data, suppress sector display (show "—") rather than guessing equal thirds. Live lap start clamps `LapDistPct > 0.9` to 0.0 when `Lap` increments before the distance wrap.
+**Decision:** Both live (`tracker.rs`) and post-session (`analysis/sectors.rs`) skip sector 0 crossings at 0% lap distance.
 
-**Consequences:** Live and IBT import share one canonical engine. Four-sector tracks (e.g. 0/26/51/69%) show S1–S4 matching in-sim timing. UI, audio coach, VR SHM, and lap table columns scale with sector count.
-
----
-
-## Live lap clock: SDK fields
-
-**Context:** Player lap time, last/best, and deltas were computed from `SessionTime` deltas in the tracker, which could drift from the in-sim timing box.
-
-**Decision:** [`CarIdxFrame`](../src-tauri/src/live/car_idx_frame.rs) subscribes to `LapCurrentLapTime`, `LapLastLapTime`, `LapBestLapTime`, `LapDeltaToBestLap`, `LapDeltaToLastLap`, and `SessionBestLapTime`. [`merge_car_idx`](../src-tauri/src/live/mod.rs) writes these into `LiveSnapshot` each tick. Sector crossing still uses `SessionTime` (SDK provides no live sector-time telemetry).
-
-**Consequences:** Live HUD matches iRacing lap clock and deltas. IBT import still uses SessionTime frame deltas (documented deviation).
+**Consequences:** S1/S2/S3 align with in-sim sector times; no spurious sub-second "sector" at lap start.
 
 ---
 
@@ -54,13 +44,13 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 
 ---
 
-## Path B: clips for fixed phrases, WinRT for numbers
+## Clips for fixed phrases, WinRT for numbers
 
-**Context:** Neural TTS in-process adds latency, GPU/CPU load, and packaging complexity during a race.
+**Context:** Heavy in-process synthesis adds latency and packaging complexity during a race.
 
-**Decision:** Ship WAV clips for flags/pack/fuel phrases; WinRT synthesizes only dynamic numbers/strings at runtime. Neural voices used only in `gen-audio-clips` at dev time.
+**Decision:** Ship WAV clips for flags/pack/fuel phrases; WinRT synthesizes only dynamic numbers/strings at runtime. Offline clip bake uses `gen-audio-clips` at dev time.
 
-**Consequences:** Predictable latency; voice quality depends on committed WAVs; no ONNX in the hot path.
+**Consequences:** Predictable latency; voice quality depends on committed WAVs.
 
 ---
 
@@ -78,19 +68,9 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 
 **Context:** Rust writer (~30 Hz) and C++ reader (per frame) share one memory block.
 
-**Decision:** Seqlock protocol in `shm.rs` / `pitwall_vr_shm.h` — reader retries on torn reads. SHM layout version 2 expands sector slots to 8.
+**Decision:** Seqlock protocol in `shm.rs` / `pitwall_vr_shm.h` — reader retries on torn reads.
 
-**Consequences:** No mutex in the compositor hot path; occasional retry on conflict. Layer and app must agree on version.
-
----
-
-## Standings link by track + recency
-
-**Context:** Live disconnect and IBT import are separate events with no shared session ID from iRacing.
-
-**Decision:** Match `session_standings` to imported IBT by track name and import time window.
-
-**Consequences:** Occasional mismatch if multiple sessions same track same day; good enough for amateur coaching.
+**Consequences:** No mutex in the compositor hot path; occasional retry on conflict.
 
 ---
 
@@ -101,38 +81,6 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 **Decision:** Mute pack, race, pace, gap, and strategy on pit road or off track; keep flags and incidents.
 
 **Consequences:** Cleaner radio; player still hears safety-critical calls in the paddock.
-
----
-
-## Lap validity model
-
-Stored DB field `valid` means **`include_in_stats`** — whether a lap counts toward coaching, session best, and sector analysis. No schema rename.
-
-| Context | Policy |
-|---------|--------|
-| **IBT import** | `lap_kind == Flying` and telemetry heuristics (frame count, pit ratio ≤15%, lap time 10s–600s, distance completion) |
-| **IBT outlier pass** | May clear `valid` on suspiciously fast incomplete **Flying** laps only |
-| **Live coach (`lastLapValid`)** | `Flying && lap_completed && iracing_ok` where `iracing_ok` = `LapDeltaToBestLap_OK && LapDeltaToSessionBestLap_OK` |
-
-**What `valid` gates:** coach insights, sector times on import, trace storage, lap table stats filters, session best lap selection.
-
-**Intentional exclusions:** pit-out, pit-in, pit-lane, and partial laps are never stats-eligible even if telemetry looks clean. Live path does not apply IBT time/pit heuristics.
-
-**Remaining deviation:** IBT import has no persisted `iracing_ok` field; validity is heuristic-only offline.
-
----
-
-## Remaining SDK deviations (documented)
-
-| Area | Behavior |
-|------|----------|
-| IBT lap times | SessionTime delta per lap bucket |
-| Lap validity (live) | `Flying + completed + LapDeltaToBest/SessionBest OK` via `include_in_stats_live` |
-| Lap validity (IBT) | `Flying + telemetry heuristics + outlier pass`; see Lap validity model |
-| `LapKind` | PitWall pit/out/partial taxonomy |
-| Flying-only sectors on import | Coaching policy |
-| Sampling | Player 10 Hz, CarIdx 4 Hz vs SDK 60 Hz |
-| Other drivers' sectors live | SDK limitation |
 
 ---
 

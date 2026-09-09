@@ -1,3 +1,5 @@
+# CI
+
 name: CI
 
 on:
@@ -22,23 +24,51 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            .
+            src-tauri
 
       - name: Install npm dependencies
         run: npm ci
 
+      - name: IPC drift check
+        run: powershell -ExecutionPolicy Bypass -File scripts/check-ipc-drift.ps1
+
+      - name: Frontend unit tests
+        run: npm test
+
       - name: Build frontend
         run: npm run build
 
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Run Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --workspace --lib
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: cargo deny (licenses/advisories)
+        run: cargo deny check
 
       - name: Build API docs (smoke)
         run: npm run docs:api
+
+      - name: Build without VR feature matrix note
+        run: cargo check -p pitwall-desktop --no-default-features
+        continue-on-error: true
 
   release:
     name: Build installer
@@ -60,7 +90,9 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            .
+            src-tauri
 
       - name: Install npm dependencies
         run: npm ci

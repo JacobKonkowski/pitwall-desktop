@@ -1,5 +1,5 @@
-import { formatLapTime } from "../lib/api";
-import type { LiveSnapshot } from "../lib/types";
+import { formatLapTime } from "../shared/format";
+import type { LiveSnapshot } from "../shared/types";
 import { sortByPosition } from "./format";
 
 interface Props {

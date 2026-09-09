@@ -1,4 +1,4 @@
-import type { CompetitorEntry, LiveSnapshot, PackState } from "../lib/types";
+import type { CompetitorEntry, LiveSnapshot, PackState } from "../shared/types";
 
 /** Signed delta in seconds, e.g. "+0.123" / "-0.080". */
 export function fmtDelta(ms: number | null | undefined): string {
@@ -56,9 +56,7 @@ export function sectorProgress(snap: LiveSnapshot, sectorNum: number): number {
   if (sector?.completed) return 100;
   if (snap.currentSector !== sectorNum) return 0;
   const bounds =
-    snap.sectorBoundaries.length >= 2
-      ? snap.sectorBoundaries
-      : [0, 0.33, 0.66, 1];
+    snap.sectorBoundaries.length >= 2 ? snap.sectorBoundaries : [0, 0.33, 0.66, 1];
   const start = bounds[sectorNum - 1] ?? 0;
   const end = bounds[sectorNum] ?? 1;
   const span = end - start;
@@ -68,9 +66,7 @@ export function sectorProgress(snap: LiveSnapshot, sectorNum: number): number {
 
 /** Competitors sorted by overall position, cars without a position last. */
 export function sortByPosition(list: CompetitorEntry[]): CompetitorEntry[] {
-  return list
-    .slice()
-    .sort((a, b) => rank(a.position) - rank(b.position));
+  return list.slice().sort((a, b) => rank(a.position) - rank(b.position));
 }
 
 function rank(position: number): number {

@@ -7,12 +7,16 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "tauri": "tauri",
-    "docs:api": "powershell -ExecutionPolicy Bypass -File scripts/build-api-docs.ps1"
+    "docs:api": "powershell -ExecutionPolicy Bypass -File scripts/build-api-docs.ps1",
+    "gen:notice": "powershell -ExecutionPolicy Bypass -File scripts/gen-notice.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-updater": "^2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^2.15.0"
@@ -24,6 +28,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "typedoc": "^0.28.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^3.2.0"
   }
 }

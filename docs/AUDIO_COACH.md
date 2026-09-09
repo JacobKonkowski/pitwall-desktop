@@ -1,6 +1,6 @@
-# Audio coach (Path B)
+# Audio coach
 
-The live audio coach speaks race-engineer callouts while you drive. **Runtime policy:** pre-recorded WAV clips for fixed phrases plus **Windows WinRT TTS** for dynamic numbers (lap times, gaps, positions). No neural models or ONNX run while iRacing is open.
+The live audio coach speaks race-engineer callouts while you drive. **Runtime policy:** pre-recorded WAV clips for fixed phrases plus **Windows WinRT TTS** for dynamic numbers (lap times, gaps, positions). That keeps latency predictable during a session; heavy voice synthesis stays in the offline clip-bake tooling.
 
 ---
 
@@ -19,12 +19,12 @@ flowchart LR
 
 | Module | Role |
 |--------|------|
-| `audio/coach.rs` | Priority logic, edge detection, session modes |
+| `audio/engine/` + `rules/*` | Priority logic, edge detection, session modes (`coach.rs` re-exports `RaceEngine`) |
 | `audio/speech.rs` | `SpeechPlan` / `SpeechUnit` (clip, TTS, sequence) |
 | `audio/queue.rs` | Serializes playback; one line at a time |
 | `audio/player.rs` | rodio WAV playback + WinRT synthesis |
 | `audio/manifest.rs` | Maps clip keys → WAV paths |
-| `audio/clip_phrases.rs` | Static phrase keys |
+| `audio/clip_phrases.rs` | Phrase file loader for clip export |
 | `audio/phrasing.rs` | Number/time formatting for TTS |
 | `audio/session_mode.rs` | Practice / qual / race behavior |
 | `audio/mod.rs` | `AudioCoachService` — 250 ms poll loop |
@@ -50,18 +50,17 @@ At most **one alert per poll** (250 ms). Highest eligible priority wins; lower p
 | Priority | Category | Examples |
 |----------|----------|----------|
 | 1 | Critical | Red, checkered, black |
-| 2 | Safety | Flags, incidents, spotter traffic + clear |
-| 3 | Race | Fuel-to-finish, low fuel, pit-this-lap |
-| 4 | Pace | Sector/lap summaries, gap summaries |
-| 5 | Strategy | Race clock, pits open, position changes |
+| 2 | Safety | Yellow (incl. waving), green, blue, incidents |
+| 3 | Pack | Car left/right, three-wide, two-wide (4 s cooldown) |
+| 4 | Race | Fuel-to-finish, low fuel, pit-this-lap |
+| 5 | Pace | Sector/lap summaries, gap summaries |
+| 6 | Strategy | Race clock, pits open, position changes |
 
-Spotter alerts use **Safety** priority (same tier as flags/incidents). Traffic speaks immediately on side change; repeats every 3 s while cars stay alongside. Clear speaks immediately when traffic drops.
+**Pit / off-track suppression:** Pack, race, pace, gap, and strategy alerts are muted on pit road or off track. Flags and incidents still announce.
 
-**Pit / off-track suppression:** Race, pace, gap, and strategy alerts are muted on pit road or off track. Flags and incidents still announce. Spotter traffic and clear are also muted on pit road.
+**Chatter level** (`audioCoachChatterLevel`): `minimal` trims pace/strategy; `verbose` allows more gap and pack-clear callouts.
 
-**Chatter level** (`audioCoachChatterLevel`): `minimal` trims pace/strategy; `verbose` allows more gap callouts.
-
-Per-category toggles in settings: pack (includes clear), flags, incidents, fuel/race, gaps, pace, strategy, race clock, pits open.
+Per-category toggles in settings: pack, flags, incidents, fuel/race, gaps, pace, strategy, race clock, pits open, pack clear.
 
 ---
 
@@ -116,7 +115,7 @@ cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine
 1. Edit [`scripts/audio-phrases.txt`](../scripts/audio-phrases.txt) (`key=spoken text`)
 2. Run the script — writes `src-tauri/resources/audio/coach/default/*.wav` + `manifest.json`
 3. Commit WAVs so release builds bundle your voice
-4. Add coach `gather_*` logic in `coach.rs` if it's a new alert type
+4. Add a rule under `audio/engine/rules/` (or extend an existing rule) if it's a new alert type
 5. Add a settings toggle if user-configurable
 
 `--engine placeholder` writes silence for CI/layout tests.
@@ -126,9 +125,9 @@ cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine
 ## How to add a new callout
 
 1. Add phrase key to `audio-phrases.txt` and regenerate clips
-2. In `coach.rs`, detect the condition in the appropriate `gather_*` function
+2. Implement detection in `audio/engine/rules/<topic>.rs` and register it in the rule set
 3. Return `(SpeechPriority, SpeechPlan)` — use `SpeechPlan::sequence` for clip + numbers
-4. Wire a settings toggle in `AppSettings` + LivePanel if needed
+4. Wire a settings toggle in `AppSettings` + `features/live/LivePage.tsx` if needed
 5. Document in this file and [COMPARISON.md](COMPARISON.md) if SDK-driven
 
 ---
@@ -141,6 +140,7 @@ cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine
 | `stop_audio_coach` | Stop queue and player |
 | `get_audio_coach_status` | Active flag + last message |
 | `get_audio_coach_message` | Last spoken line |
+| `test_audio_coach` | One-shot TTS sample (works without WAV clips) |
 
 Auto-starts when `audioCoachEnabled` is true and live monitor starts.
 

@@ -34,9 +34,14 @@ OpenXR layer build: [NATIVE_VR.md](NATIVE_VR.md) and [openxr-layer/README.md](..
 | IPC / state | `src-tauri/src/commands/mod.rs` |
 | Live telemetry | `src-tauri/src/live/` |
 | Audio coach | `src-tauri/src/audio/` |
-| IBT analysis | `src-tauri/src/analysis/`, `ingest/` |
+| Settings | `src-tauri/src/settings/` |
+| IBT analysis | `src-tauri/src/analysis/`, `ingest/`, `storage/` |
 | VR | `src-tauri/src/vr/`, `openxr-layer/` |
-| Frontend | `src/`, `src/widgets/` |
+| Frontend shell | `src/shell/`, `src/features/registry.ts` |
+| Features | `src/features/analyze/`, `src/features/live/` |
+| Shared IPC | `src/shared/` |
+| HUD widgets | `src/widgets/` |
+| Monitor host | `src/monitor/`, `crates/pitwall-monitor` |
 | Docs hub | `docs/README.md` |
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the system map.
@@ -47,7 +52,8 @@ Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the system map.
 
 - Rust modules by domain; `#[tauri::command]` handlers in `commands/mod.rs`
 - IPC JSON uses **camelCase** (`serde(rename_all = "camelCase")`)
-- TypeScript types in `src/lib/types.ts` mirror Rust structs
+- TypeScript types in `src/shared/types.ts` mirror Rust structs
+- Prefer `cargo test --manifest-path src-tauri/Cargo.toml --lib` for unit tests
 - Do not edit `.cursor/plans/*.plan.md` in PRs unless explicitly asked
 
 ---
@@ -77,8 +83,9 @@ See [AUDIO_COACH.md](AUDIO_COACH.md). Phrases in `scripts/audio-phrases.txt`; co
 | New settings field | **DATA_MODEL.md**, SETUP/LivePanel if user-facing |
 | New audio message | **AUDIO_COACH.md**, `audio-phrases.txt` |
 | Live field | **LIVE_TELEMETRY.md**, **COMPARISON.md** if SDK-related |
+| Lap cleanup / pace rules | **ANALYSIS.md**, `analysis/cleanup.rs` |
 
-Index: [docs/README.md](README.md).
+Index: [docs/README.md](README.md). Prefer goal-oriented wording (what PitWall does); mention other apps only when needed for OpenXR load-order conflicts.
 
 ---
 
@@ -88,4 +95,4 @@ Index: [docs/README.md](README.md).
 2. `src-tauri/src/commands/mod.rs`
 3. `src-tauri/src/live/mod.rs`
 4. `src-tauri/src/audio/coach.rs`
-5. `src/App.tsx` + `src/lib/api.ts`
+5. `src/shell/AppShell.tsx` + `src/shared/api.ts`

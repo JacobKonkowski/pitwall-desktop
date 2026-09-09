@@ -1,4 +1,4 @@
-import type { LiveSnapshot, WidgetKind } from "../lib/types";
+import type { LiveSnapshot, WidgetKind } from "../shared/types";
 import { CoachWidget } from "./CoachWidget";
 import { RadarWidget } from "./RadarWidget";
 import { RelativeWidget } from "./RelativeWidget";
@@ -13,7 +13,7 @@ interface WidgetProps {
   fieldPaceMode: string;
 }
 
-/** Renders the widget for a kind, shared by the desktop overlay and previews. */
+/** Renders the widget for a kind, shared by monitor windows and HUD previews. */
 export function Widget({ kind, snap, fieldPaceMode }: WidgetProps) {
   switch (kind) {
     case "standings":

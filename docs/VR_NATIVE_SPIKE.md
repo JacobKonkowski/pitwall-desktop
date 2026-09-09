@@ -1,21 +1,19 @@
-# VR Native In-Headset HUD — Spike & Decision
+# VR Native In-Headset HUD — Spike & Decision (**historical**)
 
-> **Update (June 2026):** This no-go was **reversed** on explicit product
-> direction — PitWall now ships a native OpenXR API layer to replace RaceLab VR.
-> The analysis below remains accurate about *why* the work is hard and is kept as
-> background. For the implementation, build, and setup, see
-> [NATIVE_VR.md](NATIVE_VR.md).
+> **Historical document.** PitWall’s in-headset HUD now ships via its own OpenXR
+> API layer (`vrMode: native`). Browser preview remains at `:17342`. For current
+> setup and architecture, use **[NATIVE_VR.md](NATIVE_VR.md)** only.
+>
+> The body below is research context (why a portable overlay extension was not
+> viable and why an implicit API layer was chosen). It is not product guidance.
 
-**Original status:** Decision made — No-go for a native layer right now; OpenKneeboard was the official VR HUD path.
-**Current status:** In progress — native layer is the primary VR path; OpenKneeboard is the fallback.
-**Phase:** v3 Phase 4 (research spike), superseded by native VR work
-**Last updated:** June 23, 2026
+**Phase:** v3 research spike (historical)  
+**Last updated:** September 2026 (marked historical)
 
 ## Goal
 
-Determine whether PitWall can render its HUD *inside the headset* without
-OpenKneeboard and without SteamVR — i.e. as a self-contained PitWall feature
-that draws a panel over the iRacing image in VR.
+Determine whether PitWall can render its HUD *inside the headset* as a
+self-contained feature that draws a panel over the iRacing OpenXR image in VR.
 
 Today PitWall serves its VR HUD from a local HTTP server
 ([`src-tauri/src/vr/hud_server.rs`](../src-tauri/src/vr/hud_server.rs)) at

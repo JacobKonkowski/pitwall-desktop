@@ -1,47 +1,56 @@
 //! Tauri IPC commands and shared [`AppState`].
 //!
 //! Every `#[tauri::command]` here is registered in [`crate::run`] and wrapped by
-//! [`api.ts`](../../src/lib/api.ts) on the frontend. See `docs/API.md` for the full contract.
+//! the frontend API layer. Analyze commands stay available; live / audio / VR
+//! are restored for the usable rebuild milestone.
 use std::path::PathBuf;
 use std::sync::Arc;
+
 use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::analysis::coach::build_coach_report;
+use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison};
 use crate::audio::AudioCoachService;
-use crate::coach::generate_summary;
 use crate::ingest::{
-    check_iracing_config, default_telemetry_dir, run_import,
+    check_iracing_config, default_telemetry_dir, run_import, spawn_recent_ibt_import,
+    validate_import_path, ImportHandles,
 };
-use crate::live::{LiveService, LiveSnapshot, LiveStatus};
-use crate::hotkey::sync_hotkey;
-use crate::overlay::{close_desktop_overlay, is_desktop_overlay_open, open_desktop_overlay};
+use crate::live::{LiveService, LiveSnapshot, LiveStatus, PostSessionImportFn};
+use crate::monitor::MonitorOverlayService;
 use crate::settings::{load_settings, save_settings, AppSettings};
 use crate::storage::{
-    AirDensitySummary, Database, FuelSummary, ImportStatus, IracingConfigCheck, LapTrace,
-    SessionDetail, SessionSummary, TireSummary, WeatherSummary,
+    Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail, SessionSummary,
 };
 use crate::vr::{NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus};
 
 pub struct AppState {
-    pub db: Mutex<Database>,
-    pub import_status: Mutex<ImportStatus>,
-    pub import_gate: tokio::sync::Mutex<()>,
+    pub import: ImportHandles,
     pub live: Arc<LiveService>,
-    pub vr: Arc<VrOverlayService>,
     pub audio: Arc<AudioCoachService>,
+    pub vr: Arc<VrOverlayService>,
+    pub monitor: Arc<MonitorOverlayService>,
     pub settings: Mutex<AppSettings>,
 }
 
 impl AppState {
     pub fn new() -> anyhow::Result<Self> {
+        let import = ImportHandles {
+            db: Arc::new(Mutex::new(Database::open()?)),
+            import_status: Arc::new(Mutex::new(ImportStatus::default())),
+            import_gate: Arc::new(tokio::sync::Mutex::new(())),
+        };
+        let live = Arc::new(LiveService::new());
+        let import_for_hook = import.clone();
+        let hook: PostSessionImportFn = Arc::new(move |app: AppHandle| {
+            spawn_recent_ibt_import(app, import_for_hook.clone());
+        });
+        live.set_post_session_import(hook);
         Ok(Self {
-            db: Mutex::new(Database::open()?),
-            import_status: Mutex::new(ImportStatus::default()),
-            import_gate: tokio::sync::Mutex::new(()),
-            live: Arc::new(LiveService::new()),
-            vr: Arc::new(VrOverlayService::new()),
+            import,
+            live,
             audio: Arc::new(AudioCoachService::new()),
+            vr: Arc::new(VrOverlayService::new()),
+            monitor: Arc::new(MonitorOverlayService::new()),
             settings: Mutex::new(load_settings()),
         })
     }
@@ -49,12 +58,21 @@ impl AppState {
 
 #[tauri::command]
 pub fn list_sessions(state: State<'_, Arc<AppState>>) -> Result<Vec<SessionSummary>, String> {
-    state.db.lock().list_sessions().map_err(|e| e.to_string())
+    state
+        .import
+        .db
+        .lock()
+        .list_sessions()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_session(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<Option<SessionDetail>, String> {
+pub fn get_session(
+    state: State<'_, Arc<AppState>>,
+    session_id: i64,
+) -> Result<Option<SessionDetail>, String> {
     state
+        .import
         .db
         .lock()
         .get_session(session_id)
@@ -62,48 +80,46 @@ pub fn get_session(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<O
 }
 
 #[tauri::command]
-pub fn get_lap_traces(state: State<'_, Arc<AppState>>, lap_ids: Vec<i64>) -> Result<Vec<LapTrace>, String> {
+pub fn get_lap_traces(
+    state: State<'_, Arc<AppState>>,
+    lap_ids: Vec<i64>,
+) -> Result<Vec<LapTrace>, String> {
     state
+        .import
         .db
         .lock()
         .get_lap_traces(&lap_ids)
         .map_err(|e| e.to_string())
 }
 
+/// Compare a candidate lap against a reference lap (time, sectors, aligned traces).
 #[tauri::command]
-pub fn get_fuel_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<FuelSummary, String> {
-    state
-        .db
-        .lock()
-        .get_fuel_summary(session_id)
-        .map_err(|e| e.to_string())
-}
+pub fn compare_laps(
+    state: State<'_, Arc<AppState>>,
+    candidate_lap_id: i64,
+    reference_lap_id: i64,
+) -> Result<LapComparison, String> {
+    let db = state.import.db.lock();
+    let (cand_time, cand_sectors, cand_traces) = db
+        .get_lap_compare_data(candidate_lap_id)
+        .map_err(|e| e.to_string())?;
+    let (ref_time, ref_sectors, ref_traces) = db
+        .get_lap_compare_data(reference_lap_id)
+        .map_err(|e| e.to_string())?;
 
-#[tauri::command]
-pub fn get_tire_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<TireSummary, String> {
-    state
-        .db
-        .lock()
-        .get_tire_summary(session_id)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_air_density_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<AirDensitySummary, String> {
-    state
-        .db
-        .lock()
-        .get_air_density_summary(session_id)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_weather_summary(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<WeatherSummary, String> {
-    state
-        .db
-        .lock()
-        .get_weather_summary(session_id)
-        .map_err(|e| e.to_string())
+    let candidate = CompareInput {
+        lap_id: candidate_lap_id,
+        lap_time_ms: cand_time,
+        sectors: &cand_sectors,
+        traces: &cand_traces,
+    };
+    let reference = CompareInput {
+        lap_id: reference_lap_id,
+        lap_time_ms: ref_time,
+        sectors: &ref_sectors,
+        traces: &ref_traces,
+    };
+    Ok(run_compare(&candidate, &reference))
 }
 
 #[tauri::command]
@@ -112,20 +128,20 @@ pub async fn import_ibt(
     state: State<'_, Arc<AppState>>,
     path: String,
 ) -> Result<String, String> {
-    let path_buf = PathBuf::from(&path);
-    run_import(&app, state.inner(), path_buf)
+    let path_buf = validate_import_path(&path)?;
+    run_import(&app, &state.import, path_buf)
         .await
         .map_err(|e| {
             let msg = format!("Import failed: {e:#}");
             {
-                let mut status = state.import_status.lock();
+                let mut status = state.import.import_status.lock();
                 status.active = false;
                 status.message = msg.clone();
             }
-            let _ = app.emit("import-status", state.import_status.lock().clone());
+            let _ = app.emit("import-status", state.import.import_status.lock().clone());
             msg
         })?;
-    Ok(state.import_status.lock().message.clone())
+    Ok(state.import.import_status.lock().message.clone())
 }
 
 #[tauri::command]
@@ -134,7 +150,7 @@ pub async fn import_folder_cmd(
     state: State<'_, Arc<AppState>>,
 ) -> Result<usize, String> {
     let dir = default_telemetry_dir();
-    crate::ingest::watcher::import_folder(&app, state.inner(), dir)
+    crate::ingest::import_folder(&app, &state.import, dir)
         .await
         .map_err(|e| e.to_string())
 }
@@ -146,7 +162,7 @@ pub fn check_iracing_config_cmd() -> IracingConfigCheck {
 
 #[tauri::command]
 pub fn get_import_status(state: State<'_, Arc<AppState>>) -> ImportStatus {
-    state.import_status.lock().clone()
+    state.import.import_status.lock().clone()
 }
 
 #[tauri::command]
@@ -165,12 +181,17 @@ pub fn clear_database_cmd(state: State<'_, Arc<AppState>>) -> Result<usize, Stri
     #[cfg(not(debug_assertions))]
     {
         let _ = state;
-        return Err("Clear database is only available in development builds".into());
+        Err("Clear database is only available in development builds".into())
     }
     #[cfg(debug_assertions)]
     {
-        let removed = state.db.lock().clear_all().map_err(|e| e.to_string())?;
-        let mut status = state.import_status.lock();
+        let removed = state
+            .import
+            .db
+            .lock()
+            .clear_all()
+            .map_err(|e| e.to_string())?;
+        let mut status = state.import.import_status.lock();
         *status = ImportStatus {
             active: false,
             current_file: None,
@@ -180,15 +201,29 @@ pub fn clear_database_cmd(state: State<'_, Arc<AppState>>) -> Result<usize, Stri
             } else {
                 "Database already empty".into()
             },
-            ..Default::default()
         };
         Ok(removed)
     }
 }
 
 #[tauri::command]
+pub fn delete_session_cmd(
+    state: State<'_, Arc<AppState>>,
+    session_id: i64,
+) -> Result<bool, String> {
+    state
+        .import
+        .db
+        .lock()
+        .delete_session(session_id)
+        .map_err(|e| e.to_string())
+}
+
+// --- Live -------------------------------------------------------------------
+
+#[tauri::command]
 pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.live.start(app.clone(), state.inner().clone());
+    state.live.start(app.clone());
     let settings = state.settings.lock().clone();
     if settings.vr_overlay_enabled {
         state.vr.start(state.live.clone(), settings.clone());
@@ -200,10 +235,11 @@ pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Re
 }
 
 #[tauri::command]
-pub fn stop_live_monitor(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn stop_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.live.stop();
     state.vr.stop();
     state.audio.stop();
+    state.monitor.stop(&app);
     Ok(())
 }
 
@@ -218,132 +254,18 @@ pub fn get_live_snapshot(state: State<'_, Arc<AppState>>) -> LiveSnapshot {
 }
 
 #[tauri::command]
-pub fn get_coach_report(
-    state: State<'_, Arc<AppState>>,
-    session_id: i64,
-) -> Result<crate::analysis::coach::CoachReport, String> {
-    let db = state.db.lock();
-    let detail = db
-        .get_session(session_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Session not found".to_string())?;
-
-    let mut report = build_coach_report(session_id, &detail);
-
-    // Trace-based insights: load traces only for candidate laps, then explain
-    // where time was lost. Failures here should not break the rule-based report.
-    let lap_ids = crate::analysis::trace_coach::select_trace_lap_ids(&detail);
-    if !lap_ids.is_empty() {
-        if let Ok(traces) = db.get_lap_traces(&lap_ids) {
-            let map: std::collections::HashMap<i64, Vec<crate::storage::TracePoint>> = traces
-                .into_iter()
-                .map(|t| (t.lap_id, t.points))
-                .collect();
-            crate::analysis::trace_coach::append_trace_insights(&mut report.insights, &detail, &map);
-        }
-    }
-
-    // Standings-based insights when a live snapshot is linked to this session.
-    if let Ok(Some(standings)) = db.get_standings_for_session(session_id) {
-        crate::analysis::coach::append_standings_insights(&mut report.insights, &detail, &standings);
-    }
-
-    Ok(report)
+pub fn start_demo_clock(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.live.start_demo(app);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn get_session_standings(
-    state: State<'_, Arc<AppState>>,
-    session_id: i64,
-) -> Result<Option<crate::storage::SessionStandings>, String> {
-    state
-        .db
-        .lock()
-        .get_standings_for_session(session_id)
-        .map_err(|e| e.to_string())
+pub fn stop_demo_clock(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.live.stop_demo();
+    Ok(())
 }
 
-#[tauri::command]
-pub async fn generate_coach_summary(
-    state: State<'_, Arc<AppState>>,
-    session_id: i64,
-) -> Result<crate::coach::CoachSummaryResult, String> {
-    let detail = state
-        .db
-        .lock()
-        .get_session(session_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Session not found".to_string())?;
-    let report = build_coach_report(session_id, &detail);
-    generate_summary(&report)
-        .await
-        .map_err(|e| format!("AI summary failed: {e:#}"))
-}
-
-#[tauri::command]
-pub fn delete_session_cmd(state: State<'_, Arc<AppState>>, session_id: i64) -> Result<bool, String> {
-    state
-        .db
-        .lock()
-        .delete_session(session_id)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn patch_settings_cmd(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-    patch: serde_json::Value,
-) -> Result<AppSettings, String> {
-    let mut current = state.settings.lock().clone();
-    let mut value = serde_json::to_value(&current).map_err(|e| e.to_string())?;
-    if let (Some(base), Some(p)) = (value.as_object_mut(), patch.as_object()) {
-        for (k, v) in p {
-            base.insert(k.clone(), v.clone());
-        }
-    }
-    current = serde_json::from_value(value).map_err(|e| e.to_string())?;
-    save_settings(&current).map_err(|e| e.to_string())?;
-    *state.settings.lock() = current.clone();
-    sync_hotkey(&app, state.inner());
-    let _ = app.emit("settings-changed", current.clone());
-    Ok(current)
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TtsVoiceInfo {
-    pub display_name: String,
-    pub language: String,
-    pub gender: String,
-    pub neural: bool,
-}
-
-#[tauri::command]
-pub fn list_tts_voices_cmd() -> Result<Vec<TtsVoiceInfo>, String> {
-    #[cfg(windows)]
-    {
-        use crate::audio::tts_winrt::WinRtTts;
-        WinRtTts::list_voices()
-            .map(|voices| {
-                voices
-                    .into_iter()
-                    .map(|v| TtsVoiceInfo {
-                        display_name: v.display_name,
-                        language: v.language,
-                        gender: v.gender,
-                        neural: v.neural,
-                    })
-                    .collect()
-            })
-            .map_err(|e| e.to_string())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = ();
-        Ok(Vec::new())
-    }
-}
+// --- Settings ---------------------------------------------------------------
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, Arc<AppState>>) -> AppSettings {
@@ -358,31 +280,71 @@ pub fn save_settings_cmd(
 ) -> Result<(), String> {
     save_settings(&settings).map_err(|e| e.to_string())?;
     *state.settings.lock() = settings.clone();
-    sync_hotkey(&app, state.inner());
     let _ = app.emit("settings-changed", settings);
     Ok(())
 }
 
+// --- Audio ------------------------------------------------------------------
+
 #[tauri::command]
-pub fn open_desktop_overlay_cmd(app: AppHandle) -> Result<(), String> {
-    open_desktop_overlay(&app)
+pub fn start_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    if !state.live.is_running() {
+        return Err("Start live monitor or demo clock first".into());
+    }
+    state.audio.start(state.live.clone());
+    Ok(())
 }
 
 #[tauri::command]
-pub fn close_desktop_overlay_cmd(app: AppHandle) -> Result<(), String> {
-    close_desktop_overlay(&app)
+pub fn stop_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.audio.stop();
+    Ok(())
 }
 
 #[tauri::command]
-pub fn is_desktop_overlay_open_cmd(app: AppHandle) -> bool {
-    is_desktop_overlay_open(&app)
+pub fn get_audio_coach_status(state: State<'_, Arc<AppState>>) -> crate::audio::AudioCoachStatus {
+    state.audio.status()
 }
+
+#[tauri::command]
+pub fn get_audio_coach_message(state: State<'_, Arc<AppState>>) -> String {
+    state.audio.last_message()
+}
+
+#[tauri::command]
+pub fn test_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.audio.speak_test();
+    Ok(())
+}
+
+// --- Monitor overlays -------------------------------------------------------
+
+#[tauri::command]
+pub fn start_monitor_overlay(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let settings = state.settings.lock().clone();
+    state.monitor.start(&app, &settings)
+}
+
+#[tauri::command]
+pub fn stop_monitor_overlay(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.monitor.stop(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_monitor_overlay_status(
+    state: State<'_, Arc<AppState>>,
+) -> crate::monitor::MonitorOverlayStatus {
+    state.monitor.status()
+}
+
+// --- VR ---------------------------------------------------------------------
 
 #[tauri::command]
 pub fn start_vr_overlay(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    if !state.live.is_running() {
-        return Err("Start live monitor first".into());
-    }
     let settings = state.settings.lock().clone();
     state.vr.start(state.live.clone(), settings);
     Ok(())
@@ -404,10 +366,8 @@ pub fn get_native_vr_status(state: State<'_, Arc<AppState>>) -> NativeVrStatus {
     state.vr.native_status()
 }
 
-/// Resolve the bundled OpenXR layer manifest path (next to the app resources).
 fn vr_layer_manifest_path(app: &AppHandle) -> Result<String, String> {
     use tauri::Manager;
-    // Bundled under <resources>/resources/openxr-layer/ (see tauri.conf.json).
     let rel = ["resources", "openxr-layer", crate::vr::MANIFEST_FILE];
     let candidate = app
         .path()
@@ -415,10 +375,19 @@ fn vr_layer_manifest_path(app: &AppHandle) -> Result<String, String> {
         .ok()
         .map(|dir| rel.iter().fold(dir, |acc, p| acc.join(p)))
         .or_else(|| {
-            std::env::current_exe().ok().and_then(|exe| {
-                exe.parent()
-                    .map(|d| rel.iter().fold(d.to_path_buf(), |acc, p| acc.join(p)))
-            })
+            // Dev fallback: repo openxr-layer build output / source tree.
+            let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("openxr-layer")
+                .join(crate::vr::MANIFEST_FILE);
+            if manifest.is_file() {
+                Some(manifest)
+            } else {
+                std::env::current_exe().ok().and_then(|exe| {
+                    exe.parent()
+                        .map(|d| rel.iter().fold(d.to_path_buf(), |acc, p| acc.join(p)))
+                })
+            }
         })
         .ok_or_else(|| "Could not resolve VR layer manifest path".to_string())?;
     Ok(candidate.to_string_lossy().into_owned())
@@ -455,29 +424,4 @@ pub fn check_vr_hud_health() -> bool {
 #[tauri::command]
 pub fn open_vr_hud_preview_cmd() -> Result<(), String> {
     crate::vr::open_hud_preview()
-}
-
-#[tauri::command]
-pub fn start_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    if !state.live.is_running() {
-        return Err("Start live monitor first".into());
-    }
-    state.audio.start(state.live.clone());
-    Ok(())
-}
-
-#[tauri::command]
-pub fn stop_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.audio.stop();
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_audio_coach_status(state: State<'_, Arc<AppState>>) -> crate::audio::AudioCoachStatus {
-    state.audio.status()
-}
-
-#[tauri::command]
-pub fn get_audio_coach_message(state: State<'_, Arc<AppState>>) -> String {
-    state.audio.last_message()
 }

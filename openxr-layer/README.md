@@ -1,9 +1,9 @@
 # pitwall-openxr-layer
 
 A standalone Windows OpenXR **API layer** that composites the PitWall HUD inside
-the headset, the same mechanism RaceLab VR and OpenKneeboard use. It is built
-outside the Tauri/Cargo tree because the OpenXR loader injects it into the
-**iRacing** process, not into PitWall.
+the headset while iRacing runs in OpenXR. It is built outside the Tauri/Cargo
+tree because the OpenXR loader injects it into the **iRacing** process, not into
+PitWall.
 
 ```
 iRacing (OpenXR app)

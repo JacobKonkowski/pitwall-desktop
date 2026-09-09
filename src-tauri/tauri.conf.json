@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:17342; font-src 'self' data:"
     }
   },
   "bundle": {
@@ -32,10 +32,6 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "resources": [
-      "resources/openxr-layer/*",
-      "resources/audio/coach/default/*"
     ]
   }
 }

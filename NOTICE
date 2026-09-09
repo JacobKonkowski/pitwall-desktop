@@ -1,0 +1,24 @@
+# Third-party notices
+
+PitWall Desktop is MIT-licensed (see [LICENSE](LICENSE)). It redistributes
+dependencies from crates.io and npm.
+
+## Generating this file
+
+```powershell
+npm run gen:notice
+```
+
+Or manually:
+
+```powershell
+cargo tree -p pitwall-desktop --prefix none | Sort-Object -Unique
+npm ls --all --parseable
+```
+
+Maintainers should refresh NOTICE before each tagged release. Exact license texts
+for Apache-2.0 / MIT crates are available from crates.io / the package LICENSE files.
+
+## Policy
+
+See `deny.toml` for the allowed license set enforced in CI via `cargo deny`.

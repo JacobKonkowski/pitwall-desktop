@@ -1,4 +1,4 @@
-import type { LiveSnapshot } from "../lib/types";
+import type { LiveSnapshot } from "../shared/types";
 
 interface Props {
   snap: LiveSnapshot;
@@ -16,8 +16,7 @@ export function RadarWidget({ snap }: Props) {
       {cars.map((c) => {
         const gap = c.gapToPlayerS ?? 0;
         const top = 50 - (gap / 3) * 42;
-        const lateral =
-          Math.abs(gap) <= 1.5 ? (c.lapDistPct - snap.lapDistPct) * 80 : 0;
+        const lateral = Math.abs(gap) <= 1.5 ? (c.lapDistPct - snap.lapDistPct) * 80 : 0;
         const left = 50 + lateral;
         return (
           <div
