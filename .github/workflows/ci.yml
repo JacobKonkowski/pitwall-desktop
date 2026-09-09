@@ -55,11 +55,13 @@ jobs:
       - name: Run Rust tests
         run: cargo test --workspace --lib
 
-      - name: cargo deny (licenses/advisories)
-        uses: EmbarkStudios/cargo-deny-action@v2
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
         with:
-          command: check
-          arguments: --workspace
+          tool: cargo-deny
+
+      - name: cargo deny (licenses/advisories)
+        run: cargo deny check --workspace
 
       - name: Build API docs (smoke)
         run: npm run docs:api
