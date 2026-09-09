@@ -4,9 +4,10 @@
 all-features = true
 
 [advisories]
-# Transitive Tauri/urlpattern crates (unic-*, proc-macro-error) are flagged
-# unmaintained; we can't replace them until upstream moves. Keep real vulns as deny.
-unmaintained = "warn"
+# In cargo-deny 0.20+, this selects *which* crates trigger unmaintained failures
+# (not warn/deny). Tauri pulls unic-* / proc-macro-error transitively; only fail
+# if a *workspace* crate itself is unmaintained.
+unmaintained = "workspace"
 yanked = "warn"
 
 [licenses]
