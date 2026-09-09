@@ -104,6 +104,12 @@ impl AudioCoachService {
     }
 }
 
+impl Default for AudioCoachService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn coach_clips_dir() -> PathBuf {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/audio/coach/default");
     if dev.join("manifest.json").is_file() {

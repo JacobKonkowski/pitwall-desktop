@@ -21,6 +21,12 @@ impl IncidentsRule {
     }
 }
 
+impl Default for IncidentsRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for IncidentsRule {
     fn id(&self) -> &'static str {
         "incidents"

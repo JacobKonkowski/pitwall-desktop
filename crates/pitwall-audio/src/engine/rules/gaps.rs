@@ -33,6 +33,12 @@ impl GapsRule {
     }
 }
 
+impl Default for GapsRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for GapsRule {
     fn id(&self) -> &'static str {
         "gaps"

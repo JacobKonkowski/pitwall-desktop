@@ -65,7 +65,15 @@ impl LiveService {
             post_session_import: Mutex::new(None),
         }
     }
+}
 
+impl Default for LiveService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LiveService {
     /// Wire the desktop-composed post-session IBT import hook (call once at startup).
     pub fn set_post_session_import(&self, hook: PostSessionImportFn) {
         *self.post_session_import.lock() = Some(hook);

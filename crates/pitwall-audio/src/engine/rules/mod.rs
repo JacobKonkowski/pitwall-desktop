@@ -118,3 +118,9 @@ impl RuleSet {
         }
     }
 }
+
+impl Default for RuleSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}

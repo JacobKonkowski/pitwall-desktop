@@ -19,6 +19,12 @@ impl TyresRule {
     }
 }
 
+impl Default for TyresRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for TyresRule {
     fn id(&self) -> &'static str {
         "tyres"

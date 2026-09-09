@@ -101,6 +101,7 @@ impl Database {
     ///
     /// - `version < 2`: one-time drop/recreate (incompatible pre-v2 layout).
     /// - `version >= 2`: create-if-not-exists + future incremental steps only.
+    ///
     /// Explicit wipe: [`Database::clear_all`] / `clear_database_cmd` (debug builds).
     fn migrate(conn: &Connection) -> Result<()> {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -440,10 +441,7 @@ impl Database {
     }
 
     /// Data needed to compare a single lap: `(lap_time_ms, sectors, traces)`.
-    pub fn get_lap_compare_data(
-        &self,
-        lap_id: i64,
-    ) -> Result<(Option<f64>, Vec<(i32, f64)>, Vec<TracePoint>)> {
+    pub fn get_lap_compare_data(&self, lap_id: i64) -> Result<LapCompareData> {
         let lap_time_ms: Option<f64> = self.conn.query_row(
             "SELECT lap_time_ms FROM laps WHERE id = ?1",
             params![lap_id],
@@ -458,6 +456,9 @@ impl Database {
         Ok((lap_time_ms, sectors, traces))
     }
 }
+
+/// `(lap_time_ms, sector_num → time_ms, traces)` for [`Database::get_lap_compare_data`].
+pub type LapCompareData = (Option<f64>, Vec<(i32, f64)>, Vec<TracePoint>);
 
 fn apply_lap_display_cleanup(laps: &mut Vec<LapSummary>) {
     laps.retain(|l| {

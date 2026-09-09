@@ -19,6 +19,12 @@ impl IntroRule {
     }
 }
 
+impl Default for IntroRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for IntroRule {
     fn id(&self) -> &'static str {
         "intro"

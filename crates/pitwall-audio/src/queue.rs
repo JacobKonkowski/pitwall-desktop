@@ -61,7 +61,8 @@ impl SpeechQueue {
             }
         }
         self.items.push(QueuedSpeech { priority, plan });
-        self.items.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.items
+            .sort_by_key(|item| std::cmp::Reverse(item.priority));
     }
 
     pub fn pop(&mut self) -> Option<SpeechPlan> {

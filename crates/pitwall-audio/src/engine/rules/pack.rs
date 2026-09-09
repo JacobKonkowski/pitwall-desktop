@@ -52,6 +52,12 @@ impl PackRule {
     }
 }
 
+impl Default for PackRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for PackRule {
     fn id(&self) -> &'static str {
         "pack"
@@ -218,27 +224,29 @@ mod tests {
         use pitwall_live::CompetitorEntry;
         use pitwall_live::LiveSnapshot;
 
-        let mut snap = LiveSnapshot::default();
-        snap.track = "T".into();
-        snap.session_type = "Race".into();
-        snap.lap = 2;
-        snap.on_track = true;
-        snap.lap_dist_pct = 0.96;
-        snap.competitors = vec![CompetitorEntry {
-            car_idx: 1,
-            driver_name: "Other".into(),
-            car_number: "2".into(),
-            class_id: 0,
-            class_color: String::new(),
-            position: 1,
-            class_position: 1,
-            best_lap_ms: None,
-            last_lap_ms: None,
-            on_pit_road: false,
-            is_player: false,
-            lap_dist_pct: 0.05, // ~0.09 circular distance ahead across S/F
-            gap_to_player_s: None,
-        }];
+        let snap = LiveSnapshot {
+            track: "T".into(),
+            session_type: "Race".into(),
+            lap: 2,
+            on_track: true,
+            lap_dist_pct: 0.96,
+            competitors: vec![CompetitorEntry {
+                car_idx: 1,
+                driver_name: "Other".into(),
+                car_number: "2".into(),
+                class_id: 0,
+                class_color: String::new(),
+                position: 1,
+                class_position: 1,
+                best_lap_ms: None,
+                last_lap_ms: None,
+                on_pit_road: false,
+                is_player: false,
+                lap_dist_pct: 0.05, // ~0.09 circular distance ahead across S/F
+                gap_to_player_s: None,
+            }],
+            ..Default::default()
+        };
 
         let meta = SessionMeta {
             player_car_idx: 0,

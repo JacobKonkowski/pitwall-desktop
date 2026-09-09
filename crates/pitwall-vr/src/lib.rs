@@ -210,6 +210,12 @@ impl VrOverlayService {
     }
 }
 
+impl Default for VrOverlayService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

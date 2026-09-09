@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use hound::{SampleFormat, WavSpec, WavWriter};
@@ -92,7 +92,7 @@ fn list_voices() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn export_placeholder(phrases: &HashMap<String, String>, out_dir: &PathBuf) -> anyhow::Result<()> {
+fn export_placeholder(phrases: &HashMap<String, String>, out_dir: &Path) -> anyhow::Result<()> {
     let mut manifest = HashMap::new();
     for key in phrases.keys() {
         let file = format!("{key}.wav");
@@ -106,7 +106,7 @@ fn export_placeholder(phrases: &HashMap<String, String>, out_dir: &PathBuf) -> a
 
 fn export_winrt(
     phrases: &HashMap<String, String>,
-    out_dir: &PathBuf,
+    out_dir: &Path,
     voice: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut tts = WinRtTts::new(1.0, 1.0)?;
@@ -136,7 +136,7 @@ fn export_winrt(
     Ok(())
 }
 
-fn write_placeholder_wav(path: &PathBuf) -> anyhow::Result<()> {
+fn write_placeholder_wav(path: &Path) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -154,7 +154,7 @@ fn write_placeholder_wav(path: &PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn write_manifest(out_dir: &PathBuf, manifest: &HashMap<String, String>) -> anyhow::Result<()> {
+fn write_manifest(out_dir: &Path, manifest: &HashMap<String, String>) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(manifest)?;
     fs::write(out_dir.join("manifest.json"), json)?;
     Ok(())

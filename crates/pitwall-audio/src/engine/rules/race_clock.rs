@@ -31,6 +31,12 @@ impl RaceClockRule {
     }
 }
 
+impl Default for RaceClockRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for RaceClockRule {
     fn id(&self) -> &'static str {
         "race_clock"

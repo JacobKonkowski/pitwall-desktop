@@ -49,6 +49,12 @@ impl PaceRule {
     }
 }
 
+impl Default for PaceRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for PaceRule {
     fn id(&self) -> &'static str {
         "pace"
@@ -276,24 +282,25 @@ impl PaceRule {
             }
         }
 
-        if ctx.session_mode.is_race() || ctx.session_mode.is_qual() {
-            if settings.audio_position_callouts_enabled && chatter_allows_normal(settings) {
-                if let Some(pos) = ctx.snap.player_class_position.or(ctx.snap.player_position) {
-                    if let Some(prev) = self.last_announced_position {
-                        if pos > 0 && prev > 0 && pos != prev {
-                            let clip = if pos < prev {
-                                "position_up"
-                            } else {
-                                "position_down"
-                            };
-                            units.push(SpeechUnit::Clip(clip.into()));
-                            units.push(SpeechUnit::Tts(format!("P{pos}")));
-                        } else if pos > 0 {
-                            units.push(SpeechUnit::Tts(format!("P{pos}")));
-                        }
+        if (ctx.session_mode.is_race() || ctx.session_mode.is_qual())
+            && settings.audio_position_callouts_enabled
+            && chatter_allows_normal(settings)
+        {
+            if let Some(pos) = ctx.snap.player_class_position.or(ctx.snap.player_position) {
+                if let Some(prev) = self.last_announced_position {
+                    if pos > 0 && prev > 0 && pos != prev {
+                        let clip = if pos < prev {
+                            "position_up"
+                        } else {
+                            "position_down"
+                        };
+                        units.push(SpeechUnit::Clip(clip.into()));
+                        units.push(SpeechUnit::Tts(format!("P{pos}")));
                     } else if pos > 0 {
                         units.push(SpeechUnit::Tts(format!("P{pos}")));
                     }
+                } else if pos > 0 {
+                    units.push(SpeechUnit::Tts(format!("P{pos}")));
                 }
             }
         }
@@ -313,30 +320,30 @@ impl PaceRule {
             }
         }
 
-        if ctx.session_mode.is_race() && settings.audio_strategy_enabled {
-            if ctx.snap.fuel_level > 0.0 {
-                if let Some(laps_left) =
-                    estimate_laps_remaining(ctx.snap.fuel_level, ctx.fuel_per_lap)
-                {
-                    if laps_left <= 3.0 {
-                        units.push(SpeechUnit::Tts(format!(
-                            "Fuel {:.0} liters. Pit in {:.0} laps.",
-                            ctx.snap.fuel_level,
-                            laps_left.ceil()
-                        )));
-                    } else {
-                        units.push(SpeechUnit::Tts(format!(
-                            "Fuel {:.0} liters. About {:.0} laps remaining.",
-                            ctx.snap.fuel_level,
-                            laps_left.round()
-                        )));
-                    }
+        if ctx.session_mode.is_race()
+            && settings.audio_strategy_enabled
+            && ctx.snap.fuel_level > 0.0
+        {
+            if let Some(laps_left) = estimate_laps_remaining(ctx.snap.fuel_level, ctx.fuel_per_lap)
+            {
+                if laps_left <= 3.0 {
+                    units.push(SpeechUnit::Tts(format!(
+                        "Fuel {:.0} liters. Pit in {:.0} laps.",
+                        ctx.snap.fuel_level,
+                        laps_left.ceil()
+                    )));
                 } else {
                     units.push(SpeechUnit::Tts(format!(
-                        "Fuel {:.0} liters.",
-                        ctx.snap.fuel_level
+                        "Fuel {:.0} liters. About {:.0} laps remaining.",
+                        ctx.snap.fuel_level,
+                        laps_left.round()
                     )));
                 }
+            } else {
+                units.push(SpeechUnit::Tts(format!(
+                    "Fuel {:.0} liters.",
+                    ctx.snap.fuel_level
+                )));
             }
         }
 

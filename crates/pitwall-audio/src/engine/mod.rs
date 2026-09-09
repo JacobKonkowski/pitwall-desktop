@@ -84,6 +84,12 @@ impl RaceEngine {
     }
 }
 
+impl Default for RaceEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub type CoachEngine = RaceEngine;
 
 #[cfg(test)]
@@ -97,12 +103,13 @@ mod tests {
     }
 
     fn base_snapshot() -> LiveSnapshot {
-        let mut snap = LiveSnapshot::default();
-        snap.track = "Test Track".into();
-        snap.session_type = "Race".into();
-        snap.lap = 1;
-        snap.on_track = true;
-        snap
+        LiveSnapshot {
+            track: "Test Track".into(),
+            session_type: "Race".into(),
+            lap: 1,
+            on_track: true,
+            ..Default::default()
+        }
     }
 
     fn clip_key(plan: &SpeechPlan) -> Option<&str> {

@@ -80,7 +80,7 @@ mod imp {
             };
             self.synthesizer.SetVoice(&picked)?;
             if let Ok(name) = picked.DisplayName() {
-                println!("WinRT voice: {}", name.to_string());
+                println!("WinRT voice: {name}");
             }
             Ok(())
         }

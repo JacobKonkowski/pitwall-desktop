@@ -1,5 +1,4 @@
 ﻿/// Racing-radio phrasing helpers for times, deltas, and gaps.
-
 pub fn format_duration_short(ms: f64) -> String {
     let total = ms / 1000.0;
     if total >= 60.0 {

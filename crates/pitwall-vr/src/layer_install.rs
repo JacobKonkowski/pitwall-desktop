@@ -259,9 +259,7 @@ mod windows_impl {
 
     /// Full path to our registered manifest, if any.
     pub fn find_registered_manifest_path() -> Option<String> {
-        let Some(hkey) = open_key(KEY_READ) else {
-            return None;
-        };
+        let hkey = open_key(KEY_READ)?;
         let mut index = 0u32;
         let mut found = None;
         loop {

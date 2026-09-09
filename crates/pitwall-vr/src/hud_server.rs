@@ -50,7 +50,7 @@ pub fn open_hud_preview() -> Result<(), String> {
             .args(["/C", "start", "", &url])
             .spawn()
             .map_err(|e| e.to_string())?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {

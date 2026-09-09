@@ -46,6 +46,12 @@ impl FuelRule {
     }
 }
 
+impl Default for FuelRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for FuelRule {
     fn id(&self) -> &'static str {
         "fuel"

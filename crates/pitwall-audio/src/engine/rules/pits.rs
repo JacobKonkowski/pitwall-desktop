@@ -25,6 +25,12 @@ impl PitsRule {
     }
 }
 
+impl Default for PitsRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for PitsRule {
     fn id(&self) -> &'static str {
         "pits"

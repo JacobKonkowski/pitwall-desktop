@@ -28,6 +28,12 @@ impl FlagsRule {
     }
 }
 
+impl Default for FlagsRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for FlagsRule {
     fn id(&self) -> &'static str {
         "flags"
@@ -105,12 +111,14 @@ mod tests {
     use pitwall_live::LiveSnapshot;
 
     fn ctx_with_flags(flags: u32) -> (LiveSnapshot, SessionMeta) {
-        let mut snap = LiveSnapshot::default();
-        snap.track = "T".into();
-        snap.session_type = "Race".into();
-        snap.lap = 1;
-        snap.on_track = true;
-        snap.session_flags = flags;
+        let snap = LiveSnapshot {
+            track: "T".into(),
+            session_type: "Race".into(),
+            lap: 1,
+            on_track: true,
+            session_flags: flags,
+            ..Default::default()
+        };
         (snap, SessionMeta::default())
     }
 

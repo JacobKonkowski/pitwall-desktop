@@ -258,6 +258,12 @@ impl LiveTracker {
     }
 }
 
+impl Default for LiveTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn extract_car_name(session: &SessionInfo) -> String {
     if let Some(driver_info) = &session.driver_info {
         let car_idx = driver_info.driver_car_idx.unwrap_or(-1);

@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
         "RRtempM", "RRtempR",
     ];
 
-    let mut infos: Vec<(&str, Option<VariableInfo>)> = names
+    let infos: Vec<(&str, Option<VariableInfo>)> = names
         .iter()
         .map(|n| (*n, schema.get_variable(n).cloned()))
         .collect();
@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut idx = 0usize;
     while let Some((data, _, _)) = reader.read_next_frame()? {
-        if idx % 60 == 0 {
+        if idx.is_multiple_of(60) {
             for (n, info) in &infos {
                 let Some(info) = info else { continue };
                 let v = f32::from_bytes(&data, info).unwrap_or(0.0);
