@@ -1,11 +1,11 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 /// Parse `scripts/audio-phrases.txt` (`key=spoken text`, `#` comments).
 pub fn load_phrases_file(path: &Path) -> anyhow::Result<HashMap<String, String>> {
-    let raw = fs::read_to_string(path)
-        .map_err(|e| anyhow::anyhow!("read {}: {e}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).map_err(|e| anyhow::anyhow!("read {}: {e}", path.display()))?;
     let mut out = HashMap::new();
     for line in raw.lines() {
         let line = line.trim();

@@ -1,4 +1,4 @@
-﻿use super::speech::SpeechPlan;
+use super::speech::SpeechPlan;
 
 /// Alert priority ΓÇö higher values preempt lower in the queue.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -61,8 +61,7 @@ impl SpeechQueue {
             }
         }
         self.items.push(QueuedSpeech { priority, plan });
-        self.items
-            .sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.items.sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 
     pub fn pop(&mut self) -> Option<SpeechPlan> {
@@ -75,8 +74,8 @@ impl SpeechQueue {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::speech::SpeechUnit;
+    use super::*;
 
     fn tts_plan(text: &str) -> SpeechPlan {
         SpeechPlan::sequence(vec![SpeechUnit::Tts(text.into())])

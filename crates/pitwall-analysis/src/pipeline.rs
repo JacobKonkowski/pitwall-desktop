@@ -8,8 +8,8 @@ use rayon::prelude::*;
 
 use super::aggregates::{average_speed, downsample_traces, fuel_stats, tire_averages};
 use super::cleanup::finalize_analyzed_laps;
-use super::segment::{lap_dist_range, segment_laps};
 use super::sectors::compute_sector_times;
+use super::segment::{lap_dist_range, segment_laps};
 use super::types::{AnalyzedLap, AnalyzedSession, LapFrames, SessionMeta};
 
 /// Analyze a full session's frames using the resolved session metadata.
@@ -75,11 +75,18 @@ fn analyze_lap(group: LapFrames, boundaries: &[super::types::SectorBoundary]) ->
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::{RawFrame, SectorBoundary};
+    use super::*;
     use std::collections::HashMap;
 
-    fn frame(lap: i32, pct: f32, t: f64, last: Option<f32>, ok: Option<bool>, pit: bool) -> RawFrame {
+    fn frame(
+        lap: i32,
+        pct: f32,
+        t: f64,
+        last: Option<f32>,
+        ok: Option<bool>,
+        pit: bool,
+    ) -> RawFrame {
         RawFrame {
             session_num: 0,
             lap,
@@ -108,8 +115,14 @@ mod tests {
             car: "Car".into(),
             session_date: "2026-01-01".into(),
             sector_boundaries: vec![
-                SectorBoundary { sector_num: 1, start_pct: 0.34 },
-                SectorBoundary { sector_num: 2, start_pct: 0.72 },
+                SectorBoundary {
+                    sector_num: 1,
+                    start_pct: 0.34,
+                },
+                SectorBoundary {
+                    sector_num: 2,
+                    start_pct: 0.72,
+                },
             ],
             session_labels: HashMap::from([(0, "Practice".to_string())]),
         }

@@ -1,4 +1,4 @@
-﻿//! Probe tire-temp channel variance in an IBT.
+//! Probe tire-temp channel variance in an IBT.
 //! cargo run --example probe_tire_temps -- "path\to\file.ibt"
 
 use std::collections::BTreeSet;
@@ -18,14 +18,10 @@ fn main() -> anyhow::Result<()> {
     let schema = reader.variables();
 
     let names = [
-        "LFtempCL", "LFtempCM", "LFtempCR",
-        "RFtempCL", "RFtempCM", "RFtempCR",
-        "LRtempCL", "LRtempCM", "LRtempCR",
-        "RRtempCL", "RRtempCM", "RRtempCR",
-        "LFtempL", "LFtempM", "LFtempR",
-        "RFtempL", "RFtempM", "RFtempR",
-        "LRtempL", "LRtempM", "LRtempR",
-        "RRtempL", "RRtempM", "RRtempR",
+        "LFtempCL", "LFtempCM", "LFtempCR", "RFtempCL", "RFtempCM", "RFtempCR", "LRtempCL",
+        "LRtempCM", "LRtempCR", "RRtempCL", "RRtempCM", "RRtempCR", "LFtempL", "LFtempM",
+        "LFtempR", "RFtempL", "RFtempM", "RFtempR", "LRtempL", "LRtempM", "LRtempR", "RRtempL",
+        "RRtempM", "RRtempR",
     ];
 
     let mut infos: Vec<(&str, Option<VariableInfo>)> = names
@@ -45,7 +41,10 @@ fn main() -> anyhow::Result<()> {
         .map(|(n, _)| (*n, BTreeSet::new()))
         .collect();
     let mut mins: Vec<(&str, f32)> = uniques.iter().map(|(n, _)| (*n, f32::INFINITY)).collect();
-    let mut maxs: Vec<(&str, f32)> = uniques.iter().map(|(n, _)| (*n, f32::NEG_INFINITY)).collect();
+    let mut maxs: Vec<(&str, f32)> = uniques
+        .iter()
+        .map(|(n, _)| (*n, f32::NEG_INFINITY))
+        .collect();
 
     let mut idx = 0usize;
     while let Some((data, _, _)) = reader.read_next_frame()? {
@@ -68,13 +67,23 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("\nSampled ~{} frames (every 60th of {}):", idx / 60, idx);
-    println!("{:<12} {:>8} {:>8} {:>8}", "channel", "min", "max", "uniq0.1");
+    println!(
+        "{:<12} {:>8} {:>8} {:>8}",
+        "channel", "min", "max", "uniq0.1"
+    );
     for (n, set) in &uniques {
-        let min = mins.iter().find(|(nn, _)| nn == n).map(|(_, v)| *v).unwrap_or(0.0);
-        let max = maxs.iter().find(|(nn, _)| nn == n).map(|(_, v)| *v).unwrap_or(0.0);
+        let min = mins
+            .iter()
+            .find(|(nn, _)| nn == n)
+            .map(|(_, v)| *v)
+            .unwrap_or(0.0);
+        let max = maxs
+            .iter()
+            .find(|(nn, _)| nn == n)
+            .map(|(_, v)| *v)
+            .unwrap_or(0.0);
         println!("{n:<12} {min:>8.2} {max:>8.2} {:>8}", set.len());
     }
-
 
     Ok(())
 }

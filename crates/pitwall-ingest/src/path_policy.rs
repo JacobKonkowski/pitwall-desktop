@@ -21,7 +21,9 @@ pub fn is_allowed_ibt_path(path: &Path) -> bool {
     };
 
     let Ok(tele) = default_telemetry_dir().canonicalize() else {
-        return canon.extension().is_some_and(|e| e.eq_ignore_ascii_case("ibt"));
+        return canon
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("ibt"));
     };
 
     canon.starts_with(&tele)

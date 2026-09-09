@@ -14,8 +14,7 @@ use pitwall_settings::{
 };
 
 /// Stable widget kinds in overlay-slot order.
-pub const WIDGET_KINDS: [&str; WIDGET_COUNT] =
-    ["coach", "standings", "relative", "radar"];
+pub const WIDGET_KINDS: [&str; WIDGET_COUNT] = ["coach", "standings", "relative", "radar"];
 
 /// Window label prefix (`monitor-coach`, …).
 pub const WINDOW_LABEL_PREFIX: &str = "monitor-";

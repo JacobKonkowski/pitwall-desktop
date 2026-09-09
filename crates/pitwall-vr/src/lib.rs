@@ -1,4 +1,4 @@
-﻿//! In-headset HUD for iRacing VR.
+//! In-headset HUD for iRacing VR.
 //!
 //! Two modes share one service:
 //! * **Native** (default) — writes the live snapshot into shared memory for the
@@ -26,8 +26,8 @@ use pitwall_settings::AppSettings;
 
 pub use hud_server::{check_hud_health, hud_url, open_hud_preview, HUD_PORT};
 pub use layer_install::{
-    install_layer, is_layer_installed, layer_diagnostics, uninstall_layer, MANIFEST_FILE,
-    VrLayerDiagnostics,
+    install_layer, is_layer_installed, layer_diagnostics, uninstall_layer, VrLayerDiagnostics,
+    MANIFEST_FILE,
 };
 
 pub struct VrOverlayService {

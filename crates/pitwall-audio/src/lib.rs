@@ -1,4 +1,4 @@
-﻿//! Path B audio coach: WAV clips + WinRT TTS for dynamic numbers.
+//! Path B audio coach: WAV clips + WinRT TTS for dynamic numbers.
 mod clip_phrases;
 mod coach;
 pub mod engine;
@@ -11,7 +11,7 @@ mod speech;
 pub mod tts_winrt;
 
 pub use clip_phrases::load_phrases_file;
-pub use engine::{RaceContext, RaceEngine, SessionMeta, RuleSet};
+pub use engine::{RaceContext, RaceEngine, RuleSet, SessionMeta};
 pub use speech::SpeechPlan;
 
 use std::path::PathBuf;
@@ -124,7 +124,11 @@ fn run_speak_test(service: Arc<AudioCoachService>) -> anyhow::Result<()> {
     let clips_dir = coach_clips_dir();
     let manifest = ClipManifest::load(clips_dir)?;
     let settings = load_settings();
-    let player = AudioPlayer::new(manifest, settings.audio_coach_rate, settings.audio_coach_volume)?;
+    let player = AudioPlayer::new(
+        manifest,
+        settings.audio_coach_rate,
+        settings.audio_coach_volume,
+    )?;
     let plan = SpeechPlan::sequence(vec![
         SpeechUnit::Tts("PitWall coach online.".into()),
         SpeechUnit::Tts("Last lap, one minute twenty nine point four five two.".into()),
@@ -140,7 +144,11 @@ fn run_audio_loop(
     let clips_dir = coach_clips_dir();
     let manifest = ClipManifest::load(clips_dir)?;
     let settings = load_settings();
-    let mut player = AudioPlayer::new(manifest, settings.audio_coach_rate, settings.audio_coach_volume)?;
+    let mut player = AudioPlayer::new(
+        manifest,
+        settings.audio_coach_rate,
+        settings.audio_coach_volume,
+    )?;
     let mut engine = CoachEngine::new();
     let mut queue = SpeechQueue::new(3);
     let mut applied_rate = f32::NAN;
@@ -196,7 +204,11 @@ fn apply_voice_settings(
         || (settings.audio_coach_volume - *applied_volume).abs() > f32::EPSILON
         || voice != *applied_voice
     {
-        player.set_voice_settings(settings.audio_coach_rate, settings.audio_coach_volume, &voice);
+        player.set_voice_settings(
+            settings.audio_coach_rate,
+            settings.audio_coach_volume,
+            &voice,
+        );
         *applied_rate = settings.audio_coach_rate;
         *applied_volume = settings.audio_coach_volume;
         *applied_voice = voice;

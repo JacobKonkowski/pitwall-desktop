@@ -1,4 +1,4 @@
-﻿use pitwall_settings::AppSettings;
+use pitwall_settings::AppSettings;
 
 use super::super::super::queue::SpeechPriority;
 use super::super::super::speech::SpeechPlan;
@@ -91,10 +91,20 @@ impl Rule for RaceClockRule {
             if ctx.snap.session_laps_remain == Some(1) {
                 self.spoke_final_lap = true;
             }
-            if ctx.snap.session_time_remain_s.map(|t| t <= 300.0).unwrap_or(false) {
+            if ctx
+                .snap
+                .session_time_remain_s
+                .map(|t| t <= 300.0)
+                .unwrap_or(false)
+            {
                 self.spoke_five_minutes = true;
             }
-            if ctx.snap.session_time_remain_s.map(|t| t <= 60.0).unwrap_or(false) {
+            if ctx
+                .snap
+                .session_time_remain_s
+                .map(|t| t <= 60.0)
+                .unwrap_or(false)
+            {
                 self.spoke_one_minute = true;
             }
         }

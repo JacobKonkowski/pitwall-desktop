@@ -89,8 +89,14 @@ fn sector_deltas(candidate: &[(i32, f64)], reference: &[(i32, f64)]) -> Vec<Sect
 
     nums.into_iter()
         .map(|sector_num| {
-            let cand = candidate.iter().find(|(n, _)| *n == sector_num).map(|(_, t)| *t);
-            let refr = reference.iter().find(|(n, _)| *n == sector_num).map(|(_, t)| *t);
+            let cand = candidate
+                .iter()
+                .find(|(n, _)| *n == sector_num)
+                .map(|(_, t)| *t);
+            let refr = reference
+                .iter()
+                .find(|(n, _)| *n == sector_num)
+                .map(|(_, t)| *t);
             let delta_ms = match (cand, refr) {
                 (Some(c), Some(r)) => Some(c - r),
                 _ => None,

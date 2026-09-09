@@ -1,4 +1,4 @@
-﻿use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use pitwall_settings::AppSettings;
 
@@ -88,7 +88,8 @@ impl Rule for PaceRule {
                         settings,
                         self.lap_complete_plan(ctx, settings, completed_lap, lap_ms),
                     ));
-                    self.best_lap_ms = Some(self.best_lap_ms.map(|b| b.min(lap_ms)).unwrap_or(lap_ms));
+                    self.best_lap_ms =
+                        Some(self.best_lap_ms.map(|b| b.min(lap_ms)).unwrap_or(lap_ms));
                 } else if settings.audio_invalid_lap_enabled {
                     let time_str = format_duration_long(lap_ms);
                     self.pending_lap_plan = Some(wrap_with_radio(
@@ -167,11 +168,7 @@ impl Rule for PaceRule {
             }
             Mark::LapComplete | Mark::InvalidLap => {
                 self.pending_lap_plan = None;
-                if let Some(pos) = ctx
-                    .snap
-                    .player_class_position
-                    .or(ctx.snap.player_position)
-                {
+                if let Some(pos) = ctx.snap.player_class_position.or(ctx.snap.player_position) {
                     if pos > 0 {
                         self.last_announced_position = Some(pos);
                     }
@@ -188,10 +185,7 @@ impl Rule for PaceRule {
 
 impl PaceRule {
     pub fn lap_complete_gaps(&self, ctx: &RaceContext<'_>) -> (Option<f32>, Option<f32>) {
-        (
-            ctx.snap.gap_to_car_ahead_s,
-            ctx.snap.gap_to_car_behind_s,
-        )
+        (ctx.snap.gap_to_car_ahead_s, ctx.snap.gap_to_car_behind_s)
     }
 
     pub fn last_announced_position(&self) -> Option<i32> {
@@ -220,8 +214,7 @@ impl PaceRule {
             }
         }
 
-        let show_live_pace =
-            !( !is_pb && prev_best.is_some() && ms > prev_best.unwrap() + 20.0);
+        let show_live_pace = !(!is_pb && prev_best.is_some() && ms > prev_best.unwrap() + 20.0);
         if show_live_pace {
             if let Some(d) = ctx
                 .snap
@@ -240,11 +233,7 @@ impl PaceRule {
         if chatter_allows_verbose(settings)
             && (ctx.session_mode.is_qual() || ctx.session_mode.is_practice())
         {
-            if let Some(d) = ctx
-                .snap
-                .delta_to_session_best_ms
-                .filter(|d| d.abs() > 80.0)
-            {
+            if let Some(d) = ctx.snap.delta_to_session_best_ms.filter(|d| d.abs() > 80.0) {
                 push_pace_delta_units(&mut units, d);
             }
         }
@@ -282,22 +271,14 @@ impl PaceRule {
         if ctx.session_mode.is_qual()
             || (ctx.session_mode.is_practice() && chatter_is_verbose(settings))
         {
-            if let Some(d) = ctx
-                .snap
-                .delta_to_session_best_ms
-                .filter(|d| d.abs() > 80.0)
-            {
+            if let Some(d) = ctx.snap.delta_to_session_best_ms.filter(|d| d.abs() > 80.0) {
                 push_pace_delta_with_suffix(&mut units, d, "off session best.");
             }
         }
 
         if ctx.session_mode.is_race() || ctx.session_mode.is_qual() {
             if settings.audio_position_callouts_enabled && chatter_allows_normal(settings) {
-                if let Some(pos) = ctx
-                    .snap
-                    .player_class_position
-                    .or(ctx.snap.player_position)
-                {
+                if let Some(pos) = ctx.snap.player_class_position.or(ctx.snap.player_position) {
                     if let Some(prev) = self.last_announced_position {
                         if pos > 0 && prev > 0 && pos != prev {
                             let clip = if pos < prev {

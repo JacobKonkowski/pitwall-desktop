@@ -1,4 +1,4 @@
-﻿use pitwall::SessionInfo;
+use pitwall::SessionInfo;
 use tracing::debug;
 
 use pitwall_telemetry::SectorBoundary;
@@ -80,10 +80,7 @@ pub fn current_sector_from_pct(pct: f32, boundaries: &[SectorBoundary]) -> i32 {
         return 1;
     }
     let pct = pct as f64;
-    let idx = regions
-        .iter()
-        .rposition(|&start| pct > start)
-        .unwrap_or(0);
+    let idx = regions.iter().rposition(|&start| pct > start).unwrap_or(0);
     (idx + 1) as i32
 }
 
@@ -161,7 +158,12 @@ impl SectorSplitState {
         }
     }
 
-    pub fn reset_lap(&mut self, boundaries: &[SectorBoundary], lap_start_time: f64, start_pct: f32) {
+    pub fn reset_lap(
+        &mut self,
+        boundaries: &[SectorBoundary],
+        lap_start_time: f64,
+        start_pct: f32,
+    ) {
         self.normalized_bounds = normalize_sector_boundaries(boundaries);
         self.next_boundary_idx = 0;
         self.sector_start_time = lap_start_time;
@@ -263,4 +265,3 @@ impl SectorSplitState {
         }
     }
 }
-

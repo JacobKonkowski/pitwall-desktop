@@ -1,4 +1,4 @@
-﻿use std::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 
 use pitwall_settings::AppSettings;
 
@@ -27,11 +27,7 @@ impl GapsRule {
         }
     }
 
-    pub fn sync_from_lap_complete(
-        &mut self,
-        gap_ahead: Option<f32>,
-        gap_behind: Option<f32>,
-    ) {
+    pub fn sync_from_lap_complete(&mut self, gap_ahead: Option<f32>, gap_behind: Option<f32>) {
         self.last_announced_gap_ahead = gap_ahead;
         self.last_announced_gap_behind = gap_behind;
     }
@@ -60,10 +56,9 @@ impl Rule for GapsRule {
             return;
         }
 
-        if let (Some(cur), Some(prev)) = (
-            ctx.snap.gap_to_car_ahead_s,
-            self.last_announced_gap_ahead,
-        ) {
+        if let (Some(cur), Some(prev)) =
+            (ctx.snap.gap_to_car_ahead_s, self.last_announced_gap_ahead)
+        {
             let delta = cur - prev;
             if delta.abs() >= GAP_CHANGE_THRESHOLD_S {
                 let clip = if delta < 0.0 {
@@ -79,10 +74,9 @@ impl Rule for GapsRule {
                 return;
             }
         }
-        if let (Some(cur), Some(prev)) = (
-            ctx.snap.gap_to_car_behind_s,
-            self.last_announced_gap_behind,
-        ) {
+        if let (Some(cur), Some(prev)) =
+            (ctx.snap.gap_to_car_behind_s, self.last_announced_gap_behind)
+        {
             let delta = cur - prev;
             if delta.abs() >= GAP_CHANGE_THRESHOLD_S {
                 let clip = if delta > 0.0 {

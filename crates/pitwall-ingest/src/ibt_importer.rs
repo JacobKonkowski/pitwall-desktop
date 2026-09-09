@@ -109,7 +109,11 @@ pub fn parse_ibt_file_fast(
         let idx = frames.len();
         if idx > 0 && idx % progress_interval == 0 {
             let pct = 5.0 + (idx as f64 / total_frames as f64) * 60.0;
-            report_progress(&progress, pct, format!("Reading frames... {idx}/{total_frames}"));
+            report_progress(
+                &progress,
+                pct,
+                format!("Reading frames... {idx}/{total_frames}"),
+            );
         }
         frames.push(extractor.extract(&frame_data));
     }
@@ -119,7 +123,11 @@ pub fn parse_ibt_file_fast(
         read_start.elapsed().as_millis()
     );
 
-    report_progress(&progress, 70.0, format!("Analyzing {} frames...", frames.len()));
+    report_progress(
+        &progress,
+        70.0,
+        format!("Analyzing {} frames...", frames.len()),
+    );
 
     let analyze_start = Instant::now();
     let analyzed = analyze_session(frames, &meta);
@@ -138,7 +146,11 @@ pub fn parse_ibt_file_fast(
     report_progress(&progress, 88.0, "Parse complete, preparing save...");
 
     let elapsed_ms = started.elapsed().as_millis();
-    info!("IBT import parse total: {} ms for {}", elapsed_ms, path.display());
+    info!(
+        "IBT import parse total: {} ms for {}",
+        elapsed_ms,
+        path.display()
+    );
 
     Ok((analyzed, hash, elapsed_ms))
 }

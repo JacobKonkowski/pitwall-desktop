@@ -158,8 +158,18 @@ mod tests {
 
     #[test]
     fn pace_requires_full_coverage() {
-        assert!(pace_eligible_from(Some(90_000.0), Some(true), Some(true), 0.99));
-        assert!(!pace_eligible_from(Some(90_000.0), Some(true), Some(true), 0.7));
+        assert!(pace_eligible_from(
+            Some(90_000.0),
+            Some(true),
+            Some(true),
+            0.99
+        ));
+        assert!(!pace_eligible_from(
+            Some(90_000.0),
+            Some(true),
+            Some(true),
+            0.7
+        ));
     }
 
     #[test]
@@ -203,7 +213,9 @@ mod tests {
         assert_eq!(out[0].lap_number, 1);
         assert_eq!(out[1].lap_number, 2);
         assert_eq!(out[2].lap_number, 3);
-        assert!(out.iter().all(|l| l.iracing_lap != 0 || l.lap_dist_pct_max >= PHANTOM_MAX_PCT));
+        assert!(out
+            .iter()
+            .all(|l| l.iracing_lap != 0 || l.lap_dist_pct_max >= PHANTOM_MAX_PCT));
         assert_eq!(out[1].lap_time_ms, Some(118_575.0));
         assert_eq!(out[2].lap_time_ms, None);
     }

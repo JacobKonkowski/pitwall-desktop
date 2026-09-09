@@ -1,4 +1,4 @@
-﻿use std::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 
 use pitwall_live::PackState;
 use pitwall_settings::AppSettings;
@@ -214,9 +214,9 @@ mod tests {
 
     #[test]
     fn precursor_fires_across_lap_wrap() {
+        use crate::engine::context::{RaceContext, SessionMeta};
         use pitwall_live::CompetitorEntry;
         use pitwall_live::LiveSnapshot;
-        use crate::engine::context::{RaceContext, SessionMeta};
 
         let mut snap = LiveSnapshot::default();
         snap.track = "T".into();

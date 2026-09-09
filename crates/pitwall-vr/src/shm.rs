@@ -1,4 +1,4 @@
-﻿//! Producer half of the PitWall VR shared-memory contract.
+//! Producer half of the PitWall VR shared-memory contract.
 //!
 //! Writes a compact mirror of [`LiveSnapshot`](pitwall_live::LiveSnapshot) plus
 //! per-overlay placement into a named Windows file mapping that the
@@ -231,8 +231,8 @@ pub fn build_block(
         dst.last_lap_ms = opt_f32(c.last_lap_ms);
         dst.lap_dist_pct = c.lap_dist_pct;
         dst.gap_to_player_s = opt_f32_s(c.gap_to_player_s);
-        dst.flags = (c.is_player as u32 * FLAG_IS_PLAYER)
-            | (c.on_pit_road as u32 * FLAG_ON_PIT_ROAD);
+        dst.flags =
+            (c.is_player as u32 * FLAG_IS_PLAYER) | (c.on_pit_road as u32 * FLAG_ON_PIT_ROAD);
         copy_str(&c.car_number, &mut dst.number);
         copy_str(&c.driver_name, &mut dst.name);
     }
@@ -344,7 +344,11 @@ mod windows_impl {
                 let view = addr.Value as *mut PwSharedBlock;
                 // Initialize the header so an early reader sees a valid, even seq.
                 view.write(PwSharedBlock::empty());
-                Ok(Self { mapping, view, seq: 0 })
+                Ok(Self {
+                    mapping,
+                    view,
+                    seq: 0,
+                })
             }
         }
 

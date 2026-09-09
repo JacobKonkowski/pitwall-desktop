@@ -1,4 +1,4 @@
-﻿//! Local HTTP HUD for in-headset use via OpenKneeboard (or any Web Dashboard tab).
+//! Local HTTP HUD for in-headset use via OpenKneeboard (or any Web Dashboard tab).
 //! Works with iRacing OpenXR ΓÇö no SteamVR required.
 
 use std::io::{Read, Write};
@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use pitwall_live::LiveService;
 use crate::VrOverlayService;
+use pitwall_live::LiveService;
 
 pub const HUD_PORT: u16 = 17342;
 
@@ -111,12 +111,12 @@ fn handle_connection(stream: &mut std::net::TcpStream, live: &LiveService) -> st
             ("200 OK", "application/json", json)
         }
         "/api/health" => ("200 OK", "application/json", r#"{"ok":true}"#.to_string()),
-        "/vr" | "/" => ("200 OK", "text/html; charset=utf-8", VR_HUD_HTML.to_string()),
-        _ => (
-            "404 Not Found",
-            "text/plain",
-            "Not found".to_string(),
+        "/vr" | "/" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            VR_HUD_HTML.to_string(),
         ),
+        _ => ("404 Not Found", "text/plain", "Not found".to_string()),
     };
 
     let response = format!(

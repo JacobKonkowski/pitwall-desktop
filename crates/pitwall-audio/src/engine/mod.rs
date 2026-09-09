@@ -1,4 +1,4 @@
-﻿mod candidate;
+mod candidate;
 mod context;
 pub mod flags;
 mod helpers;
@@ -12,9 +12,9 @@ pub use rules::RuleSet;
 use pitwall_live::LiveSnapshot;
 use pitwall_settings::AppSettings;
 
-use candidate::pick_highest;
 use super::queue::SpeechPriority;
 use super::speech::SpeechPlan;
+use candidate::pick_highest;
 
 /// Modular iRacing race engineer — replaces the monolithic `CoachEngine`.
 pub struct RaceEngine {

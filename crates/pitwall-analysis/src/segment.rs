@@ -8,7 +8,10 @@ use std::collections::HashMap;
 
 use super::types::{LapFrames, RawFrame};
 
-pub fn segment_laps(frames: Vec<RawFrame>, session_labels: &HashMap<i32, String>) -> Vec<LapFrames> {
+pub fn segment_laps(
+    frames: Vec<RawFrame>,
+    session_labels: &HashMap<i32, String>,
+) -> Vec<LapFrames> {
     if frames.is_empty() {
         return Vec::new();
     }
@@ -115,7 +118,13 @@ pub fn lap_dist_range(frames: &[RawFrame]) -> (f32, f32) {
 mod tests {
     use super::*;
 
-    fn frame(session_num: i32, lap: i32, pct: f32, last: Option<f32>, ok: Option<bool>) -> RawFrame {
+    fn frame(
+        session_num: i32,
+        lap: i32,
+        pct: f32,
+        last: Option<f32>,
+        ok: Option<bool>,
+    ) -> RawFrame {
         RawFrame {
             session_num,
             lap,

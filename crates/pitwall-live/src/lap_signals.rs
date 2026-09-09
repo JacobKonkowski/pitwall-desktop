@@ -28,7 +28,8 @@ pub fn is_flying_lap(
     start_on_pit: bool,
     end_on_pit: bool,
 ) -> bool {
-    if pit_ratio > PIT_LANE_RATIO || (start_on_pit && end_on_pit && pit_ratio > PIT_MEANINGFUL_RATIO)
+    if pit_ratio > PIT_LANE_RATIO
+        || (start_on_pit && end_on_pit && pit_ratio > PIT_MEANINGFUL_RATIO)
     {
         return false;
     }

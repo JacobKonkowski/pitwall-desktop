@@ -90,17 +90,19 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(&path).context("open sqlite database")?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+        )?;
         Self::migrate(&conn)?;
         Ok(Self { conn })
     }
 
     /// Apply schema migrations.
-///
-/// - `version < 2`: one-time drop/recreate (incompatible pre-v2 layout).
-/// - `version >= 2`: create-if-not-exists + future incremental steps only.
-/// Explicit wipe: [`Database::clear_all`] / `clear_database_cmd` (debug builds).
-fn migrate(conn: &Connection) -> Result<()> {
+    ///
+    /// - `version < 2`: one-time drop/recreate (incompatible pre-v2 layout).
+    /// - `version >= 2`: create-if-not-exists + future incremental steps only.
+    /// Explicit wipe: [`Database::clear_all`] / `clear_database_cmd` (debug builds).
+    fn migrate(conn: &Connection) -> Result<()> {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version < 2 {
             conn.execute_batch(
@@ -257,8 +259,9 @@ fn migrate(conn: &Connection) -> Result<()> {
     }
 
     pub fn clear_all(&self) -> Result<usize> {
-        let count: i64 =
-            self.conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
         self.conn.execute_batch(
             "DELETE FROM lap_traces;
              DELETE FROM sectors;
@@ -499,7 +502,6 @@ fn best_pace_eligible_ms(laps: &[LapSummary]) -> Option<f64> {
         .filter_map(|l| l.lap_time_ms)
         .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
 }
-
 
 fn row_to_session_summary(row: &rusqlite::Row) -> rusqlite::Result<SessionSummary> {
     Ok(SessionSummary {

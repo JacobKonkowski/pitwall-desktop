@@ -1,4 +1,4 @@
-﻿use pitwall::SessionInfo;
+use pitwall::SessionInfo;
 
 use pitwall_telemetry::SectorBoundary;
 
@@ -140,10 +140,8 @@ impl LiveTracker {
             if self.current_lap > 0 && frame.lap > self.current_lap {
                 let finished = self.sector_state.finish_lap(frame.session_time);
                 self.pending_lap_sectors = Some(finished);
-                let completed = lap_completed(
-                    self.lap_accum.min_dist_pct,
-                    self.lap_accum.max_dist_pct,
-                );
+                let completed =
+                    lap_completed(self.lap_accum.min_dist_pct, self.lap_accum.max_dist_pct);
                 let pit_ratio = if self.lap_accum.frames > 0 {
                     self.lap_accum.pit_frames as f64 / self.lap_accum.frames as f64
                 } else {
@@ -179,12 +177,8 @@ impl LiveTracker {
 
         if let Some(prev_pct) = self.prev_lap_dist_pct {
             let prev_time = self.prev_session_time.unwrap_or(frame.session_time);
-            self.sector_state.advance(
-                prev_pct,
-                prev_time,
-                frame.lap_dist_pct,
-                frame.session_time,
-            );
+            self.sector_state
+                .advance(prev_pct, prev_time, frame.lap_dist_pct, frame.session_time);
         }
         self.prev_lap_dist_pct = Some(frame.lap_dist_pct);
         self.prev_session_time = Some(frame.session_time);
@@ -316,11 +310,7 @@ mod tests {
     }
 
     fn default_bounds() -> Vec<SectorBoundary> {
-        vec![
-            boundary(0, 0.0),
-            boundary(1, 0.34),
-            boundary(2, 0.72),
-        ]
+        vec![boundary(0, 0.0), boundary(1, 0.34), boundary(2, 0.72)]
     }
 
     #[test]

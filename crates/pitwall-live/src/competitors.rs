@@ -1,4 +1,4 @@
-﻿use pitwall::SessionInfo;
+use pitwall::SessionInfo;
 use serde::{Deserialize, Serialize};
 
 use super::car_idx_frame::CarIdxFrame;
@@ -89,7 +89,11 @@ pub fn lap_seconds_to_ms(secs: Option<f32>) -> Option<f64> {
     }
 }
 
-pub fn build(roster: &[RosterEntry], player_car_idx: i32, frame: &CarIdxFrame) -> CompetitorSnapshot {
+pub fn build(
+    roster: &[RosterEntry],
+    player_car_idx: i32,
+    frame: &CarIdxFrame,
+) -> CompetitorSnapshot {
     let player_f2 = array_get(&frame.f2_time, player_car_idx).filter(|t| *t >= 0.0);
     let mut competitors: Vec<CompetitorEntry> = roster
         .iter()
@@ -128,8 +132,8 @@ pub fn build(roster: &[RosterEntry], player_car_idx: i32, frame: &CarIdxFrame) -
         (false, false) => a.car_idx.cmp(&b.car_idx),
     });
 
-    let session_fastest_lap_ms = lap_seconds_to_ms(Some(frame.session_best_lap_time))
-        .or_else(|| {
+    let session_fastest_lap_ms =
+        lap_seconds_to_ms(Some(frame.session_best_lap_time)).or_else(|| {
             competitors
                 .iter()
                 .filter_map(|c| c.best_lap_ms)
@@ -160,8 +164,7 @@ fn compute_gaps(
     player_car_idx: i32,
     f2_time: &[f32],
 ) -> (Option<f32>, Option<f32>) {
-    let positioned: Vec<&CompetitorEntry> =
-        competitors.iter().filter(|c| c.position > 0).collect();
+    let positioned: Vec<&CompetitorEntry> = competitors.iter().filter(|c| c.position > 0).collect();
     let Some(player_pos) = positioned.iter().position(|c| c.car_idx == player_car_idx) else {
         return (None, None);
     };
@@ -196,9 +199,27 @@ mod tests {
 
     fn roster() -> Vec<RosterEntry> {
         vec![
-            RosterEntry { car_idx: 0, driver_name: "You".into(), car_number: "1".into(), class_id: 10, class_color: String::new() },
-            RosterEntry { car_idx: 1, driver_name: "Ahead".into(), car_number: "2".into(), class_id: 10, class_color: String::new() },
-            RosterEntry { car_idx: 2, driver_name: "Behind".into(), car_number: "3".into(), class_id: 10, class_color: String::new() },
+            RosterEntry {
+                car_idx: 0,
+                driver_name: "You".into(),
+                car_number: "1".into(),
+                class_id: 10,
+                class_color: String::new(),
+            },
+            RosterEntry {
+                car_idx: 1,
+                driver_name: "Ahead".into(),
+                car_number: "2".into(),
+                class_id: 10,
+                class_color: String::new(),
+            },
+            RosterEntry {
+                car_idx: 2,
+                driver_name: "Behind".into(),
+                car_number: "3".into(),
+                class_id: 10,
+                class_color: String::new(),
+            },
         ]
     }
 
@@ -292,8 +313,16 @@ mod tests {
     #[test]
     fn gap_to_player_signed_relative_to_player_f2() {
         let snap = build(&roster(), 0, &frame());
-        let ahead = snap.competitors.iter().find(|c| c.driver_name == "Ahead").unwrap();
-        let behind = snap.competitors.iter().find(|c| c.driver_name == "Behind").unwrap();
+        let ahead = snap
+            .competitors
+            .iter()
+            .find(|c| c.driver_name == "Ahead")
+            .unwrap();
+        let behind = snap
+            .competitors
+            .iter()
+            .find(|c| c.driver_name == "Behind")
+            .unwrap();
         // gap = player_f2 - other_f2: positive when other is ahead (lower F2).
         assert!(ahead.gap_to_player_s.unwrap() > 0.0);
         assert!(behind.gap_to_player_s.unwrap() < 0.0);

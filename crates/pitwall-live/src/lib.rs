@@ -1,4 +1,4 @@
-﻿//! Live iRacing telemetry: connection loop, snapshot, sectors, competitors.
+//! Live iRacing telemetry: connection loop, snapshot, sectors, competitors.
 mod car_idx_frame;
 mod coach_meta;
 mod competitors;
@@ -247,7 +247,9 @@ impl LiveService {
             if result.had_frames {
                 backoff = min_backoff;
                 if preserve_traffic {
-                    info!("Reconnected within debounce — prior stream end treated as transport blip");
+                    info!(
+                        "Reconnected within debounce — prior stream end treated as transport blip"
+                    );
                 }
 
                 let track_changed = !last_track.is_empty()
@@ -321,7 +323,12 @@ impl LiveService {
 
         if let Some(session) = connection.current_session() {
             sector_bounds = extract_sector_boundaries(&session);
-            log_sector_bounds_if_changed(&session, &sector_bounds, &mut prev_sector_bounds, "loaded");
+            log_sector_bounds_if_changed(
+                &session,
+                &sector_bounds,
+                &mut prev_sector_bounds,
+                "loaded",
+            );
             tracker.set_session_meta(&session);
             *self.session_meta.lock() = Some(build_coach_session_meta(&session));
         }
@@ -437,7 +444,11 @@ fn log_sector_bounds_if_changed(
     if bounds == *prev {
         return;
     }
-    if let Some(raw) = session.split_time_info.as_ref().and_then(|s| s.sectors.as_ref()) {
+    if let Some(raw) = session
+        .split_time_info
+        .as_ref()
+        .and_then(|s| s.sectors.as_ref())
+    {
         info!(
             raw_sectors = ?raw.iter().map(|s| (s.sector_num, s.sector_start_pct)).collect::<Vec<_>>(),
             region_starts = ?region_starts(bounds),
@@ -474,8 +485,10 @@ fn merge_car_idx(snap: &mut LiveSnapshot, tracker: &LiveTracker, frame: &CarIdxF
 
     snap.session_flags = frame.session_flags_value();
     snap.incident_count = frame.incident_count;
-    snap.session_laps_remain = (frame.session_laps_remain >= 0).then_some(frame.session_laps_remain);
-    snap.session_time_remain_s = (frame.session_time_remain >= 0.0).then_some(frame.session_time_remain);
+    snap.session_laps_remain =
+        (frame.session_laps_remain >= 0).then_some(frame.session_laps_remain);
+    snap.session_time_remain_s =
+        (frame.session_time_remain >= 0.0).then_some(frame.session_time_remain);
     snap.pits_open = frame.pits_open;
     snap.on_track = frame.on_track;
 

@@ -17,9 +17,7 @@ pub fn fuel_stats(frames: &[RawFrame]) -> (Option<f64>, Option<f64>) {
 }
 
 /// `(lf, rf, lr, rr)` mean tire temps, `None` when there are no frames.
-pub fn tire_averages(
-    frames: &[RawFrame],
-) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+pub fn tire_averages(frames: &[RawFrame]) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
     if frames.is_empty() {
         return (None, None, None, None);
     }

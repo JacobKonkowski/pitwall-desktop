@@ -4,11 +4,11 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Emitter};
 use tracing::info;
 
+use crate::ibt_importer::ImportResult;
 use crate::{
     file_identity_hash, parse_ibt_file_with_progress, save_parsed_ibt, ImportHandles,
     ProgressCallback,
 };
-use crate::ibt_importer::ImportResult;
 use pitwall_storage::ImportStatus;
 
 /// Run a single IBT import. Only one import holds the gate at a time so DB writes
@@ -52,7 +52,10 @@ pub async fn run_import(
             status.progress_pct = pct;
             status.message = message;
         }
-        let _ = app_progress.emit("import-status", import_progress.import_status.lock().clone());
+        let _ = app_progress.emit(
+            "import-status",
+            import_progress.import_status.lock().clone(),
+        );
     }) as ProgressCallback);
 
     let (analyzed, hash, elapsed_ms) = parse_ibt_file_with_progress(&path, progress)
@@ -99,7 +102,10 @@ fn try_skip_import(import: &ImportHandles, path: &Path) -> Result<Option<ImportR
         .find_session_id_by_hash(&hash)?
         .or(db.find_session_id_by_path(&path_str)?);
     if let Some(session_id) = existing_id {
-        info!("Skipping already-imported IBT: {} (session {session_id})", path.display());
+        info!(
+            "Skipping already-imported IBT: {} (session {session_id})",
+            path.display()
+        );
         return Ok(Some(ImportResult {
             session_id,
             lap_count: 0,

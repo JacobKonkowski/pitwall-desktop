@@ -1,4 +1,4 @@
-﻿use pitwall_settings::AppSettings;
+use pitwall_settings::AppSettings;
 
 use super::super::super::queue::SpeechPriority;
 use super::super::super::speech::{SpeechPlan, SpeechUnit};
@@ -25,7 +25,10 @@ impl Rule for IntroRule {
     }
 
     fn on_tick(&mut self, ctx: &RaceContext<'_>, settings: &AppSettings, out: &mut Vec<Candidate>) {
-        if !settings.audio_session_intro_enabled || self.spoke_session_intro || ctx.snap.track.is_empty() {
+        if !settings.audio_session_intro_enabled
+            || self.spoke_session_intro
+            || ctx.snap.track.is_empty()
+        {
             return;
         }
         let session = if ctx.snap.session_type.is_empty() {

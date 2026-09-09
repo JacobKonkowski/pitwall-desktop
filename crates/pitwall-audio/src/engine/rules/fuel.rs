@@ -1,4 +1,4 @@
-﻿use pitwall_settings::AppSettings;
+use pitwall_settings::AppSettings;
 
 use super::super::super::queue::SpeechPriority;
 use super::super::super::speech::{SpeechPlan, SpeechUnit};
@@ -94,12 +94,17 @@ impl FuelRule {
         if laps_remain <= 0 || laps_remain > 60 {
             return;
         }
-        let Some(laps_of_fuel) = estimate_laps_remaining(ctx.snap.fuel_level, &self.fuel_per_lap) else {
+        let Some(laps_of_fuel) = estimate_laps_remaining(ctx.snap.fuel_level, &self.fuel_per_lap)
+        else {
             return;
         };
 
         let sensitivity = settings.audio_fuel_strategy_sensitivity.as_str();
-        let margin = if sensitivity == "conservative" { 0.8 } else { 0.3 };
+        let margin = if sensitivity == "conservative" {
+            0.8
+        } else {
+            0.3
+        };
 
         if laps_of_fuel + margin < laps_remain as f32 && !self.spoke_pit_to_finish {
             let short_by = (laps_remain as f32 - laps_of_fuel).ceil() as i32;
@@ -128,7 +133,8 @@ impl FuelRule {
                 plan: wrap_with_radio(settings, SpeechPlan::clip("fuel_one_more_stop")),
                 mark: Mark::FuelOneMoreStop,
             });
-        } else if laps_of_fuel >= laps_remain as f32 && laps_remain <= 5 && !self.spoke_fuel_to_end {
+        } else if laps_of_fuel >= laps_remain as f32 && laps_remain <= 5 && !self.spoke_fuel_to_end
+        {
             out.push(Candidate {
                 priority: SpeechPriority::RACE,
                 plan: wrap_with_radio(settings, SpeechPlan::clip("fuel_good_to_finish")),

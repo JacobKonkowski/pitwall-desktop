@@ -1,4 +1,4 @@
-﻿//! Register / unregister the PitWall OpenXR API layer with the loader.
+//! Register / unregister the PitWall OpenXR API layer with the loader.
 //!
 //! OpenXR discovers implicit API layers from per-user registry values under
 //! `HKCU\Software\Khronos\OpenXR\1\ApiLayers\Implicit`: the value name is the
@@ -71,9 +71,7 @@ pub fn read_ini_value(path: &Path, key: &str) -> Option<String> {
 
 fn append_iracing_vr_issues(issues: &mut Vec<String>) -> (Option<u32>, Option<bool>) {
     let Some(dir) = iracing_documents_dir() else {
-        issues.push(
-            "Could not find iRacing Documents folder to verify OpenXR VR settings.".into(),
-        );
+        issues.push("Could not find iRacing Documents folder to verify OpenXR VR settings.".into());
         return (None, None);
     };
 
@@ -242,7 +240,13 @@ mod windows_impl {
         let value = wide(reg_path);
         let data = 0u32.to_ne_bytes();
         let status = unsafe {
-            RegSetValueExW(hkey, PCWSTR(value.as_ptr()), 0, REG_DWORD, Some(data.as_slice()))
+            RegSetValueExW(
+                hkey,
+                PCWSTR(value.as_ptr()),
+                0,
+                REG_DWORD,
+                Some(data.as_slice()),
+            )
         };
         unsafe {
             let _ = RegCloseKey(hkey);
@@ -282,8 +286,8 @@ mod windows_impl {
             }
             let value_name = String::from_utf16_lossy(&name[..name_len as usize]);
             if value_name.to_lowercase().ends_with(MANIFEST_FILE) {
-                let enabled = data_len >= 4
-                    && u32::from_ne_bytes([data[0], data[1], data[2], data[3]]) == 0;
+                let enabled =
+                    data_len >= 4 && u32::from_ne_bytes([data[0], data[1], data[2], data[3]]) == 0;
                 if enabled {
                     found = Some(value_name);
                     break;
@@ -332,9 +336,8 @@ mod windows_impl {
         }
 
         if !registered {
-            issues.push(
-                "Layer not registered. Click Install VR layer, then restart iRacing.".into(),
-            );
+            issues
+                .push("Layer not registered. Click Install VR layer, then restart iRacing.".into());
         } else if let Some(reg) = &registered_path {
             let reg_lower = reg.to_lowercase();
             if reg_lower.contains("\\target\\")

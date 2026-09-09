@@ -1,4 +1,4 @@
-﻿//! Dev-only: batch-export coach WAV clips from `scripts/audio-phrases.txt`.
+//! Dev-only: batch-export coach WAV clips from `scripts/audio-phrases.txt`.
 //!
 //! **Not invoked by the PitWall app at runtime.** Use while developing to bake
 //! neural WinRT speech into committed WAV files.
@@ -34,11 +34,7 @@ struct Args {
     #[arg(long)]
     voice: Option<String>,
 
-    #[arg(
-        long,
-        default_value = "scripts/audio-phrases.txt",
-        value_name = "PATH"
-    )]
+    #[arg(long, default_value = "scripts/audio-phrases.txt", value_name = "PATH")]
     phrases: PathBuf,
 
     #[arg(long, default_value = "resources/audio/coach/default")]
@@ -74,11 +70,7 @@ fn main() -> anyhow::Result<()> {
         other => anyhow::bail!("unknown engine '{other}' (use winrt or placeholder)"),
     }
 
-    println!(
-        "Exported {} clips to {}",
-        phrases.len(),
-        out_dir.display()
-    );
+    println!("Exported {} clips to {}", phrases.len(), out_dir.display());
     Ok(())
 }
 

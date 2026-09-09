@@ -126,9 +126,18 @@ mod tests {
     #[test]
     fn ignores_sector_zero_start_line() {
         let boundaries = vec![
-            SectorBoundary { sector_num: 0, start_pct: 0.0 },
-            SectorBoundary { sector_num: 1, start_pct: 0.34 },
-            SectorBoundary { sector_num: 2, start_pct: 0.72 },
+            SectorBoundary {
+                sector_num: 0,
+                start_pct: 0.0,
+            },
+            SectorBoundary {
+                sector_num: 1,
+                start_pct: 0.34,
+            },
+            SectorBoundary {
+                sector_num: 2,
+                start_pct: 0.72,
+            },
         ];
         let frames: Vec<_> = (0..100)
             .map(|i| {

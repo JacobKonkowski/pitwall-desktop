@@ -89,10 +89,26 @@ impl FastFrameExtractor {
                 .delta_session_best_ok
                 .as_ref()
                 .map(|v| read_bool(data, v)),
-            lf_temp: self.lf_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
-            rf_temp: self.rf_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
-            lr_temp: self.lr_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
-            rr_temp: self.rr_temp.as_ref().map(|v| read_f32(data, v)).unwrap_or(0.0),
+            lf_temp: self
+                .lf_temp
+                .as_ref()
+                .map(|v| read_f32(data, v))
+                .unwrap_or(0.0),
+            rf_temp: self
+                .rf_temp
+                .as_ref()
+                .map(|v| read_f32(data, v))
+                .unwrap_or(0.0),
+            lr_temp: self
+                .lr_temp
+                .as_ref()
+                .map(|v| read_f32(data, v))
+                .unwrap_or(0.0),
+            rr_temp: self
+                .rr_temp
+                .as_ref()
+                .map(|v| read_f32(data, v))
+                .unwrap_or(0.0),
         }
     }
 }

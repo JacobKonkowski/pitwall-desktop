@@ -1,4 +1,4 @@
-﻿/// Session type classification for coach message gating.
+/// Session type classification for coach message gating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionMode {
     Practice,
@@ -40,8 +40,14 @@ mod tests {
 
     #[test]
     fn parses_session_types() {
-        assert_eq!(SessionMode::from_session_type("Qualifying"), SessionMode::Qualifying);
+        assert_eq!(
+            SessionMode::from_session_type("Qualifying"),
+            SessionMode::Qualifying
+        );
         assert_eq!(SessionMode::from_session_type("Race"), SessionMode::Race);
-        assert_eq!(SessionMode::from_session_type("Open Practice"), SessionMode::Practice);
+        assert_eq!(
+            SessionMode::from_session_type("Open Practice"),
+            SessionMode::Practice
+        );
     }
 }

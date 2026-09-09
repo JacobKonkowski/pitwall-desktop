@@ -31,7 +31,10 @@ pub fn check_iracing_config() -> IracingConfigCheck {
                     warnings.push("Set irsdkEnableMem=1 in Documents\\iRacing\\app.ini for live telemetry (v2).".into());
                 }
                 if !disk {
-                    warnings.push("Set irsdkEnableDisk=1 in Documents\\iRacing\\app.ini to record IBT files.".into());
+                    warnings.push(
+                        "Set irsdkEnableDisk=1 in Documents\\iRacing\\app.ini to record IBT files."
+                            .into(),
+                    );
                 }
                 (mem, disk)
             }
@@ -41,7 +44,9 @@ pub fn check_iracing_config() -> IracingConfigCheck {
             }
         }
     } else {
-        warnings.push("Documents\\iRacing\\app.ini not found. Install iRacing or create the file.".into());
+        warnings.push(
+            "Documents\\iRacing\\app.ini not found. Install iRacing or create the file.".into(),
+        );
         (false, false)
     };
 

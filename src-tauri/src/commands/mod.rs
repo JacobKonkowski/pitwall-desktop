@@ -21,9 +21,7 @@ use crate::settings::{load_settings, save_settings, AppSettings};
 use crate::storage::{
     Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail, SessionSummary,
 };
-use crate::vr::{
-    NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus,
-};
+use crate::vr::{NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus};
 
 pub struct AppState {
     pub import: ImportHandles,
@@ -60,7 +58,12 @@ impl AppState {
 
 #[tauri::command]
 pub fn list_sessions(state: State<'_, Arc<AppState>>) -> Result<Vec<SessionSummary>, String> {
-    state.import.db.lock().list_sessions().map_err(|e| e.to_string())
+    state
+        .import
+        .db
+        .lock()
+        .list_sessions()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -126,16 +129,18 @@ pub async fn import_ibt(
     path: String,
 ) -> Result<String, String> {
     let path_buf = validate_import_path(&path)?;
-    run_import(&app, &state.import, path_buf).await.map_err(|e| {
-        let msg = format!("Import failed: {e:#}");
-        {
-            let mut status = state.import.import_status.lock();
-            status.active = false;
-            status.message = msg.clone();
-        }
-        let _ = app.emit("import-status", state.import.import_status.lock().clone());
-        msg
-    })?;
+    run_import(&app, &state.import, path_buf)
+        .await
+        .map_err(|e| {
+            let msg = format!("Import failed: {e:#}");
+            {
+                let mut status = state.import.import_status.lock();
+                status.active = false;
+                status.message = msg.clone();
+            }
+            let _ = app.emit("import-status", state.import.import_status.lock().clone());
+            msg
+        })?;
     Ok(state.import.import_status.lock().message.clone())
 }
 
@@ -180,7 +185,12 @@ pub fn clear_database_cmd(state: State<'_, Arc<AppState>>) -> Result<usize, Stri
     }
     #[cfg(debug_assertions)]
     {
-        let removed = state.import.db.lock().clear_all().map_err(|e| e.to_string())?;
+        let removed = state
+            .import
+            .db
+            .lock()
+            .clear_all()
+            .map_err(|e| e.to_string())?;
         let mut status = state.import.import_status.lock();
         *status = ImportStatus {
             active: false,
@@ -225,10 +235,7 @@ pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Re
 }
 
 #[tauri::command]
-pub fn stop_live_monitor(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+pub fn stop_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.live.stop();
     state.vr.stop();
     state.audio.stop();
@@ -322,10 +329,7 @@ pub fn start_monitor_overlay(
 }
 
 #[tauri::command]
-pub fn stop_monitor_overlay(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+pub fn stop_monitor_overlay(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.monitor.stop(&app);
     Ok(())
 }
