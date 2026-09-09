@@ -28,10 +28,11 @@ Phantom reset buckets and sticky duplicate lap times are cleaned in the analysis
 | Demo clock | Synthetic session clock / offline exercise |
 | Native VR HUD | OpenXR API layer + shared memory (default `vrMode: native`) |
 | Web HUD | HTTP server `:17342` for browser preview |
+| Monitor overlays | Always-on-top transparent windows per enabled widget |
 | Layer install / diagnostics | Registry stage, DLL presence, producer write age |
 
-Overlay layout settings configure **VR widget slots** (coach / standings / relative / radar). The Live page shows an in-app coach preview; the same slot config drives the native layer and the web HUD.
+Overlay layout settings configure a **shared widget catalog** (coach / standings / relative / radar). Enable once; place twice (`desktop*` for monitor windows, `vr*` for the headset). The Live page shows an in-app coach preview; the same slot config drives monitor, native VR, and the web HUD.
 
 ## Settings
 
-Persisted via `get_settings` / `save_settings_cmd`. Live page exposes common audio toggles and VR actions. Full `AppSettings` includes VR mode/opacity, overlay layout, and coach chatter / category flags.
+Persisted via `get_settings` / `save_settings_cmd`. Live page exposes common audio toggles, monitor overlay start/stop, and VR actions. Full `AppSettings` includes VR mode/opacity, overlay layout, and coach chatter / category flags.

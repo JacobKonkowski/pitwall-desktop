@@ -26,18 +26,22 @@ export function AppShell({ features }: Props) {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <header className="app-header" role="banner">
         <div className="app-brand">
           <span className="brand-mark">PitWall</span>
           <span className="brand-sub">race telemetry</span>
         </div>
-        <div className="app-header-actions">{HeaderActions ? <HeaderActions /> : null}</div>
+        <div className="app-header-actions" aria-label="Feature actions">
+          {HeaderActions ? <HeaderActions /> : null}
+        </div>
         <GlobalStatus />
       </header>
 
       <FeatureNav features={features} activeId={active.id} onSelect={setActiveId} />
 
-      <main className="app-outlet">{active.element}</main>
+      <main className="app-outlet" id="main-content" tabIndex={-1} aria-label={active.label}>
+        {active.element}
+      </main>
       <ToastHost />
     </div>
   );

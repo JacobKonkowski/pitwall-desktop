@@ -41,6 +41,7 @@ OpenXR layer build: [NATIVE_VR.md](NATIVE_VR.md) and [openxr-layer/README.md](..
 | Features | `src/features/analyze/`, `src/features/live/` |
 | Shared IPC | `src/shared/` |
 | HUD widgets | `src/widgets/` |
+| Monitor host | `src/monitor/`, `crates/pitwall-monitor` |
 | Docs hub | `docs/README.md` |
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the system map.

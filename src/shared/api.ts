@@ -2,8 +2,8 @@
  * Tauri IPC wrappers for the PitWall backend.
  *
  * Commands use `invoke()`; live/import updates use `listen()` helpers below.
- * Analyze handlers live in `src-tauri/src/commands/mod.rs`; live/audio/vr/settings
- * may land in parallel — invoke failures at runtime are expected until registered.
+ * Analyze, live, audio, monitor, and VR handlers are registered in
+ * `src-tauri/src/commands/mod.rs`.
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -17,6 +17,7 @@ import type {
   LapTrace,
   LiveSnapshot,
   LiveStatus,
+  MonitorOverlayStatus,
   NativeVrStatus,
   SessionDetail,
   SessionSummary,
@@ -208,6 +209,20 @@ export async function checkVrHudHealth(): Promise<boolean> {
 
 export async function openVrHudPreview(): Promise<void> {
   return invoke("open_vr_hud_preview_cmd");
+}
+
+/* --- Monitor overlays --- */
+
+export async function startMonitorOverlay(): Promise<void> {
+  return invoke("start_monitor_overlay");
+}
+
+export async function stopMonitorOverlay(): Promise<void> {
+  return invoke("stop_monitor_overlay");
+}
+
+export async function getMonitorOverlayStatus(): Promise<MonitorOverlayStatus> {
+  return invoke("get_monitor_overlay_status");
 }
 
 export function buildOpenKneeboardUrl(settings: AppSettings, baseUrl: string): string {

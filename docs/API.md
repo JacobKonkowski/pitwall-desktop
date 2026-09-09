@@ -4,7 +4,7 @@ Frontend IPC lives in `src/shared/api.ts` and `src/shared/types.ts`. TypeDoc: `n
 
 Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`.
 
-**34 commands** covering Analyze storage, Live, settings, audio coach, and VR/HUD.
+**37 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
 
 ## Analyze / storage
 
@@ -50,6 +50,14 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `get_audio_coach_message` | `getAudioCoachMessage` | |
 | `test_audio_coach` | `testAudioCoach` | TTS-only sample |
 
+## Monitor overlays
+
+| Command | TS helper | Notes |
+|---------|-----------|--------|
+| `start_monitor_overlay` | `startMonitorOverlay` | One always-on-top window per enabled widget |
+| `stop_monitor_overlay` | `stopMonitorOverlay` | |
+| `get_monitor_overlay_status` | `getMonitorOverlayStatus` | Active flag, message, open labels |
+
 ## VR / HUD
 
 | Command | TS helper | Notes |
@@ -76,4 +84,4 @@ TS may still declare helpers for `patch_settings_cmd` / `list_tts_voices_cmd` â€
 
 ## Capabilities
 
-Main window uses `src-tauri/capabilities/default.json`.
+Main and monitor windows (`main`, `monitor-*`) use `src-tauri/capabilities/default.json`.

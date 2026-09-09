@@ -14,11 +14,13 @@ interface Props {
 export function FeatureNav({ features, activeId, onSelect }: Props) {
   if (features.length < 2) return null;
   return (
-    <nav className="feature-nav">
+    <nav className="feature-nav" aria-label="Features">
       {features.map((f) => (
         <button
           key={f.id}
+          type="button"
           className={f.id === activeId ? "active" : ""}
+          aria-current={f.id === activeId ? "page" : undefined}
           onClick={() => onSelect(f.id)}
         >
           {f.label}

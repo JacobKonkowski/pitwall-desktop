@@ -5,6 +5,7 @@ import {
   getAudioCoachStatus,
   getLiveSnapshot,
   getLiveStatus,
+  getMonitorOverlayStatus,
   getNativeVrStatus,
   getSettings,
   getVrLayerDiagnostics,
@@ -17,10 +18,12 @@ import {
   startAudioCoach,
   startDemoClock,
   startLiveMonitor,
+  startMonitorOverlay,
   startVrOverlay,
   stopAudioCoach,
   stopDemoClock,
   stopLiveMonitor,
+  stopMonitorOverlay,
   stopVrOverlay,
   testAudioCoach,
   uninstallVrLayer,
@@ -32,6 +35,7 @@ import type {
   AudioCoachStatus,
   LiveSnapshot,
   LiveStatus,
+  MonitorOverlayStatus,
   NativeVrStatus,
   VrLayerDiagnostics,
   VrOverlayStatus,
@@ -79,6 +83,7 @@ export function LivePage() {
   const [running, setRunning] = useState(false);
   const [demoRunning, setDemoRunning] = useState(false);
   const [vrStatus, setVrStatus] = useState<VrOverlayStatus | null>(null);
+  const [monitorStatus, setMonitorStatus] = useState<MonitorOverlayStatus | null>(null);
   const [nativeVr, setNativeVr] = useState<NativeVrStatus | null>(null);
   const [layerDiag, setLayerDiag] = useState<VrLayerDiagnostics | null>(null);
   const [vrHudHealthy, setVrHudHealthy] = useState<boolean | null>(null);
@@ -88,10 +93,11 @@ export function LivePage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [liveStatus, snapshot, vr, audio, cfg] = await Promise.all([
+      const [liveStatus, snapshot, vr, monitor, audio, cfg] = await Promise.all([
         getLiveStatus(),
         getLiveSnapshot().catch(() => null),
         getVrOverlayStatus().catch(() => null),
+        getMonitorOverlayStatus().catch(() => null),
         getAudioCoachStatus().catch(() => null),
         getSettings().catch(() => null),
       ]);
@@ -99,6 +105,7 @@ export function LivePage() {
       setSnap(liveStatus.state === "connected" || snapshot ? snapshot : null);
       setRunning(liveStatus.state !== "disconnected");
       setVrStatus(vr);
+      setMonitorStatus(monitor);
       setAudioStatus(audio);
       setSettings(cfg);
     } catch (e) {
@@ -381,6 +388,38 @@ export function LivePage() {
               ) : (
                 <p className="muted small">Settings unavailable until backend registers.</p>
               )}
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <h2>Monitor overlays</h2>
+            </div>
+            <div className="panel-body">
+              <p className="muted small">
+                Always-on-top transparent windows for each enabled widget. Shared
+                enable flags; desktop placement uses <code>desktopX/Y/W/H</code>.
+              </p>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() =>
+                    run(
+                      monitorStatus?.active ? "Stop monitor" : "Start monitor",
+                      monitorStatus?.active ? stopMonitorOverlay : startMonitorOverlay,
+                    )
+                  }
+                >
+                  {monitorStatus?.active ? "Stop monitor overlays" : "Start monitor overlays"}
+                </button>
+              </div>
+              <p className="muted small">{monitorStatus?.message || "Monitor overlay idle"}</p>
+              {monitorStatus?.windows?.length ? (
+                <p className="muted small">
+                  Open: {monitorStatus.windows.join(", ")}
+                </p>
+              ) : null}
             </div>
           </div>
 

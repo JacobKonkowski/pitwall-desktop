@@ -2,7 +2,9 @@
 
 ## Entry
 
-`index.html` → `src/main.tsx` → `shell/AppShell.tsx`.
+`index.html` → `src/main.tsx` → `shell/AppShell.tsx` (main app).
+
+`monitor.html` → `src/monitor/main.tsx` → per-widget overlay host (window label `monitor-<kind>`).
 
 ## Layout
 
@@ -13,6 +15,7 @@ src/
     registry.ts    Feature[] — Analyze + Live
     analyze/       AnalyzePage, browser, laps, compare, insights, fuel…
     live/          LivePage, SessionLeaderboard
+  monitor/         Transparent overlay window entry
   shared/          api.ts, types.ts, format, toast
   widgets/         Coach, Standings, Relative, Radar + widgets.css
   styles/          tokens.css, app.css
@@ -26,7 +29,7 @@ All `invoke` wrappers and shared DTOs live in **`src/shared/`** (not `src/lib/`)
 
 ## Widgets
 
-Widgets render coach / standings / relative / radar for the Live in-app preview and share shapes with VR SHM slots.
+Widgets render coach / standings / relative / radar for the Live in-app preview, monitor overlay windows, and share shapes with VR SHM slots. Enable once in `overlayLayout`; place with `desktop*` (monitor) and `vr*` (headset).
 
 ## Styling
 

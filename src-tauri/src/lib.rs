@@ -1,22 +1,26 @@
 //! PitWall Desktop — Tauri backend library.
 //!
-//! Layered core: [`telemetry`] -> [`analysis`] -> [`ingest`]/[`storage`] ->
-//! [`commands`]. Live telemetry, Path B audio coach, and native OpenXR VR are
-//! restored for the usable rebuild milestone (no desktop overlay window, no Ollama).
-pub mod analysis;
-pub mod audio;
+//! Composition root: domain crates (`pitwall_telemetry`, `pitwall_analysis`,
+//! `pitwall_ingest`, `pitwall_storage`, `pitwall_live`, `pitwall_audio`,
+//! `pitwall_vr`, `pitwall_settings`, `pitwall_monitor`) plus [`commands`] IPC.
+//! Domains must not depend on `commands`.
+
 pub mod commands;
-pub mod ingest;
-pub mod live;
-pub mod settings;
-pub mod storage;
-pub mod telemetry;
-pub mod vr;
+
+pub use pitwall_analysis as analysis;
+pub use pitwall_audio as audio;
+pub use pitwall_ingest as ingest;
+pub use pitwall_live as live;
+pub use pitwall_monitor as monitor;
+pub use pitwall_settings as settings;
+pub use pitwall_storage as storage;
+pub use pitwall_telemetry as telemetry;
+pub use pitwall_vr as vr;
 
 use std::sync::Arc;
 
 use crate::commands::AppState;
-use ingest::start_watcher;
+use pitwall_ingest::start_watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,7 +38,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(state.clone())
         .setup(move |app| {
-            start_watcher(app.handle().clone(), state.clone());
+            #[cfg(feature = "updater")]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
+            start_watcher(app.handle().clone(), state.import.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -62,6 +71,9 @@ pub fn run() {
             commands::get_audio_coach_status,
             commands::get_audio_coach_message,
             commands::test_audio_coach,
+            commands::start_monitor_overlay,
+            commands::stop_monitor_overlay,
+            commands::get_monitor_overlay_status,
             commands::start_vr_overlay,
             commands::stop_vr_overlay,
             commands::get_vr_overlay_status,

@@ -1,62 +1,45 @@
 # Architecture
 
-PitWall is a Tauri 2 + React desktop app with two user goals: **Analyze** imported
-IBTs, and **Live** coach + HUD from shared-memory telemetry.
+PitWall is a Tauri 2 + React desktop app with a **Cargo workspace** of domain crates
+and a thin `src-tauri` composition root. See [FOUNDATION.md](FOUNDATION.md) for the
+dependency table and contributor playbook.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  React shell (src/shell) + feature registry             │
-│  Analyze │ Live                                         │
+│  React shell + feature registry (Analyze | Live)        │
+│  widgets catalog → monitor windows + VR HUD             │
 └─────────────┬───────────────────────────┬───────────────┘
               │ invoke / events           │
 ┌─────────────▼───────────────────────────▼───────────────┐
-│  Tauri commands (src-tauri/src/commands)                │
-├─────────────┬───────────────┬─────────────┬─────────────┤
-│ ingest/IBT  │ live/         │ audio/      │ vr/         │
-│ analysis/   │ snapshot      │ engine+WAV  │ SHM + HUD   │
-│ storage/    │               │ WinRT TTS   │ OpenXR DLL  │
-└─────────────┴───────────────┴─────────────┴─────────────┘
+│  pitwall-desktop (commands / AppState)                  │
+├──────────┬──────────┬──────────┬──────────┬─────────────┤
+│ ingest   │ live     │ audio    │ monitor  │ vr          │
+│ analysis │ storage  │ settings │ telemetry│             │
+└──────────┴──────────┴──────────┴──────────┴─────────────┘
 ```
 
 ## Frontend
 
 | Path | Role |
 |------|------|
-| `src/shell/` | `AppShell`, feature nav |
-| `src/features/registry.ts` | Registered features (Analyze, Live) |
+| `src/shell/` | AppShell, feature nav |
+| `src/features/registry.ts` | Analyze, Live |
 | `src/features/analyze/` | Post-session UI |
-| `src/features/live/` | Live telemetry / coach / VR controls |
-| `src/shared/` | `api.ts`, `types.ts`, format, toast |
-| `src/widgets/` | Coach / standings / relative / radar (Live preview + VR data shapes) |
-| `src/styles/` | Tokens + app CSS |
-
-Single Vite entry: `index.html` → `main.tsx`.
-
-## Backend modules (`src-tauri/src`)
-
-| Module | Role |
-|--------|------|
-| `telemetry/` | Shared telemetry helpers for analysis |
-| `analysis/` | IBT pipeline, sectors, segment, compare, aggregates, cleanup |
-| `ingest/` | Frame extract, IBT import, folder watcher |
-| `storage/` | SQLite schema v2 |
-| `live/` | Tracker, snapshot, pack, sectors, competitors |
-| `audio/` | Coach: `engine/rules/*`, clips, queue, WinRT TTS |
-| `vr/` | SHM writer, HUD HTTP server, layer install |
-| `settings/` | `AppSettings` JSON (audio + VR + overlay layout) |
-| `commands/` | Tauri IPC surface |
+| `src/features/live/` | Live / coach / monitor / VR controls |
+| `src/shared/` | api, types, format, toast, i18n |
+| `src/widgets/` | Shared presentational widgets |
+| `src/monitor/` | Monitor window entry (when present) |
 
 ## Live data paths
 
-1. **UI** — ~10 Hz snapshot for Live page / widgets
-2. **Native VR** — ~30 Hz `PwSharedBlock` into `Local\PitWallVR` for `pitwall-openxr-layer`
-3. **Web HUD** — HTTP JSON/HTML on port **17342**
-4. **Audio** — rule engine polls snapshot; plays clip sequences + TTS units
+1. **UI** — ~10 Hz snapshot  
+2. **Monitor** — always-on-top Tauri windows per enabled widget  
+3. **Native VR** — ~30 Hz SHM for OpenXR layer  
+4. **Web HUD** — `:17342`  
+5. **Audio** — 250 ms rule engine poll  
 
-## Diagnostics (VR)
+## Related
 
-Producer-side only: write age, enabled overlay count, last error, layer registry/DLL readiness. The layer does not write heartbeat files (no disk I/O in `xrEndFrame`). `compositorActive` is a proxy (fresh publish ∧ layer installed).
-
-## Binary tools
-
-- `gen-audio-clips` (`src-tauri/src/bin/gen_audio_clips.rs`) — bake WAVs; not used at app runtime.
+- [FOUNDATION.md](FOUNDATION.md) — crates and rules  
+- [NATIVE_VR.md](NATIVE_VR.md) — OpenXR details  
+- [PLUGINS.md](PLUGINS.md) — extension seams  

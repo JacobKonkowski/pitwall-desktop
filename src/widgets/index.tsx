@@ -13,7 +13,7 @@ interface WidgetProps {
   fieldPaceMode: string;
 }
 
-/** Renders the widget for a kind, shared by HUD previews. */
+/** Renders the widget for a kind, shared by monitor windows and HUD previews. */
 export function Widget({ kind, snap, fieldPaceMode }: WidgetProps) {
   switch (kind) {
     case "standings":

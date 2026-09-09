@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user goal is hard or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Ideal behavior (keep slices small — one widget, one coach rule, etc.)
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Analyze
+        - Live
+        - Audio coach
+        - Monitor widgets
+        - VR / OpenXR
+        - Docs / DX
+        - Other
+    validations:
+      required: true

@@ -1,10 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for the main window and monitor overlay windows",
+  "windows": ["main", "monitor-*"],
   "permissions": [
     "core:default",
-    "dialog:default"
+    "dialog:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size"
   ]
 }

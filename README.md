@@ -15,7 +15,8 @@ cd pitwall-desktop
 npm run tauri dev
 ```
 
-**Full setup + race-night checklist:** [docs/SETUP.md](docs/SETUP.md)
+**Full setup + race-night checklist:** [docs/SETUP.md](docs/SETUP.md)  
+**Contributor / architecture map:** [docs/FOUNDATION.md](docs/FOUNDATION.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [SECURITY.md](SECURITY.md)
 
 ## Prerequisites
 
@@ -79,7 +80,7 @@ Live gaps, pack state, and session best/optimal deltas while connected. See [doc
 
 ## Documentation
 
-Start at [docs/README.md](docs/README.md).
+Start at [docs/FOUNDATION.md](docs/FOUNDATION.md) and [docs/README.md](docs/README.md).
 
 ## License
 

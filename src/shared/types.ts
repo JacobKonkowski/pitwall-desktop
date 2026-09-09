@@ -219,11 +219,14 @@ export const WIDGET_LABELS: Record<WidgetKind, string> = {
 };
 
 export interface WidgetPlacement {
+  /** Shared enable flag for monitor windows and VR slots. */
   enabled: boolean;
+  /** Monitor window screen position / size (pixels). */
   desktopX: number;
   desktopY: number;
   desktopW: number;
   desktopH: number;
+  /** VR placement (meters / multipliers). */
   vrOffsetY: number;
   vrScale: number;
   vrOpacity: number;
@@ -304,6 +307,12 @@ export interface AppSettings {
 export interface AudioCoachStatus {
   active: boolean;
   lastMessage: string;
+}
+
+export interface MonitorOverlayStatus {
+  active: boolean;
+  message: string;
+  windows: string[];
 }
 
 export interface VrOverlayStatus {

@@ -1,4 +1,4 @@
-﻿/* Shared overlay widget styling for the desktop pop-out and in-app previews.
+﻿/* Shared overlay widget styling for monitor windows and in-app previews.
    Mirrors the Iron Man / board / radar wireframes the VR layer renders, using
    the same cyan-green helmet-HUD palette. */
 
@@ -138,3 +138,24 @@
 }
 .pw-radar-me { width: 14px; height: 14px; background: var(--pw-hero); top: 50%; }
 .pw-radar-car { width: 11px; height: 11px; background: var(--pw-warn); }
+
+/* ---- Monitor host shell ---- */
+.monitor-shell {
+  box-sizing: border-box;
+  padding: 4px;
+  cursor: grab;
+}
+.monitor-waiting,
+.monitor-error {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 12px;
+  color: var(--pw-glow-dim, #5dffa8);
+  font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 12px;
+  text-align: center;
+}
+.monitor-error {
+  color: #ff6b6b;
+}

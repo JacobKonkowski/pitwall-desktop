@@ -36,9 +36,11 @@ Per-lap sector times and distance-sampled traces (speed, throttle, brake, gear, 
 JSON beside the DB (`settings/mod.rs` → `AppSettings`). Includes:
 
 - `vrMode` (`native` \| `web`), HUD offset/opacity, recenter hotkey
-- `overlayLayout` — four VR widget slots + field pace mode
+- `overlayLayout` — four widget slots (monitor + VR) + field pace mode
 - Audio coach rate/volume/voice, chatter level, category toggles, gaps
 
-Some older geometry fields may still exist in the JSON for migration; the UI drives VR slots via `overlayLayout`.
+Shared `enabled` flags; `desktop*` places monitor windows, `vr*` places the in-headset HUD (enable once, place twice).
+
+Some older geometry fields may still exist in the JSON for migration; the UI drives slots via `overlayLayout`.
 
 Frontend types: `src/shared/types.ts`.

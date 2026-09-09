@@ -121,8 +121,9 @@ implicit API layers, confirm iRacing is in **OpenXR** (not OpenVR), then retry.
 ## Overlay widgets
 
 PitWall ships one shared widget catalog. Enable flags and field-pace preference
-drive the Live in-app preview, the native layer, and the web HUD at `:17342`.
-VR placement (height / scale / opacity) is tuned under Settings → Overlay widgets.
+drive the Live in-app preview, **monitor overlay windows**, the native layer, and
+the web HUD at `:17342`. Enable once; place twice — `desktop*` for monitor
+windows, VR height / scale / opacity under Overlay widgets for the headset.
 
 The protocol carries four head-locked overlay slots; the slot index equals the
 widget kind, so each keeps a stable, correctly-sized swapchain:
@@ -134,15 +135,16 @@ widget kind, so each keeps a stable, correctly-sized swapchain:
 | 2 | Relative board | Lower-right (square) |
 | 3 | Proximity radar | Low-center (square) |
 
-Disabled widgets are published with `enabled = 0` and skipped by the compositor.
-The web preview renders the same four layouts
+Disabled widgets are published with `enabled = 0` and skipped by the compositor
+(and omitted from monitor windows). The web preview renders the same four layouts
 (`/vr?layout=ironman|standings|relative|radar`).
 
-## In-app and web preview
+## In-app, monitor, and web preview
 
-Enable or disable VR widget slots and field pace from Live / settings (`overlayLayout`).
-The Live page shows an in-app coach preview; the same slot config drives the native
-layer and the browser HUD at `http://127.0.0.1:17342/vr`.
+Enable or disable widget slots and field pace from Live / settings (`overlayLayout`).
+The Live page shows an in-app coach preview and can start **monitor overlays**
+(always-on-top windows labeled `monitor-<kind>`). The same slot config drives the
+native layer and the browser HUD at `http://127.0.0.1:17342/vr`.
 
 ## Troubleshooting
 

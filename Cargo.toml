@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pitwall-telemetry",
+    "crates/pitwall-analysis",
+    "crates/pitwall-settings",
+    "crates/pitwall-storage",
+    "crates/pitwall-ingest",
+    "crates/pitwall-live",
+    "crates/pitwall-audio",
+    "crates/pitwall-vr",
+    "crates/pitwall-monitor",
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["jrkon"]
+license = "MIT"
+repository = "https://github.com/JacobKonkowski/pitwall-desktop"

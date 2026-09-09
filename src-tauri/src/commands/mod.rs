@@ -11,8 +11,12 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison};
 use crate::audio::AudioCoachService;
-use crate::ingest::{check_iracing_config, default_telemetry_dir, run_import};
-use crate::live::{LiveService, LiveSnapshot, LiveStatus};
+use crate::ingest::{
+    check_iracing_config, default_telemetry_dir, run_import, spawn_recent_ibt_import,
+    validate_import_path, ImportHandles,
+};
+use crate::live::{LiveService, LiveSnapshot, LiveStatus, PostSessionImportFn};
+use crate::monitor::MonitorOverlayService;
 use crate::settings::{load_settings, save_settings, AppSettings};
 use crate::storage::{
     Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail, SessionSummary,
@@ -22,25 +26,33 @@ use crate::vr::{
 };
 
 pub struct AppState {
-    pub db: Mutex<Database>,
-    pub import_status: Mutex<ImportStatus>,
-    /// Serializes imports so DB writes and progress updates stay predictable.
-    pub import_gate: tokio::sync::Mutex<()>,
+    pub import: ImportHandles,
     pub live: Arc<LiveService>,
     pub audio: Arc<AudioCoachService>,
     pub vr: Arc<VrOverlayService>,
+    pub monitor: Arc<MonitorOverlayService>,
     pub settings: Mutex<AppSettings>,
 }
 
 impl AppState {
     pub fn new() -> anyhow::Result<Self> {
+        let import = ImportHandles {
+            db: Arc::new(Mutex::new(Database::open()?)),
+            import_status: Arc::new(Mutex::new(ImportStatus::default())),
+            import_gate: Arc::new(tokio::sync::Mutex::new(())),
+        };
+        let live = Arc::new(LiveService::new());
+        let import_for_hook = import.clone();
+        let hook: PostSessionImportFn = Arc::new(move |app: AppHandle| {
+            spawn_recent_ibt_import(app, import_for_hook.clone());
+        });
+        live.set_post_session_import(hook);
         Ok(Self {
-            db: Mutex::new(Database::open()?),
-            import_status: Mutex::new(ImportStatus::default()),
-            import_gate: tokio::sync::Mutex::new(()),
-            live: Arc::new(LiveService::new()),
+            import,
+            live,
             audio: Arc::new(AudioCoachService::new()),
             vr: Arc::new(VrOverlayService::new()),
+            monitor: Arc::new(MonitorOverlayService::new()),
             settings: Mutex::new(load_settings()),
         })
     }
@@ -48,7 +60,7 @@ impl AppState {
 
 #[tauri::command]
 pub fn list_sessions(state: State<'_, Arc<AppState>>) -> Result<Vec<SessionSummary>, String> {
-    state.db.lock().list_sessions().map_err(|e| e.to_string())
+    state.import.db.lock().list_sessions().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -57,6 +69,7 @@ pub fn get_session(
     session_id: i64,
 ) -> Result<Option<SessionDetail>, String> {
     state
+        .import
         .db
         .lock()
         .get_session(session_id)
@@ -69,6 +82,7 @@ pub fn get_lap_traces(
     lap_ids: Vec<i64>,
 ) -> Result<Vec<LapTrace>, String> {
     state
+        .import
         .db
         .lock()
         .get_lap_traces(&lap_ids)
@@ -82,7 +96,7 @@ pub fn compare_laps(
     candidate_lap_id: i64,
     reference_lap_id: i64,
 ) -> Result<LapComparison, String> {
-    let db = state.db.lock();
+    let db = state.import.db.lock();
     let (cand_time, cand_sectors, cand_traces) = db
         .get_lap_compare_data(candidate_lap_id)
         .map_err(|e| e.to_string())?;
@@ -111,18 +125,18 @@ pub async fn import_ibt(
     state: State<'_, Arc<AppState>>,
     path: String,
 ) -> Result<String, String> {
-    let path_buf = PathBuf::from(&path);
-    run_import(&app, state.inner(), path_buf).await.map_err(|e| {
+    let path_buf = validate_import_path(&path)?;
+    run_import(&app, &state.import, path_buf).await.map_err(|e| {
         let msg = format!("Import failed: {e:#}");
         {
-            let mut status = state.import_status.lock();
+            let mut status = state.import.import_status.lock();
             status.active = false;
             status.message = msg.clone();
         }
-        let _ = app.emit("import-status", state.import_status.lock().clone());
+        let _ = app.emit("import-status", state.import.import_status.lock().clone());
         msg
     })?;
-    Ok(state.import_status.lock().message.clone())
+    Ok(state.import.import_status.lock().message.clone())
 }
 
 #[tauri::command]
@@ -131,7 +145,7 @@ pub async fn import_folder_cmd(
     state: State<'_, Arc<AppState>>,
 ) -> Result<usize, String> {
     let dir = default_telemetry_dir();
-    crate::ingest::import_folder(&app, state.inner(), dir)
+    crate::ingest::import_folder(&app, &state.import, dir)
         .await
         .map_err(|e| e.to_string())
 }
@@ -143,7 +157,7 @@ pub fn check_iracing_config_cmd() -> IracingConfigCheck {
 
 #[tauri::command]
 pub fn get_import_status(state: State<'_, Arc<AppState>>) -> ImportStatus {
-    state.import_status.lock().clone()
+    state.import.import_status.lock().clone()
 }
 
 #[tauri::command]
@@ -166,8 +180,8 @@ pub fn clear_database_cmd(state: State<'_, Arc<AppState>>) -> Result<usize, Stri
     }
     #[cfg(debug_assertions)]
     {
-        let removed = state.db.lock().clear_all().map_err(|e| e.to_string())?;
-        let mut status = state.import_status.lock();
+        let removed = state.import.db.lock().clear_all().map_err(|e| e.to_string())?;
+        let mut status = state.import.import_status.lock();
         *status = ImportStatus {
             active: false,
             current_file: None,
@@ -188,6 +202,7 @@ pub fn delete_session_cmd(
     session_id: i64,
 ) -> Result<bool, String> {
     state
+        .import
         .db
         .lock()
         .delete_session(session_id)
@@ -198,7 +213,7 @@ pub fn delete_session_cmd(
 
 #[tauri::command]
 pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.live.start(app.clone(), state.inner().clone());
+    state.live.start(app.clone());
     let settings = state.settings.lock().clone();
     if settings.vr_overlay_enabled {
         state.vr.start(state.live.clone(), settings.clone());
@@ -210,10 +225,14 @@ pub fn start_live_monitor(app: AppHandle, state: State<'_, Arc<AppState>>) -> Re
 }
 
 #[tauri::command]
-pub fn stop_live_monitor(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn stop_live_monitor(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
     state.live.stop();
     state.vr.stop();
     state.audio.stop();
+    state.monitor.stop(&app);
     Ok(())
 }
 
@@ -289,6 +308,33 @@ pub fn get_audio_coach_message(state: State<'_, Arc<AppState>>) -> String {
 pub fn test_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.audio.speak_test();
     Ok(())
+}
+
+// --- Monitor overlays -------------------------------------------------------
+
+#[tauri::command]
+pub fn start_monitor_overlay(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let settings = state.settings.lock().clone();
+    state.monitor.start(&app, &settings)
+}
+
+#[tauri::command]
+pub fn stop_monitor_overlay(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    state.monitor.stop(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_monitor_overlay_status(
+    state: State<'_, Arc<AppState>>,
+) -> crate::monitor::MonitorOverlayStatus {
+    state.monitor.status()
 }
 
 // --- VR ---------------------------------------------------------------------
