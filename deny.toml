@@ -4,6 +4,9 @@
 all-features = true
 
 [advisories]
+# Transitive Tauri/urlpattern crates (unic-*, proc-macro-error) are flagged
+# unmaintained; we can't replace them until upstream moves. Keep real vulns as deny.
+unmaintained = "warn"
 yanked = "warn"
 
 [licenses]
@@ -25,6 +28,8 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
+# Tauri / wry / gtk pull multiple semver-incompatible copies (base64, syn, …).
+# Warn so the graph stays visible without failing CI on unavoidable duplicates.
 multiple-versions = "warn"
 wildcards = "allow"
 
