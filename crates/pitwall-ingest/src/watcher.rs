@@ -7,7 +7,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use tauri::AppHandle;
 
-use crate::{default_telemetry_dir, run_import, scan_ibt_files, ImportHandles};
+use crate::{default_telemetry_dir, finish_folder_status, run_import, scan_ibt_files, ImportHandles};
 
 pub fn start_watcher(app: AppHandle, import: ImportHandles) {
     let telemetry_dir = default_telemetry_dir();
@@ -87,8 +87,19 @@ pub async fn import_folder(
 ) -> anyhow::Result<usize> {
     let files = scan_ibt_files(&dir)?;
     let count = files.len();
+
+    let mut imported_files = 0usize;
+    let mut total_laps = 0usize;
+    let mut total_elapsed_ms = 0u128;
     for path in files {
-        run_import(app, import, path).await?;
+        let result = run_import(app, import, path).await?;
+        if !result.skipped {
+            imported_files += 1;
+            total_laps += result.lap_count;
+            total_elapsed_ms += result.elapsed_ms;
+        }
     }
+
+    finish_folder_status(app, import, imported_files, count, total_laps, total_elapsed_ms);
     Ok(count)
 }

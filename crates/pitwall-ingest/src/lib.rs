@@ -16,7 +16,7 @@ pub use ibt_importer::{
     file_identity_hash, hash_file, parse_ibt_file, parse_ibt_file_with_progress, save_parsed_ibt,
     scan_ibt_files, ImportResult, ProgressCallback,
 };
-pub use import_runner::run_import;
+pub use import_runner::{finish_folder_status, run_import};
 pub use path_policy::{is_allowed_ibt_path, validate_import_path};
 pub use post_session::spawn_recent_ibt_import;
 pub use watcher::{import_folder, start_watcher};
