@@ -7,7 +7,9 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use tauri::AppHandle;
 
-use crate::{default_telemetry_dir, finish_folder_status, run_import, scan_ibt_files, ImportHandles};
+use crate::{
+    default_telemetry_dir, finish_folder_status, run_import, scan_ibt_files, ImportHandles
+};
 
 pub fn start_watcher(app: AppHandle, import: ImportHandles) {
     let telemetry_dir = default_telemetry_dir();
@@ -100,6 +102,13 @@ pub async fn import_folder(
         }
     }
 
-    finish_folder_status(app, import, imported_files, count, total_laps, total_elapsed_ms);
+    finish_folder_status(
+        app,
+        import,
+        imported_files,
+        count,
+        total_laps,
+        total_elapsed_ms
+    );
     Ok(count)
 }
