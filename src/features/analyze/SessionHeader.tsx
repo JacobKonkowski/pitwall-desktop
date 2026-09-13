@@ -6,9 +6,10 @@ import { truncateIbtName } from "./sessionStats";
 interface Props {
   session: SessionSummary;
   stats: SessionStats;
+  sessionTypes: string[];
 }
 
-export function SessionHeader({ session, stats }: Props) {
+export function SessionHeader({ session, stats, sessionTypes }: Props) {
   const consistency =
     stats.consistencyMs == null
       ? "—"
@@ -24,6 +25,9 @@ export function SessionHeader({ session, stats }: Props) {
         </div>
       </div>
       <div className="sh-facts">
+        {sessionTypes.length > 0 ? (
+          <Fact label="Type" value={sessionTypes.join(" → ")} />
+        ) : null}
         <Fact label="Date" value={formatDate(session.sessionDate)} />
         <Fact label="Laps" value={String(session.lapCount)} />
         <Fact
