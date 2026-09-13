@@ -168,6 +168,14 @@
   flex: 1;
   min-height: 0;
 }
+.sidebar-footer {
+  padding: 10px;
+  border-top: 1px solid var(--color-border);
+}
+.sidebar-footer .sidebar-delete-all {
+  width: 100%;
+  justify-content: center;
+}
 .session-item {
   padding: 10px 12px;
   border-bottom: 1px solid var(--color-border);

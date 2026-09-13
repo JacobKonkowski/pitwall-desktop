@@ -157,6 +157,26 @@ export function AnalyzePage() {
     [refreshSessions],
   );
 
+  const handleDeleteAll = useCallback(async () => {
+    if (sessions.length === 0) return;
+    const ok = await confirmDialog(
+      `Delete all ${sessions.length} session(s) and their laps from the local database? This cannot be undone.`,
+      "Delete all sessions",
+    );
+    if (!ok) return;
+    try {
+      for (const s of sessions) {
+        await deleteSession(s.id);
+      }
+      await refreshSessions();
+      setSelectedId(null);
+      writeLastSessionId(null);
+    } catch (e) {
+      showToast(`Delete failed: ${String(e)}`, "error");
+      await refreshSessions();
+    }
+  }, [sessions, refreshSessions]);
+
   const laps = detail?.laps ?? [];
   const stats = useMemo(() => computeSessionStats(laps), [laps]);
   const hasEligible = useMemo(() => laps.some((l) => l.paceEligible), [laps]);
@@ -174,6 +194,7 @@ export function AnalyzePage() {
         selectedId={selectedId}
         onSelect={selectSession}
         onDelete={handleDelete}
+        onDeleteAll={handleDeleteAll}
       />
       <div className="analyze-workspace">
         {selectedId == null ? (
