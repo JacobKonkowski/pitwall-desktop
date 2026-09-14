@@ -134,6 +134,38 @@ fn set_status(
     let _ = app.emit("import-status", import.import_status.lock().clone());
 }
 
+/// Set the final status after a folder scan, summing laps/time across every
+/// file that was actually imported (skipped/already-imported files don't
+/// count towards the totals).
+pub fn finish_folder_status(
+    app: &AppHandle,
+    import: &ImportHandles,
+    imported_files: usize,
+    total_files: usize,
+    total_laps: usize,
+    total_elapsed_ms: u128,
+) {
+    let message = if total_files == 0 {
+        "No IBT files found".into()
+    } else if imported_files == 0 {
+        format!("Scanned {total_files} file(s), already imported")
+    } else {
+        format!(
+            "Imported {total_laps} laps across {imported_files}/{total_files} file(s) in {total_elapsed_ms} ms"
+        )
+    };
+    {
+        let mut status = import.import_status.lock();
+        *status = ImportStatus {
+            active: false,
+            current_file: None,
+            progress_pct: 100.0,
+            message,
+        };
+    }
+    let _ = app.emit("import-status", import.import_status.lock().clone());
+}
+
 fn finish_status(app: &AppHandle, import: &ImportHandles, result: &ImportResult) {
     let message = if result.skipped {
         "Already imported".into()
