@@ -7,9 +7,16 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onDelete: (id: number) => void;
+  onDeleteAll: () => void;
 }
 
-export function SessionBrowser({ sessions, selectedId, onSelect, onDelete }: Props) {
+export function SessionBrowser({
+  sessions,
+  selectedId,
+  onSelect,
+  onDelete,
+  onDeleteAll,
+}: Props) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -65,6 +72,16 @@ export function SessionBrowser({ sessions, selectedId, onSelect, onDelete }: Pro
           ))
         )}
       </div>
+      {sessions.length > 0 ? (
+        <div className="sidebar-footer">
+          <button
+            className="btn btn-ghost btn-danger sidebar-delete-all"
+            onClick={onDeleteAll}
+          >
+            Delete all
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }
