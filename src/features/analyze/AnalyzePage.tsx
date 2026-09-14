@@ -159,6 +159,10 @@ export function AnalyzePage() {
 
   const laps = detail?.laps ?? [];
   const stats = useMemo(() => computeSessionStats(laps), [laps]);
+  const sessionTypes = useMemo(
+    () => [...new Set(laps.map((l) => l.sessionType).filter(Boolean))],
+    [laps],
+  );
   const hasEligible = useMemo(() => laps.some((l) => l.paceEligible), [laps]);
   const okChannelPresent = useMemo(
     () => laps.some((l) => l.deltaBestOk !== null),
@@ -185,7 +189,11 @@ export function AnalyzePage() {
         ) : (
           <>
             <div className="panel">
-              <SessionHeader session={detail.session} stats={stats} />
+              <SessionHeader
+                session={detail.session}
+                stats={stats}
+                sessionTypes={sessionTypes}
+              />
             </div>
 
             <InsightsStrip stats={stats} />
