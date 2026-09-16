@@ -15,6 +15,8 @@ Opening an older DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_t
 | `lap_count`, `best_lap_ms` | Summary (best is pace-eligible; list/detail may refresh from cleaned laps) |
 | `imported_at` | ISO timestamp |
 
+`SessionSummary` also exposes a derived `session_type` (not a stored column): the `laps.session_type` of the highest `session_num` (latest stint) for that session, recomputed alongside `lap_count`/`best_lap_ms` whenever laps are loaded.
+
 ### `laps` (schema v2)
 
 | Column | Notes |
