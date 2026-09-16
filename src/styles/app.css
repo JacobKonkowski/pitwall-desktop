@@ -154,6 +154,34 @@
   padding: 10px;
   border-bottom: 1px solid var(--color-border);
 }
+.session-sidebar .sidebar-search-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+.session-sidebar .sidebar-search-controls select {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  font-size: 12px;
+}
+.session-sidebar .sidebar-hide-empty {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.session-sidebar .sidebar-hide-empty input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+}
 .session-sidebar input {
   width: 100%;
   background: var(--color-bg);
@@ -190,11 +218,36 @@
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 .session-item .si-track {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-weight: 600;
   font-size: 13px;
+}
+.session-item .si-track-name {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.session-item .si-type {
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  font-weight: 700;
+}
+.session-item .si-type-R {
+  color: #e5484d;
+}
+.session-item .si-type-Q {
+  color: #a855f7;
+}
+.session-item .si-type-P {
+  color: #46a758;
+}
+.session-item .si-type-T {
+  color: #e6b800;
 }
 .session-item .si-car {
   color: var(--color-text-muted);
@@ -217,7 +270,7 @@
 .session-item .si-delete {
   position: absolute;
   top: 8px;
-  right: 8px;
+  right: 24px;
   opacity: 0;
   padding: 2px 6px;
   font-size: 11px;

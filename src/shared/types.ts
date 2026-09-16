@@ -17,6 +17,8 @@ export interface SessionSummary {
   /** Fastest pace-eligible lap, if any. */
   bestLapMs: number | null;
   importedAt: string;
+  /** Session type of the latest sub-session (by session number), e.g. "Race". */
+  sessionType: string;
 }
 
 export interface SectorTime {
