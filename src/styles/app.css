@@ -726,6 +726,12 @@
   gap: 6px;
   margin-top: 12px;
 }
+.monitor-widget-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+}
 .toggle-row {
   display: flex;
   align-items: center;

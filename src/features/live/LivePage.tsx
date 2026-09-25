@@ -15,6 +15,7 @@ import {
   onLiveTelemetry,
   openVrHudPreview,
   patchSettings,
+  saveSettings,
   startAudioCoach,
   startDemoClock,
   startLiveMonitor,
@@ -39,7 +40,9 @@ import type {
   NativeVrStatus,
   VrLayerDiagnostics,
   VrOverlayStatus,
+  WidgetKind,
 } from "../../shared/types";
+import { WIDGET_KINDS, WIDGET_LABELS } from "../../shared/types";
 import { CoachWidget } from "../../widgets";
 import { SessionLeaderboard } from "./SessionLeaderboard";
 
@@ -206,6 +209,26 @@ export function LivePage() {
   };
 
   const fieldPace = settings?.overlayLayout?.fieldPaceMode ?? "best";
+
+  const selectedWidget: WidgetKind | null =
+    WIDGET_KINDS.find((_, i) => settings?.overlayLayout?.widgets[i]?.enabled) ?? null;
+
+  /** Enable only `kind`, persist, and reopen monitor windows if they are showing. */
+  const selectMonitorWidget = (kind: WidgetKind) => {
+    if (!settings) return;
+    const idx = WIDGET_KINDS.indexOf(kind);
+    const next: AppSettings = {
+      ...settings,
+      overlayLayout: {
+        ...settings.overlayLayout,
+        widgets: settings.overlayLayout.widgets.map((w, i) => ({ ...w, enabled: i === idx })),
+      },
+    };
+    run("Select widget", async () => {
+      await saveSettings(next);
+      if (monitorStatus?.active) await startMonitorOverlay();
+    });
+  };
 
   return (
     <div className="live-page">
@@ -414,6 +437,22 @@ export function LivePage() {
                   {monitorStatus?.active ? "Stop monitor overlays" : "Start monitor overlays"}
                 </button>
               </div>
+              {settings ? (
+                <div className="monitor-widget-select" role="radiogroup" aria-label="Overlay widget">
+                  {WIDGET_KINDS.map((kind) => (
+                    <label key={kind} className="toggle-row">
+                      <input
+                        type="radio"
+                        name="monitor-widget"
+                        value={kind}
+                        checked={selectedWidget === kind}
+                        onChange={() => selectMonitorWidget(kind)}
+                      />
+                      <span>{WIDGET_LABELS[kind]}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
               <p className="muted small">{monitorStatus?.message || "Monitor overlay idle"}</p>
               {monitorStatus?.windows?.length ? (
                 <p className="muted small">
