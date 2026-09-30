@@ -60,8 +60,10 @@ jobs:
         with:
           tool: cargo-deny
 
-      - name: cargo deny (licenses/advisories)
-        run: cargo deny check
+      # Advisories run in their own job so a newly published RUSTSEC entry
+      # doesn't block merges; licenses/bans/sources only change with our deps.
+      - name: cargo deny (licenses/bans/sources)
+        run: cargo deny check licenses bans sources
 
       - name: Build API docs (smoke)
         run: npm run docs:api
@@ -70,9 +72,26 @@ jobs:
         run: cargo check -p pitwall-desktop --no-default-features
         continue-on-error: true
 
+  advisories:
+    name: Security advisories (cargo deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: cargo deny (advisories)
+        run: cargo deny check advisories
+
   release:
     name: Build installer
-    needs: build
+    needs: [build, advisories]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     steps:
