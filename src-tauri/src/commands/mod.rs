@@ -320,7 +320,7 @@ pub fn test_audio_coach(state: State<'_, Arc<AppState>>) -> Result<(), String> {
 // --- Monitor overlays -------------------------------------------------------
 
 #[tauri::command]
-pub fn start_monitor_overlay(
+pub async fn start_monitor_overlay(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
