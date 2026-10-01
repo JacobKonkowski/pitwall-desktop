@@ -51,6 +51,7 @@ pub fn run() {
             commands::get_session,
             commands::get_lap_traces,
             commands::compare_laps,
+            commands::corner_consistency,
             commands::import_ibt,
             commands::import_folder_cmd,
             commands::reimport_session_cmd,

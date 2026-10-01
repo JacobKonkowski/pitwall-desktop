@@ -71,6 +71,8 @@ export interface TracePoint {
   clutch: number | null;
   clutchRaw: number | null;
   handbrakeRaw: number | null;
+  /** `BrakeABSactive`; `null` for sessions imported before v6 traces. */
+  absActive: boolean | null;
   gear: number;
   steering: number;
   /** GPS at this sample; `null` for sessions imported before v3 traces. */
@@ -122,8 +124,75 @@ export interface AlignedPoint {
   referenceGear: number | null;
   candidateSteering: number | null;
   referenceSteering: number | null;
-  /** Optional backend cumulative time delta (ms). Client may approximate if absent. */
-  cumulativeDeltaMs?: number | null;
+  /** Running gap (candidate − reference, ms); `null` where either lap has no time curve. */
+  cumulativeDeltaMs: number | null;
+}
+
+/** "recorded" = both laps carry elapsed time; "estimated" = integrated from speed. */
+export type TimingSource = "recorded" | "estimated";
+
+/** Candidate vs reference through one corner. Positive = candidate slower / later. */
+export interface CornerDelta {
+  /** 1-based in track order; detected from speed, not the official turn numbers. */
+  number: number;
+  entryPct: number;
+  apexPct: number;
+  exitPct: number;
+  timeDeltaMs: number;
+  entryDeltaMs: number;
+  exitDeltaMs: number;
+  /** m/s */
+  candidateMinSpeed: number | null;
+  referenceMinSpeed: number | null;
+  /** Positive = candidate braked later. */
+  brakePointDeltaM: number | null;
+  /** Positive = candidate reached full throttle later. */
+  throttlePointDeltaM: number | null;
+  candidate: CornerTechnique;
+  reference: CornerTechnique;
+}
+
+/** How one lap drove one corner (driver pedals, own timeline). */
+export interface CornerTechnique {
+  /** `null` when the lap has no `BrakeABSactive` (imported before schema v6). */
+  absMs: number | null;
+  /** `null` without raw pedals (imported before schema v5). */
+  tcMs: number | null;
+  /** 0..1; `null` when the lap didn't brake for the corner. */
+  peakBrake: number | null;
+  trailBrakeMs: number | null;
+  coastMs: number;
+  /** `null` when taken flat or full throttle never comes before the exit. */
+  apexToThrottleMs: number | null;
+}
+
+export type LapRole = "candidate" | "reference";
+export type AssistKind = "abs" | "tc";
+
+/** A stretch of lap distance where ABS or traction control intervened. */
+export interface AssistSpan {
+  lap: LapRole;
+  kind: AssistKind;
+  startPct: number;
+  endPct: number;
+}
+
+/** One lap through one corner, relative to the reference lap. */
+export interface ConsistencyPoint {
+  lapId: number;
+  /** Metres after the reference brake point (negative = earlier). */
+  brakeOffsetM: number | null;
+  timeDeltaMs: number;
+  /** m/s */
+  minSpeed: number | null;
+}
+
+/** Every clean lap through one of the reference lap's corners (`corner_consistency`). */
+export interface CornerConsistency {
+  number: number;
+  apexPct: number;
+  brakeSpreadM: number | null;
+  points: ConsistencyPoint[];
 }
 
 export interface LapComparison {
@@ -134,6 +203,11 @@ export interface LapComparison {
   deltaMs: number | null;
   sectorDeltas: SectorDelta[];
   series: AlignedPoint[];
+  corners: CornerDelta[];
+  /** Where ABS / TC intervened on either lap. */
+  assists: AssistSpan[];
+  timing: TimingSource | null;
+  trackLengthM: number | null;
 }
 
 /* --- Live telemetry --- */
