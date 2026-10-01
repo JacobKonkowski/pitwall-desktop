@@ -1,8 +1,8 @@
 # Data model
 
-SQLite at `%LOCALAPPDATA%\pitwall-desktop\` (see `storage/db.rs`). **`PRAGMA user_version = 2`**.
+SQLite at `%LOCALAPPDATA%\pitwall-desktop\` (see `storage/db.rs`). **`PRAGMA user_version = 5`**.
 
-Opening an older DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_traces`) and requires reimport.
+Opening a pre-v2 DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_traces`) and requires reimport. v2 → v5 are additive migrations on `lap_traces` (GPS, elapsed time, raw pedals), so existing sessions survive — they just have no GPS / elapsed time / driver-pedal channels until re-imported.
 
 ## Tables
 
@@ -32,6 +32,22 @@ Opening an older DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_t
 ### `sectors` / `lap_traces`
 
 Per-lap sector times and distance-sampled traces (speed, throttle, brake, gear, steering).
+
+`lap_traces.lat` / `.lon` (schema v3, nullable) keep the GPS for each sample. They are `NULL` for sessions imported before v3 and for IBTs without GPS channels.
+
+`lap_traces.elapsed_ms` (schema v4, nullable) is the time since the lap's first frame. Older rows leave it `NULL`.
+
+`throttle` / `brake` are the **applied** values (`Throttle` / `Brake`), after auto-blip, traction control and ABS. Schema v5 adds the driver's pedals alongside them, all nullable:
+
+| Column | SDK channel | Notes |
+|--------|-------------|-------|
+| `throttle_raw` | `ThrottleRaw` | Driver throttle; no downshift blips |
+| `brake_raw` | `BrakeRaw` | Driver brake, before ABS |
+| `clutch` | `Clutch` | Applied clutch (0 = disengaged, 1 = engaged) |
+| `clutch_raw` | `ClutchRaw` | Driver clutch pedal |
+| `handbrake_raw` | `HandbrakeRaw` | Driver handbrake |
+
+They are `NULL` for sessions imported before v5 and for IBTs without the channel. Consumers that need driver intent fall back to applied `throttle` / `brake`. Clutch and handbrake are stored only — nothing displays them yet.
 
 ## Settings
 

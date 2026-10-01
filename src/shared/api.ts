@@ -75,6 +75,11 @@ export async function deleteSession(sessionId: number): Promise<boolean> {
   return invoke("delete_session_cmd", { sessionId });
 }
 
+/** Re-parse a session's source IBT with the current analysis; resolves to the new session id. */
+export async function reimportSession(sessionId: number): Promise<number> {
+  return invoke("reimport_session_cmd", { sessionId });
+}
+
 /** Native yes/no dialog (Tauri webview blocks `window.confirm`). */
 export async function confirmDialog(
   message: string,

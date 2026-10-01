@@ -11,6 +11,7 @@ PitWall exposes two features via `src/features/registry.ts`: **Analyze** and **L
 | Config tip | Reminds when disk recording looks disabled |
 | Lap table | Session type grouping; sectors; `paceEligible` (official time + both `_OK` flags + near-full coverage) |
 | Compare | Two-lap traces via `compare_laps` |
+| Re-import | Session header / sidebar buttons re-analyze IBTs still on disk with the latest pipeline (`reimport_session_cmd`) |
 | Fuel / tire panels | From stored lap aggregates |
 | Insights strip | Deterministic client-side bullets from your laps |
 

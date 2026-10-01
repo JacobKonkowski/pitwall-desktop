@@ -173,6 +173,14 @@ mod tests {
             brake: 0.0,
             gear,
             steering,
+            lat: None,
+            lon: None,
+            throttle_raw: None,
+            brake_raw: None,
+            clutch: None,
+            clutch_raw: None,
+            handbrake_raw: None,
+            elapsed_ms: None,
         }
     }
 

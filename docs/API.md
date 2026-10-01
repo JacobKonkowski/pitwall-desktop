@@ -4,7 +4,7 @@ Frontend IPC lives in `src/shared/api.ts` and `src/shared/types.ts`. TypeDoc: `n
 
 Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`.
 
-**37 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
+**38 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
 
 ## Analyze / storage
 
@@ -21,6 +21,7 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `pick_ibt_file` | `pickIbtFile` | Dialog |
 | `clear_database_cmd` | `clearDatabase` | Debug wipe |
 | `delete_session_cmd` | `deleteSession` | Per-session delete |
+| `reimport_session_cmd` | `reimportSession` | Re-parse a session's IBT with the current analysis; returns the new session id |
 
 ## Live
 

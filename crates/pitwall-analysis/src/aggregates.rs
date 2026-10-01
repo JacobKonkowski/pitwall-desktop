@@ -3,7 +3,7 @@
 
 use super::types::{RawFrame, TracePoint};
 
-/// Keep every Nth frame for chart traces (~10 Hz -> ~1.6 Hz at 6).
+/// Keep every Nth frame for chart traces (60 Hz IBT -> ~10 Hz at 6).
 const DOWNSAMPLE_EVERY: usize = 6;
 
 /// `(fuel_start, fuel_used)` in liters from the first/last frame fuel level.
@@ -47,19 +47,30 @@ pub fn average_speed(frames: &[RawFrame]) -> Option<f64> {
     Some(sum / frames.len() as f64)
 }
 
-/// Downsample frames into chart trace points.
+/// Downsample frames into chart trace points. Each point takes its first
+/// frame's values (including raw pedals, GPS, and elapsed lap time).
 pub fn downsample_traces(frames: &[RawFrame]) -> Vec<TracePoint> {
+    let lap_start = frames.first().map(|f| f.session_time);
     frames
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| i % DOWNSAMPLE_EVERY == 0)
-        .map(|(_, f)| TracePoint {
-            dist_pct: f.lap_dist_pct as f64,
-            speed: f.speed as f64,
-            throttle: f.throttle as f64,
-            brake: f.brake as f64,
-            gear: f.gear,
-            steering: f.steering as f64,
+        .chunks(DOWNSAMPLE_EVERY)
+        .map(|chunk| {
+            let f = &chunk[0];
+            TracePoint {
+                elapsed_ms: lap_start.map(|t0| (f.session_time - t0) * 1000.0),
+                dist_pct: f.lap_dist_pct as f64,
+                speed: f.speed as f64,
+                throttle: f.throttle as f64,
+                brake: f.brake as f64,
+                throttle_raw: f.throttle_raw.map(f64::from),
+                brake_raw: f.brake_raw.map(f64::from),
+                clutch: f.clutch.map(f64::from),
+                clutch_raw: f.clutch_raw.map(f64::from),
+                handbrake_raw: f.handbrake_raw.map(f64::from),
+                gear: f.gear,
+                steering: f.steering as f64,
+                lat: f.lat,
+                lon: f.lon,
+            }
         })
         .collect()
 }
@@ -76,6 +87,11 @@ mod tests {
             speed,
             throttle: 0.0,
             brake: 0.0,
+            throttle_raw: None,
+            brake_raw: None,
+            clutch: None,
+            clutch_raw: None,
+            handbrake_raw: None,
             steering: 0.0,
             gear: 3,
             fuel_level: fuel,
@@ -84,6 +100,8 @@ mod tests {
             lap_last_lap_time: None,
             delta_best_ok: None,
             delta_session_best_ok: None,
+            lat: None,
+            lon: None,
             lf_temp: temp,
             rf_temp: temp,
             lr_temp: temp,
@@ -105,5 +123,29 @@ mod tests {
         assert_eq!(average_speed(&frames), Some(50.0));
         let (lf, _, _, _) = tire_averages(&frames);
         assert_eq!(lf, Some(85.0));
+    }
+
+    #[test]
+    fn downsample_copies_raw_pedals_gps_and_elapsed() {
+        let mut frames: Vec<RawFrame> = (0..6).map(|_| frame(50.0, 40.0, 80.0)).collect();
+        frames[0].session_time = 10.0;
+        frames[0].throttle_raw = Some(0.5);
+        frames[0].brake_raw = Some(0.25);
+        frames[0].clutch = Some(0.125);
+        frames[0].clutch_raw = Some(0.0625);
+        frames[0].handbrake_raw = Some(0.0);
+        frames[0].lat = Some(41.0);
+        frames[0].lon = Some(-88.0);
+        frames[3].session_time = 10.5;
+        let points = downsample_traces(&frames);
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].throttle_raw, Some(0.5));
+        assert_eq!(points[0].brake_raw, Some(0.25));
+        assert_eq!(points[0].clutch, Some(0.125));
+        assert_eq!(points[0].clutch_raw, Some(0.0625));
+        assert_eq!(points[0].handbrake_raw, Some(0.0));
+        assert_eq!(points[0].lat, Some(41.0));
+        assert_eq!(points[0].lon, Some(-88.0));
+        assert_eq!(points[0].elapsed_ms, Some(0.0));
     }
 }

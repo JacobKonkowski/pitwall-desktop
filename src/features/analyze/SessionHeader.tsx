@@ -7,9 +7,11 @@ interface Props {
   session: SessionSummary;
   stats: SessionStats;
   sessionTypes: string[];
+  onReimport: () => void;
+  reimporting: boolean;
 }
 
-export function SessionHeader({ session, stats, sessionTypes }: Props) {
+export function SessionHeader({ session, stats, sessionTypes, onReimport, reimporting }: Props) {
   const consistency =
     stats.consistencyMs == null
       ? "—"
@@ -22,6 +24,14 @@ export function SessionHeader({ session, stats, sessionTypes }: Props) {
         <div className="muted">{session.car || "Unknown car"}</div>
         <div className="muted sh-ibt" title={session.ibtPath}>
           {truncateIbtName(session.ibtPath)}
+          <button
+            className="btn btn-ghost sh-reimport"
+            onClick={onReimport}
+            disabled={reimporting}
+            title="Re-analyze this session's IBT with the latest PitWall analysis"
+          >
+            {reimporting ? "Re-importing…" : "Re-import"}
+          </button>
         </div>
       </div>
       <div className="sh-facts">

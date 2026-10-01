@@ -62,10 +62,22 @@ export interface SessionDetail {
 export interface TracePoint {
   distPct: number;
   speed: number;
+  /** Applied pedals (after auto-blip / TC / ABS). */
   throttle: number;
   brake: number;
+  /** Driver pedals; `null` for sessions imported before v5 traces or sources without the channel. */
+  throttleRaw: number | null;
+  brakeRaw: number | null;
+  clutch: number | null;
+  clutchRaw: number | null;
+  handbrakeRaw: number | null;
   gear: number;
   steering: number;
+  /** GPS at this sample; `null` for sessions imported before v3 traces. */
+  lat: number | null;
+  lon: number | null;
+  /** ms since the lap's first frame; `null` for sessions imported before v4 traces. */
+  elapsedMs: number | null;
 }
 
 export interface LapTrace {
@@ -184,6 +196,18 @@ export interface LiveSnapshot {
   fuelLevel: number;
   speed: number;
   lapDistPct: number;
+  /** Applied pedals (after auto-blip / TC / ABS). */
+  throttle: number;
+  brake: number;
+  /** Driver pedals; `null` when the sim omits the channel. */
+  throttleRaw: number | null;
+  brakeRaw: number | null;
+  clutch: number | null;
+  clutchRaw: number | null;
+  handbrakeRaw: number | null;
+  /** Player GPS when the sim provides it. */
+  lat: number | null;
+  lon: number | null;
   currentSector: number;
   sectorBoundaries: number[];
   sectors: LiveSectorProgress[];

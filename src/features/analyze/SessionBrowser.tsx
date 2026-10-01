@@ -8,6 +8,8 @@ interface Props {
   onSelect: (id: number) => void;
   onDelete: (id: number) => void;
   onDeleteAll: () => void;
+  onReimportAll: () => void;
+  reimporting: boolean;
 }
 
 export function SessionBrowser({
@@ -16,6 +18,8 @@ export function SessionBrowser({
   onSelect,
   onDelete,
   onDeleteAll,
+  onReimportAll,
+  reimporting,
 }: Props) {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "car" | "track">("date");
@@ -116,6 +120,14 @@ export function SessionBrowser({
       </div>
       {sessions.length > 0 ? (
         <div className="sidebar-footer">
+          <button
+            className="btn btn-ghost"
+            onClick={onReimportAll}
+            disabled={reimporting}
+            title="Re-analyze every session whose IBT is still on disk"
+          >
+            {reimporting ? "Re-importing…" : "Re-import all"}
+          </button>
           <button
             className="btn btn-ghost btn-danger sidebar-delete-all"
             onClick={onDeleteAll}
