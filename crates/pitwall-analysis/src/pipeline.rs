@@ -10,11 +10,13 @@ use super::aggregates::{average_speed, downsample_traces, fuel_stats, tire_avera
 use super::cleanup::finalize_analyzed_laps;
 use super::sectors::compute_sector_times;
 use super::segment::{lap_dist_range, segment_laps};
+use super::track_map::outline_from_laps;
 use super::types::{AnalyzedLap, AnalyzedSession, LapFrames, SessionMeta};
 
 /// Analyze a full session's frames using the resolved session metadata.
 pub fn analyze_session(frames: Vec<super::types::RawFrame>, meta: &SessionMeta) -> AnalyzedSession {
     let groups = segment_laps(frames, &meta.session_labels);
+    let track_map = outline_from_laps(&meta.track, &groups);
 
     let laps: Vec<AnalyzedLap> = groups
         .into_par_iter()
@@ -35,6 +37,7 @@ pub fn analyze_session(frames: Vec<super::types::RawFrame>, meta: &SessionMeta) 
         car: meta.car.clone(),
         session_date: meta.session_date.clone(),
         laps,
+        track_map,
     }
 }
 
@@ -94,6 +97,12 @@ mod tests {
             speed: 55.0,
             throttle: 1.0,
             brake: 0.0,
+            throttle_raw: None,
+            brake_raw: None,
+            clutch: None,
+            clutch_raw: None,
+            handbrake_raw: None,
+            abs_active: None,
             steering: 0.0,
             gear: 4,
             fuel_level: 50.0,
@@ -102,6 +111,8 @@ mod tests {
             lap_last_lap_time: last,
             delta_best_ok: ok,
             delta_session_best_ok: ok,
+            lat: None,
+            lon: None,
             lf_temp: 80.0,
             rf_temp: 80.0,
             lr_temp: 80.0,

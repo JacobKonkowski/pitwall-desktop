@@ -11,10 +11,12 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use pitwall_settings::{
     AppSettings, WIDGET_COACH, WIDGET_COUNT, WIDGET_RADAR, WIDGET_RELATIVE, WIDGET_STANDINGS,
+    WIDGET_TRACK_MAP,
 };
 
 /// Stable widget kinds in overlay-slot order.
-pub const WIDGET_KINDS: [&str; WIDGET_COUNT] = ["coach", "standings", "relative", "radar"];
+pub const WIDGET_KINDS: [&str; WIDGET_COUNT] =
+    ["coach", "standings", "relative", "radar", "trackmap"];
 
 /// Window label prefix (`monitor-coach`, …).
 pub const WINDOW_LABEL_PREFIX: &str = "monitor-";
@@ -157,6 +159,7 @@ fn kind_title(kind: &str) -> &'static str {
         "standings" => "Standings",
         "relative" => "Relative",
         "radar" => "Radar",
+        "trackmap" => "Track Map",
         _ => "Widget",
     }
 }
@@ -168,6 +171,7 @@ pub fn kind_index(kind: &str) -> Option<usize> {
         "standings" => Some(WIDGET_STANDINGS),
         "relative" => Some(WIDGET_RELATIVE),
         "radar" => Some(WIDGET_RADAR),
+        "trackmap" => Some(WIDGET_TRACK_MAP),
         _ => None,
     }
 }
@@ -198,6 +202,7 @@ mod tests {
         assert_eq!(kind_index("standings"), Some(WIDGET_STANDINGS));
         assert_eq!(kind_index("relative"), Some(WIDGET_RELATIVE));
         assert_eq!(kind_index("radar"), Some(WIDGET_RADAR));
+        assert_eq!(kind_index("trackmap"), Some(WIDGET_TRACK_MAP));
         assert_eq!(kind_index("other"), None);
     }
 }

@@ -11,6 +11,8 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
   AudioCoachStatus,
+  ControllerBinding,
+  CornerConsistency,
   ImportStatus,
   IracingConfigCheck,
   LapComparison,
@@ -21,6 +23,7 @@ import type {
   NativeVrStatus,
   SessionDetail,
   SessionSummary,
+  TrackOutline,
   TtsVoiceInfo,
   VrLayerDiagnostics,
   VrOverlayStatus,
@@ -40,11 +43,24 @@ export async function getLapTraces(lapIds: number[]): Promise<LapTrace[]> {
   return invoke("get_lap_traces", { lapIds });
 }
 
+/** Cached circuit outline for a track; `null` until an IBT with GPS is imported. */
+export async function getTrackMap(track: string): Promise<TrackOutline | null> {
+  return invoke("get_track_map", { track });
+}
+
 export async function compareLaps(
   candidateLapId: number,
   referenceLapId: number,
 ): Promise<LapComparison> {
   return invoke("compare_laps", { candidateLapId, referenceLapId });
+}
+
+/** Each lap's brake point and corner time through the reference lap's corners. */
+export async function cornerConsistency(
+  referenceLapId: number,
+  lapIds: number[],
+): Promise<CornerConsistency[]> {
+  return invoke("corner_consistency", { referenceLapId, lapIds });
 }
 
 export async function importIbt(path: string): Promise<string> {
@@ -73,6 +89,11 @@ export async function clearDatabase(): Promise<number> {
 
 export async function deleteSession(sessionId: number): Promise<boolean> {
   return invoke("delete_session_cmd", { sessionId });
+}
+
+/** Re-parse a session's source IBT with the current analysis; resolves to the new session id. */
+export async function reimportSession(sessionId: number): Promise<number> {
+  return invoke("reimport_session_cmd", { sessionId });
 }
 
 /** Native yes/no dialog (Tauri webview blocks `window.confirm`). */
@@ -211,6 +232,16 @@ export async function openVrHudPreview(): Promise<void> {
   return invoke("open_vr_hud_preview_cmd");
 }
 
+/** Re-anchor world-locked VR widgets to the current head pose. */
+export async function recenterVr(): Promise<void> {
+  return invoke("vr_recenter_cmd");
+}
+
+/** Wait (up to 10 s) for the next wheel / button-box press; null on timeout. */
+export async function captureControllerButton(): Promise<ControllerBinding | null> {
+  return invoke("capture_controller_button_cmd");
+}
+
 /* --- Monitor overlays --- */
 
 export async function startMonitorOverlay(): Promise<void> {
@@ -231,8 +262,9 @@ export function buildOpenKneeboardUrl(settings: AppSettings, baseUrl: string): s
     standings: "standings",
     relative: "relative",
     radar: "radar",
+    trackmap: "trackmap",
   };
-  const kinds = ["coach", "standings", "relative", "radar"];
+  const kinds = ["coach", "standings", "relative", "radar", "trackmap"];
   const enabled = settings.overlayLayout.widgets
     .map((w, i) => ({ w, kind: kinds[i] }))
     .filter(({ w }) => w.enabled);

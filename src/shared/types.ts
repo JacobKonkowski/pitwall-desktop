@@ -62,10 +62,24 @@ export interface SessionDetail {
 export interface TracePoint {
   distPct: number;
   speed: number;
+  /** Applied pedals (after auto-blip / TC / ABS). */
   throttle: number;
   brake: number;
+  /** Driver pedals; `null` for sessions imported before v5 traces or sources without the channel. */
+  throttleRaw: number | null;
+  brakeRaw: number | null;
+  clutch: number | null;
+  clutchRaw: number | null;
+  handbrakeRaw: number | null;
+  /** `BrakeABSactive`; `null` for sessions imported before v6 traces. */
+  absActive: boolean | null;
   gear: number;
   steering: number;
+  /** GPS at this sample; `null` for sessions imported before v3 traces. */
+  lat: number | null;
+  lon: number | null;
+  /** ms since the lap's first frame; `null` for sessions imported before v4 traces. */
+  elapsedMs: number | null;
 }
 
 export interface LapTrace {
@@ -110,8 +124,75 @@ export interface AlignedPoint {
   referenceGear: number | null;
   candidateSteering: number | null;
   referenceSteering: number | null;
-  /** Optional backend cumulative time delta (ms). Client may approximate if absent. */
-  cumulativeDeltaMs?: number | null;
+  /** Running gap (candidate − reference, ms); `null` where either lap has no time curve. */
+  cumulativeDeltaMs: number | null;
+}
+
+/** "recorded" = both laps carry elapsed time; "estimated" = integrated from speed. */
+export type TimingSource = "recorded" | "estimated";
+
+/** Candidate vs reference through one corner. Positive = candidate slower / later. */
+export interface CornerDelta {
+  /** 1-based in track order; detected from speed, not the official turn numbers. */
+  number: number;
+  entryPct: number;
+  apexPct: number;
+  exitPct: number;
+  timeDeltaMs: number;
+  entryDeltaMs: number;
+  exitDeltaMs: number;
+  /** m/s */
+  candidateMinSpeed: number | null;
+  referenceMinSpeed: number | null;
+  /** Positive = candidate braked later. */
+  brakePointDeltaM: number | null;
+  /** Positive = candidate reached full throttle later. */
+  throttlePointDeltaM: number | null;
+  candidate: CornerTechnique;
+  reference: CornerTechnique;
+}
+
+/** How one lap drove one corner (driver pedals, own timeline). */
+export interface CornerTechnique {
+  /** `null` when the lap has no `BrakeABSactive` (imported before schema v6). */
+  absMs: number | null;
+  /** `null` without raw pedals (imported before schema v5). */
+  tcMs: number | null;
+  /** 0..1; `null` when the lap didn't brake for the corner. */
+  peakBrake: number | null;
+  trailBrakeMs: number | null;
+  coastMs: number;
+  /** `null` when taken flat or full throttle never comes before the exit. */
+  apexToThrottleMs: number | null;
+}
+
+export type LapRole = "candidate" | "reference";
+export type AssistKind = "abs" | "tc";
+
+/** A stretch of lap distance where ABS or traction control intervened. */
+export interface AssistSpan {
+  lap: LapRole;
+  kind: AssistKind;
+  startPct: number;
+  endPct: number;
+}
+
+/** One lap through one corner, relative to the reference lap. */
+export interface ConsistencyPoint {
+  lapId: number;
+  /** Metres after the reference brake point (negative = earlier). */
+  brakeOffsetM: number | null;
+  timeDeltaMs: number;
+  /** m/s */
+  minSpeed: number | null;
+}
+
+/** Every clean lap through one of the reference lap's corners (`corner_consistency`). */
+export interface CornerConsistency {
+  number: number;
+  apexPct: number;
+  brakeSpreadM: number | null;
+  points: ConsistencyPoint[];
 }
 
 export interface LapComparison {
@@ -122,6 +203,11 @@ export interface LapComparison {
   deltaMs: number | null;
   sectorDeltas: SectorDelta[];
   series: AlignedPoint[];
+  corners: CornerDelta[];
+  /** Where ABS / TC intervened on either lap. */
+  assists: AssistSpan[];
+  timing: TimingSource | null;
+  trackLengthM: number | null;
 }
 
 /* --- Live telemetry --- */
@@ -184,6 +270,18 @@ export interface LiveSnapshot {
   fuelLevel: number;
   speed: number;
   lapDistPct: number;
+  /** Applied pedals (after auto-blip / TC / ABS). */
+  throttle: number;
+  brake: number;
+  /** Driver pedals; `null` when the sim omits the channel. */
+  throttleRaw: number | null;
+  brakeRaw: number | null;
+  clutch: number | null;
+  clutchRaw: number | null;
+  handbrakeRaw: number | null;
+  /** Player GPS when the sim provides it. */
+  lat: number | null;
+  lon: number | null;
   currentSector: number;
   sectorBoundaries: number[];
   sectors: LiveSectorProgress[];
@@ -209,15 +307,67 @@ export interface LiveSnapshot {
   onTrack: boolean;
 }
 
-export type WidgetKind = "coach" | "standings" | "relative" | "radar";
 
-export const WIDGET_KINDS: WidgetKind[] = ["coach", "standings", "relative", "radar"];
+/** One outline vertex: lap fraction plus position in a `0 0 1 1` viewBox. */
+export interface OutlinePoint {
+  pct: number;
+  x: number;
+  y: number;
+}
+
+/** Maps GPS degrees into an outline's unit box; mirrors `TrackProjection`. */
+export interface TrackProjection {
+  originLat: number;
+  originLon: number;
+  minX: number;
+  minY: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/** Circuit outline generated from IBT GPS samples (`get_track_map`). */
+export interface TrackOutline {
+  track: string;
+  points: OutlinePoint[];
+  /** Closed SVG path over a `0 0 1 1` viewBox. */
+  svgPath: string;
+  /** Lap fraction spanned by the source samples. */
+  coverage: number;
+  /** GPS samples the outline was built from. */
+  sampleCount: number;
+  /** Absent on outlines cached before racing lines; GPS cannot be placed then. */
+  projection?: TrackProjection | null;
+}
+
+/** Minimum shape needed to draw a pedal-colored path (a `TracePoint` fits). */
+export interface TrailSample {
+  distPct: number;
+  throttle: number;
+  brake: number;
+  /** Driver pedals; pedal coloring prefers these over applied when present. */
+  throttleRaw?: number | null;
+  brakeRaw?: number | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+export type WidgetKind = "coach" | "standings" | "relative" | "radar" | "trackmap";
+
+export const WIDGET_KINDS: WidgetKind[] = [
+  "coach",
+  "standings",
+  "relative",
+  "radar",
+  "trackmap",
+];
 
 export const WIDGET_LABELS: Record<WidgetKind, string> = {
   coach: "Coach HUD",
   standings: "Standings",
   relative: "Relative",
   radar: "Radar",
+  trackmap: "Track Map",
 };
 
 export interface WidgetPlacement {
@@ -228,10 +378,24 @@ export interface WidgetPlacement {
   desktopY: number;
   desktopW: number;
   desktopH: number;
-  /** VR placement (meters / multipliers). */
+  /** VR anchor: fixed in the cockpit ("world") or following the head. */
+  vrLock: VrLock;
+  /** VR placement (meters / degrees / multipliers) on top of the per-kind base pose. */
+  vrOffsetX: number;
   vrOffsetY: number;
+  vrOffsetZ: number;
+  vrTiltDeg: number;
   vrScale: number;
   vrOpacity: number;
+}
+
+export type VrLock = "world" | "head";
+
+/** A DirectInput controller button (wheel, button box, ...). */
+export interface ControllerBinding {
+  deviceGuid: string;
+  deviceName: string;
+  button: number;
 }
 
 export interface OverlayLayout {
@@ -247,9 +411,13 @@ export function defaultOverlayLayout(): OverlayLayout {
     desktopY: 24,
     desktopW: 320,
     desktopH: 180,
+    vrLock: "world",
+    vrOffsetX: 0,
     vrOffsetY: 0,
-    vrScale: 1,
-    vrOpacity: 1,
+    vrOffsetZ: 0,
+    vrTiltDeg: 0,
+    vrScale: 0.55,
+    vrOpacity: 0.75,
     ...over,
   });
   return {
@@ -258,6 +426,7 @@ export function defaultOverlayLayout(): OverlayLayout {
       base({ desktopX: 24, desktopY: 244, desktopW: 320, desktopH: 300 }),
       base({ desktopX: 360, desktopY: 244, desktopW: 300, desktopH: 240 }),
       base({ desktopX: 404, desktopY: 24, desktopW: 200, desktopH: 200 }),
+      base({ desktopX: 620, desktopY: 24, desktopW: 320, desktopH: 320 }),
     ],
     fieldPaceMode: "best",
   };
@@ -277,6 +446,8 @@ export interface AppSettings {
   vrHudOffset: number;
   vrHudOpacity: number;
   vrRecenterHotkey: string;
+  /** Optional wheel / button-box button that recenters the VR anchor. */
+  vrRecenterButton: ControllerBinding | null;
   vrFieldPaceMode: string;
   overlayLayout: OverlayLayout;
   audioCoachEnabled: boolean;

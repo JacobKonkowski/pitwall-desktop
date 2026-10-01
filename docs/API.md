@@ -4,7 +4,7 @@ Frontend IPC lives in `src/shared/api.ts` and `src/shared/types.ts`. TypeDoc: `n
 
 Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`.
 
-**37 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
+**44 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
 
 ## Analyze / storage
 
@@ -13,7 +13,9 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `list_sessions` | `listSessions` | Session summaries (display cleanup applied) |
 | `get_session` | `getSession` | Session + laps (display cleanup applied) |
 | `get_lap_traces` | `getLapTraces` | Trace points for one lap |
-| `compare_laps` | `compareLaps` | Two-lap comparison payload |
+| `get_track_map` | `getTrackMap` | Cached circuit outline for a track; `null` when none generated |
+| `compare_laps` | `compareLaps` | Two-lap comparison: sectors, aligned traces, running delta, corners with per-lap technique, ABS / TC spans |
+| `corner_consistency` | `cornerConsistency` | Each given lap's brake point and corner time through the reference lap's corners |
 | `import_ibt` | `importIbt` | Single file (pipeline cleanup on write) |
 | `import_folder_cmd` | `importFolder` | Folder scan |
 | `check_iracing_config_cmd` | `checkIracingConfig` | mem/disk flags |
@@ -21,6 +23,7 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `pick_ibt_file` | `pickIbtFile` | Dialog |
 | `clear_database_cmd` | `clearDatabase` | Debug wipe |
 | `delete_session_cmd` | `deleteSession` | Per-session delete |
+| `reimport_session_cmd` | `reimportSession` | Re-parse a session's IBT with the current analysis; returns the new session id |
 
 ## Live
 
@@ -38,7 +41,9 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | Command | TS helper | Notes |
 |---------|-----------|--------|
 | `get_settings` | `getSettings` | Full `AppSettings` |
-| `save_settings_cmd` | `saveSettings` | Persists + may emit `settings-changed` |
+| `save_settings_cmd` | `saveSettings` | Full write; applies recenter bindings; emits `settings-changed` |
+| `patch_settings_cmd` | `patchSettings` | Merge top-level camelCase keys; nested objects replaced whole |
+| `list_tts_voices_cmd` | `listTtsVoices` | Installed Windows speech voices for the coach picker |
 
 ## Audio
 
@@ -72,6 +77,8 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `get_vr_layer_diagnostics` | `getVrLayerDiagnostics` | Ready / DLL / issues |
 | `check_vr_hud_health` | `checkVrHudHealth` | Web HUD health |
 | `open_vr_hud_preview_cmd` | `openVrHudPreview` | Opens browser preview |
+| `vr_recenter_cmd` | `recenterVr` | Bump SHM `recenter_seq`; layer re-anchors world-locked widgets |
+| `capture_controller_button_cmd` | `captureControllerButton` | Wait up to 10 s for the next DirectInput button press |
 
 ## Events
 
@@ -80,7 +87,8 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 
 ## Notes for contributors
 
-TS may still declare helpers for `patch_settings_cmd` / `list_tts_voices_cmd` — they are **not** in the Rust invoke handler until re-added.
+Keep `src/shared/api.ts` in sync with every `#[tauri::command]` registered in `lib.rs`
+(`scripts/check-ipc-drift.ps1`).
 
 ## Capabilities
 

@@ -13,7 +13,10 @@
 #include <windows.h>
 
 #include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include <openxr/openxr.h>
@@ -23,6 +26,26 @@
 #include "hud_renderer.h"
 #include "pitwall_vr_shm.h"
 #include "shm_reader.h"
+
+// One-shot diagnostics for "is the layer actually in the iRacing process?"
+// Avoids any I/O in xrEndFrame.
+static void WriteLayerStatus(const char* line) {
+    char path[MAX_PATH] = {};
+    if (GetEnvironmentVariableA("LOCALAPPDATA", path, MAX_PATH) == 0) {
+        return;
+    }
+    const std::string file =
+        std::string(path) + "\\pitwall-desktop\\layer-status.txt";
+    HANDLE h = CreateFileA(file.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    const DWORD len = static_cast<DWORD>(std::strlen(line));
+    DWORD written = 0;
+    WriteFile(h, line, len, &written, nullptr);
+    CloseHandle(h);
+}
 
 namespace {
 
@@ -40,6 +63,7 @@ void HudDimensions(uint32_t kind, uint32_t& width, uint32_t& height) {
         case PW_OVERLAY_STANDINGS: width = 512; height = 640; break;  // tall list
         case PW_OVERLAY_RELATIVE:  width = 512; height = 512; break;  // square board
         case PW_OVERLAY_RADAR:     width = 512; height = 512; break;  // square dish
+        case PW_OVERLAY_TRACKMAP:  width = 512; height = 512; break;  // square circuit
         case PW_OVERLAY_COACH:
         default:                   width = 1024; height = 288; break; // wide-short
     }
@@ -61,6 +85,7 @@ struct Dispatch {
     PFN_xrDestroySession destroySession = nullptr;
     PFN_xrCreateReferenceSpace createReferenceSpace = nullptr;
     PFN_xrDestroySpace destroySpace = nullptr;
+    PFN_xrLocateSpace locateSpace = nullptr;
     PFN_xrEndFrame endFrame = nullptr;
     PFN_xrCreateSwapchain createSwapchain = nullptr;
     PFN_xrDestroySwapchain destroySwapchain = nullptr;
@@ -78,14 +103,48 @@ struct LayerContext {
     ID3D11Device* device = nullptr;
     XrSpace viewSpace = XR_NULL_HANDLE;
     XrSpace localSpace = XR_NULL_HANDLE;
+    // LOCAL space re-originated at the driver's level head pose; world-locked
+    // quads are placed relative to it. Rebuilt on the first frame and on recenter.
+    XrSpace anchorSpace = XR_NULL_HANDLE;
+    uint32_t lastRecenterSeq = 0;
+    bool needAnchor = true;
 
     OverlaySwapchain overlays[PITWALL_VR_MAX_OVERLAYS];
     HudRenderer renderer;
     ShmReader shm;
     bool sessionReady = false;
+    bool deviceOwned = false;  // true when device came from texture->GetDevice
 };
 
 LayerContext g_ctx;
+
+bool EnsureRendererFromTexture(ID3D11Texture2D* texture) {
+    if (g_ctx.renderer.Initialize(g_ctx.device)) {
+        return true;
+    }
+    if (!texture) {
+        return false;
+    }
+    ID3D11Device* device = nullptr;
+    texture->GetDevice(&device);
+    if (!device) {
+        WriteLayerStatus("swapchain: texture GetDevice returned null");
+        return false;
+    }
+    const bool ok = g_ctx.renderer.Initialize(device);
+    if (ok) {
+        if (g_ctx.deviceOwned && g_ctx.device) {
+            g_ctx.device->Release();
+        }
+        g_ctx.device = device;  // takes the GetDevice ref
+        g_ctx.deviceOwned = true;
+        WriteLayerStatus("sessionReady: compositing enabled (device from swapchain)");
+    } else {
+        WriteLayerStatus("swapchain: HudRenderer::Initialize failed");
+        device->Release();
+    }
+    return ok;
+}
 
 // ---------------------------------------------------------------------------
 // Swapchain helpers
@@ -114,12 +173,14 @@ bool EnsureOverlaySwapchain(int slot, uint32_t kind) {
 
     if (XR_FAILED(g_ctx.dispatch.createSwapchain(g_ctx.session, &info, &ov.swapchain))) {
         ov.swapchain = XR_NULL_HANDLE;
+        WriteLayerStatus("createSwapchain failed");
         return false;
     }
 
     uint32_t count = 0;
     if (XR_FAILED(g_ctx.dispatch.enumerateSwapchainImages(ov.swapchain, 0, &count, nullptr)) ||
         count == 0) {
+        WriteLayerStatus("enumerateSwapchainImages failed (is session D3D11?)");
         return false;
     }
     std::vector<XrSwapchainImageD3D11KHR> images(
@@ -127,11 +188,15 @@ bool EnsureOverlaySwapchain(int slot, uint32_t kind) {
     if (XR_FAILED(g_ctx.dispatch.enumerateSwapchainImages(
             ov.swapchain, count, &count,
             reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())))) {
+        WriteLayerStatus("enumerateSwapchainImages(D3D11) failed");
         return false;
     }
     ov.images.clear();
     for (auto& img : images) {
         ov.images.push_back(img.texture);
+    }
+    if (!ov.images.empty() && !EnsureRendererFromTexture(ov.images[0])) {
+        return false;
     }
     return true;
 }
@@ -166,7 +231,51 @@ bool RenderOverlay(int slot, const PwOverlay& overlay, const PwSnapshot& snapsho
 }
 
 XrSpace SpaceFor(uint32_t lockSpace) {
-    return lockSpace == PW_LOCK_LOCAL ? g_ctx.localSpace : g_ctx.viewSpace;
+    if (lockSpace == PW_LOCK_LOCAL) {
+        return g_ctx.anchorSpace != XR_NULL_HANDLE ? g_ctx.anchorSpace : g_ctx.localSpace;
+    }
+    return g_ctx.viewSpace;
+}
+
+// Rebuild the anchor at the head's current position, keeping only yaw so the
+// panels stay level. Returns false (and keeps the old anchor) when tracking is
+// not valid yet, so the caller retries on a later frame.
+bool RebuildAnchor(XrTime displayTime) {
+    if (!g_ctx.dispatch.locateSpace || g_ctx.localSpace == XR_NULL_HANDLE) {
+        return false;
+    }
+    XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+    if (XR_FAILED(g_ctx.dispatch.locateSpace(g_ctx.viewSpace, g_ctx.localSpace, displayTime,
+                                             &loc))) {
+        return false;
+    }
+    const XrSpaceLocationFlags needed =
+        XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+    if ((loc.locationFlags & needed) != needed) {
+        return false;
+    }
+
+    // Yaw of the head's forward (-Z) vector projected onto the horizontal plane.
+    const XrQuaternionf& q = loc.pose.orientation;
+    const float fx = -2.0f * (q.x * q.z + q.w * q.y);
+    const float fz = -(1.0f - 2.0f * (q.x * q.x + q.y * q.y));
+    const float yaw = std::atan2(-fx, -fz);
+
+    XrReferenceSpaceCreateInfo info{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+    info.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
+    info.poseInReferenceSpace.position = loc.pose.position;
+    info.poseInReferenceSpace.orientation = {0.0f, std::sin(yaw * 0.5f), 0.0f,
+                                             std::cos(yaw * 0.5f)};
+    XrSpace next = XR_NULL_HANDLE;
+    if (XR_FAILED(g_ctx.dispatch.createReferenceSpace(g_ctx.session, &info, &next))) {
+        return false;
+    }
+    if (g_ctx.anchorSpace != XR_NULL_HANDLE) {
+        g_ctx.dispatch.destroySpace(g_ctx.anchorSpace);
+    }
+    g_ctx.anchorSpace = next;
+    WriteLayerStatus("anchor: recentered");
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +291,13 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
     PwSharedBlock block;
     if (!g_ctx.shm.Read(block, NowMs(), kMaxSnapshotAgeMs)) {
         return g_ctx.dispatch.endFrame(session, frameEndInfo);
+    }
+
+    if (g_ctx.needAnchor || block.recenter_seq != g_ctx.lastRecenterSeq) {
+        if (RebuildAnchor(frameEndInfo->displayTime)) {
+            g_ctx.needAnchor = false;
+            g_ctx.lastRecenterSeq = block.recenter_seq;
+        }
     }
 
     std::vector<const XrCompositionLayerBaseHeader*> layers(
@@ -236,18 +352,27 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateSession(XrInstance instance,
         return res;
     }
 
-    // Pull the D3D11 device from the graphics binding chain.
-    const XrBaseInStructure* next = static_cast<const XrBaseInStructure*>(createInfo->next);
-    while (next) {
-        if (next->type == XR_TYPE_GRAPHICS_BINDING_D3D11_KHR) {
-            g_ctx.device = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(next)->device;
+    // Pull the D3D11 device from the graphics binding chain when present.
+    char typesBuf[192] = "createSession types:";
+    size_t typesLen = std::strlen(typesBuf);
+    const void* entry = createInfo ? createInfo->next : nullptr;
+    int hops = 0;
+    while (entry && hops < 12) {
+        const auto* hdr = static_cast<const XrBaseInStructure*>(entry);
+        char piece[24];
+        std::snprintf(piece, sizeof(piece), " %d", static_cast<int>(hdr->type));
+        const size_t pieceLen = std::strlen(piece);
+        if (typesLen + pieceLen < sizeof(typesBuf) - 1) {
+            std::memcpy(typesBuf + typesLen, piece, pieceLen + 1);
+            typesLen += pieceLen;
+        }
+        if (hdr->type == XR_TYPE_GRAPHICS_BINDING_D3D11_KHR) {
+            g_ctx.device =
+                reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(hdr)->device;
             break;
         }
-        next = next->next;
-    }
-
-    if (!g_ctx.device || !g_ctx.renderer.Initialize(g_ctx.device)) {
-        return res;  // session is valid; we simply will not composite
+        entry = hdr->next;
+        ++hops;
     }
 
     g_ctx.session = *session;
@@ -263,6 +388,19 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateSession(XrInstance instance,
     g_ctx.dispatch.createReferenceSpace(*session, &localInfo, &g_ctx.localSpace);
 
     g_ctx.sessionReady = (g_ctx.viewSpace != XR_NULL_HANDLE);
+    if (!g_ctx.sessionReady) {
+        WriteLayerStatus("createSession: view space failed");
+        return res;
+    }
+
+    if (g_ctx.device && g_ctx.renderer.Initialize(g_ctx.device)) {
+        WriteLayerStatus("sessionReady: compositing enabled (D3D11 binding)");
+    } else if (g_ctx.device) {
+        WriteLayerStatus("createSession: D3D11 binding present but renderer init failed");
+    } else {
+        // Defer: first EndFrame swapchain textures expose the real device via GetDevice.
+        WriteLayerStatus(typesBuf);
+    }
     return res;
 }
 
@@ -277,9 +415,16 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrDestroySession(XrSession session) {
         }
         if (g_ctx.viewSpace) g_ctx.dispatch.destroySpace(g_ctx.viewSpace);
         if (g_ctx.localSpace) g_ctx.dispatch.destroySpace(g_ctx.localSpace);
-        g_ctx.viewSpace = g_ctx.localSpace = XR_NULL_HANDLE;
+        if (g_ctx.anchorSpace) g_ctx.dispatch.destroySpace(g_ctx.anchorSpace);
+        g_ctx.viewSpace = g_ctx.localSpace = g_ctx.anchorSpace = XR_NULL_HANDLE;
+        g_ctx.needAnchor = true;
         g_ctx.session = XR_NULL_HANDLE;
         g_ctx.sessionReady = false;
+        if (g_ctx.deviceOwned && g_ctx.device) {
+            g_ctx.device->Release();
+        }
+        g_ctx.device = nullptr;
+        g_ctx.deviceOwned = false;
     }
     return g_ctx.dispatch.destroySession(session);
 }
@@ -336,6 +481,7 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateApiLayerInstance(
     Load("xrDestroySession", g_ctx.dispatch.destroySession);
     Load("xrCreateReferenceSpace", g_ctx.dispatch.createReferenceSpace);
     Load("xrDestroySpace", g_ctx.dispatch.destroySpace);
+    Load("xrLocateSpace", g_ctx.dispatch.locateSpace);
     Load("xrEndFrame", g_ctx.dispatch.endFrame);
     Load("xrCreateSwapchain", g_ctx.dispatch.createSwapchain);
     Load("xrDestroySwapchain", g_ctx.dispatch.destroySwapchain);
@@ -343,6 +489,7 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateApiLayerInstance(
     Load("xrAcquireSwapchainImage", g_ctx.dispatch.acquireSwapchainImage);
     Load("xrWaitSwapchainImage", g_ctx.dispatch.waitSwapchainImage);
     Load("xrReleaseSwapchainImage", g_ctx.dispatch.releaseSwapchainImage);
+    WriteLayerStatus("apiLayerInstance: hooks installed");
     return res;
 }
 
@@ -364,6 +511,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrNegotiateLoaderApiLayerInterface(
     apiLayerRequest->layerApiVersion = XR_CURRENT_API_VERSION;
     apiLayerRequest->getInstanceProcAddr = PitWall_xrGetInstanceProcAddr;
     apiLayerRequest->createApiLayerInstance = PitWall_xrCreateApiLayerInstance;
+    WriteLayerStatus("negotiate: PitWall OpenXR layer loaded");
     return XR_SUCCESS;
 }
 

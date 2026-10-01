@@ -6,6 +6,7 @@
 //! Domains must not depend on `commands`.
 
 pub mod commands;
+mod recenter;
 
 pub use pitwall_analysis as analysis;
 pub use pitwall_audio as audio;
@@ -36,6 +37,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(recenter::hotkey_plugin())
         .manage(state.clone())
         .setup(move |app| {
             #[cfg(feature = "updater")]
@@ -47,15 +49,19 @@ pub fn run() {
                 state.audio.set_clips_dir(dir);
             }
             start_watcher(app.handle().clone(), state.import.clone());
+            recenter::init(app.handle(), &state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_sessions,
             commands::get_session,
+            commands::get_track_map,
             commands::get_lap_traces,
             commands::compare_laps,
+            commands::corner_consistency,
             commands::import_ibt,
             commands::import_folder_cmd,
+            commands::reimport_session_cmd,
             commands::check_iracing_config_cmd,
             commands::get_import_status,
             commands::pick_ibt_file,
@@ -69,6 +75,8 @@ pub fn run() {
             commands::stop_demo_clock,
             commands::get_settings,
             commands::save_settings_cmd,
+            commands::patch_settings_cmd,
+            commands::list_tts_voices_cmd,
             commands::start_audio_coach,
             commands::stop_audio_coach,
             commands::get_audio_coach_status,
@@ -87,6 +95,8 @@ pub fn run() {
             commands::get_vr_layer_diagnostics,
             commands::check_vr_hud_health,
             commands::open_vr_hud_preview_cmd,
+            commands::vr_recenter_cmd,
+            commands::capture_controller_button_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

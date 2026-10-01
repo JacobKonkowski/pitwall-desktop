@@ -46,6 +46,20 @@ pub struct LiveSnapshot {
     pub fuel_level: f32,
     pub speed: f32,
     pub lap_dist_pct: f32,
+    /// Applied pedals (after auto-blip / TC / ABS).
+    pub throttle: f32,
+    pub brake: f32,
+    /// Driver pedals, used to color the live track-map trail; `None` when the
+    /// sim omits the channel (the UI then falls back to applied).
+    pub throttle_raw: Option<f32>,
+    pub brake_raw: Option<f32>,
+    pub clutch: Option<f32>,
+    pub clutch_raw: Option<f32>,
+    pub handbrake_raw: Option<f32>,
+    /// Player GPS when the sim provides it. The UI accumulates these into the
+    /// current-lap trail rather than the snapshot carrying a whole lap.
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
     pub current_sector: i32,
     /// Normalized region start pcts (0..1) plus implicit finish at 1.0.
     pub sector_boundaries: Vec<f64>,

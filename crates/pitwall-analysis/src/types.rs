@@ -18,6 +18,47 @@ pub struct TracePoint {
     pub brake: f64,
     pub gear: i32,
     pub steering: f64,
+    /// `Lat` at this sample. `None` for sessions imported before GPS was kept
+    /// on traces, or from IBTs without the channel — the racing line is then
+    /// unavailable and consumers fall back to lap-distance placement.
+    pub lat: Option<f64>,
+    /// `Lon` at this sample.
+    pub lon: Option<f64>,
+    /// Driver pedal inputs (`ThrottleRaw`, `BrakeRaw`, …). `None` for sessions
+    /// imported before schema v5 or sources without the channel; driver-intent
+    /// consumers then fall back to the applied `throttle` / `brake`.
+    #[serde(default)]
+    pub throttle_raw: Option<f64>,
+    #[serde(default)]
+    pub brake_raw: Option<f64>,
+    /// Applied clutch (`Clutch`).
+    #[serde(default)]
+    pub clutch: Option<f64>,
+    #[serde(default)]
+    pub clutch_raw: Option<f64>,
+    #[serde(default)]
+    pub handbrake_raw: Option<f64>,
+    /// `BrakeABSactive` at any frame folded into this sample. `None` before
+    /// schema v6 or when the IBT lacks the channel.
+    #[serde(default)]
+    pub abs_active: Option<bool>,
+    /// Milliseconds since the lap's first frame (`SessionTime` delta). `None`
+    /// for sessions imported before the time channel was kept; comparisons then
+    /// estimate time from speed.
+    #[serde(default)]
+    pub elapsed_ms: Option<f64>,
+}
+
+impl TracePoint {
+    /// Throttle the driver asked for: raw when stored, else applied.
+    pub fn driver_throttle(&self) -> f64 {
+        self.throttle_raw.unwrap_or(self.throttle)
+    }
+
+    /// Brake the driver asked for: raw when stored, else applied.
+    pub fn driver_brake(&self) -> f64 {
+        self.brake_raw.unwrap_or(self.brake)
+    }
 }
 
 /// Frames grouped into a single lap, with the SDK values sampled at the
@@ -29,7 +70,7 @@ pub struct LapFrames {
     pub iracing_lap: i32,
     /// 1-based index within this sub-session, assigned after segmentation.
     pub lap_number: i32,
-    /// `LapLastLapTime` (ms) sampled on the first frame of the next lap.
+    /// `LapLastLapTime` (ms) as published shortly after the lap ended.
     pub sdk_lap_time_ms: Option<f64>,
     /// `LapDeltaToBestLap_OK` sampled at that same transition.
     pub delta_best_ok: Option<bool>,
@@ -94,6 +135,9 @@ pub struct AnalyzedSession {
     pub car: String,
     pub session_date: String,
     pub laps: Vec<AnalyzedLap>,
+    /// Circuit outline generated from this session's GPS samples, when the
+    /// source carried `Lat` / `Lon` and one lap covered the track.
+    pub track_map: Option<super::track_map::TrackOutline>,
 }
 
 impl AnalyzedSession {

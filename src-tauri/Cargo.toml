@@ -28,6 +28,7 @@ updater = ["dep:tauri-plugin-updater"]
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = { version = "2", optional = true }
 pitwall = { version = "0.1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
@@ -49,6 +50,7 @@ pitwall-live = { path = "../crates/pitwall-live" }
 pitwall-audio = { path = "../crates/pitwall-audio" }
 pitwall-vr = { path = "../crates/pitwall-vr" }
 pitwall-monitor = { path = "../crates/pitwall-monitor" }
+pitwall-input = { path = "../crates/pitwall-input" }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

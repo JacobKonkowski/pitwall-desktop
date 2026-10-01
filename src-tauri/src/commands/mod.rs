@@ -4,22 +4,28 @@
 //! the frontend API layer. Analyze commands stay available; live / audio / VR
 //! are restored for the usable rebuild milestone.
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use parking_lot::Mutex;
+use pitwall_input::InputWatcher;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison};
+use crate::analysis::{
+    compare_laps as run_compare, corner_consistency as run_consistency, CompareInput,
+    ConsistencyLap, CornerConsistency, LapComparison, TracePoint, TrackOutline,
+};
 use crate::audio::AudioCoachService;
 use crate::ingest::{
-    check_iracing_config, default_telemetry_dir, run_import, spawn_recent_ibt_import,
+    check_iracing_config, default_telemetry_dir, run_import, run_reimport, spawn_recent_ibt_import,
     validate_import_path, ImportHandles,
 };
 use crate::live::{LiveService, LiveSnapshot, LiveStatus, PostSessionImportFn};
 use crate::monitor::MonitorOverlayService;
-use crate::settings::{load_settings, save_settings, AppSettings};
+use crate::settings::{load_settings, save_settings, AppSettings, ControllerBinding};
 use crate::storage::{
-    Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail, SessionSummary,
+    load_track_map, Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail,
+    SessionSummary,
 };
 use crate::vr::{NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus};
 
@@ -30,6 +36,10 @@ pub struct AppState {
     pub vr: Arc<VrOverlayService>,
     pub monitor: Arc<MonitorOverlayService>,
     pub settings: Mutex<AppSettings>,
+    /// Controller watcher for the recenter button; set once the main window exists.
+    pub input: OnceLock<InputWatcher>,
+    /// Accelerator currently registered for recenter, if any.
+    pub recenter_hotkey: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -52,6 +62,8 @@ impl AppState {
             vr: Arc::new(VrOverlayService::new()),
             monitor: Arc::new(MonitorOverlayService::new()),
             settings: Mutex::new(load_settings()),
+            input: OnceLock::new(),
+            recenter_hotkey: Mutex::new(None),
         })
     }
 }
@@ -77,6 +89,13 @@ pub fn get_session(
         .lock()
         .get_session(session_id)
         .map_err(|e| e.to_string())
+}
+
+/// Cached circuit outline for a track, generated from a prior IBT import.
+/// None when no import for that track carried GPS channels.
+#[tauri::command]
+pub fn get_track_map(track: String) -> Option<TrackOutline> {
+    load_track_map(&track)
 }
 
 #[tauri::command]
@@ -122,6 +141,42 @@ pub fn compare_laps(
     Ok(run_compare(&candidate, &reference))
 }
 
+/// Brake point and corner time for each of `lap_ids` through the reference
+/// lap's corners. The caller picks the laps (clean laps of one sub-session).
+#[tauri::command]
+pub fn corner_consistency(
+    state: State<'_, Arc<AppState>>,
+    reference_lap_id: i64,
+    lap_ids: Vec<i64>,
+) -> Result<Vec<CornerConsistency>, String> {
+    let db = state.import.db.lock();
+    let load = |lap_id: i64| {
+        db.get_lap_compare_data(lap_id)
+            .map(|(time, _, traces)| (lap_id, time, traces))
+            .map_err(|e| e.to_string())
+    };
+    let reference = load(reference_lap_id)?;
+    let others = lap_ids
+        .into_iter()
+        .filter(|&id| id != reference_lap_id)
+        .map(load)
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(db);
+
+    fn input(lap: &(i64, Option<f64>, Vec<TracePoint>)) -> ConsistencyLap<'_> {
+        ConsistencyLap {
+            lap_id: lap.0,
+            lap_time_ms: lap.1,
+            traces: &lap.2,
+        }
+    }
+    let laps: Vec<ConsistencyLap> = std::iter::once(&reference)
+        .chain(&others)
+        .map(input)
+        .collect();
+    Ok(run_consistency(&input(&reference), &laps))
+}
+
 #[tauri::command]
 pub async fn import_ibt(
     app: AppHandle,
@@ -142,6 +197,33 @@ pub async fn import_ibt(
             msg
         })?;
     Ok(state.import.import_status.lock().message.clone())
+}
+
+/// Re-parse a session's source IBT with the current analysis pipeline, replacing
+/// the old rows. Returns the new session id.
+#[tauri::command]
+pub async fn reimport_session_cmd(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    session_id: i64,
+) -> Result<i64, String> {
+    let ibt_path = state
+        .import
+        .db
+        .lock()
+        .get_session(session_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("Session not found")?
+        .session
+        .ibt_path;
+    let path = validate_import_path(&ibt_path)?;
+    if !path.is_file() {
+        return Err(format!("Source IBT no longer exists: {ibt_path}"));
+    }
+    run_reimport(&app, &state.import, session_id, path)
+        .await
+        .map(|r| r.session_id)
+        .map_err(|e| format!("Re-import failed: {e:#}"))
 }
 
 #[tauri::command]
@@ -272,16 +354,135 @@ pub fn get_settings(state: State<'_, Arc<AppState>>) -> AppSettings {
     state.settings.lock().clone()
 }
 
+/// Persist `settings`, apply side effects (recenter bindings), update state and
+/// notify listeners. A hotkey that cannot be registered rejects the whole save.
+fn persist_settings(
+    app: &AppHandle,
+    state: &AppState,
+    settings: AppSettings,
+) -> Result<AppSettings, String> {
+    let hotkey_changed = state.settings.lock().vr_recenter_hotkey != settings.vr_recenter_hotkey;
+    if hotkey_changed {
+        crate::recenter::apply_hotkey(app, state, &settings.vr_recenter_hotkey)?;
+    }
+    save_settings(&settings).map_err(|e| e.to_string())?;
+    crate::recenter::apply_controller(state, &settings);
+    *state.settings.lock() = settings.clone();
+    let _ = app.emit("settings-changed", settings.clone());
+    Ok(settings)
+}
+
 #[tauri::command]
 pub fn save_settings_cmd(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     settings: AppSettings,
 ) -> Result<(), String> {
-    save_settings(&settings).map_err(|e| e.to_string())?;
-    *state.settings.lock() = settings.clone();
-    let _ = app.emit("settings-changed", settings);
-    Ok(())
+    persist_settings(&app, &state, settings).map(|_| ())
+}
+
+/// Shallow-merge `patch` (top-level camelCase keys) into the current settings
+/// and persist. Nested objects such as `overlayLayout` are replaced whole.
+#[tauri::command]
+pub fn patch_settings_cmd(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    patch: serde_json::Value,
+) -> Result<AppSettings, String> {
+    let current = state.settings.lock().clone();
+    let merged = merge_settings_patch(&current, patch)?;
+    persist_settings(&app, &state, merged)
+}
+
+fn merge_settings_patch(
+    current: &AppSettings,
+    patch: serde_json::Value,
+) -> Result<AppSettings, String> {
+    let serde_json::Value::Object(patch) = patch else {
+        return Err("Settings patch must be an object".into());
+    };
+    let mut value = serde_json::to_value(current).map_err(|e| e.to_string())?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.extend(patch);
+    }
+    serde_json::from_value(value).map_err(|e| format!("Invalid settings patch: {e}"))
+}
+
+#[cfg(test)]
+mod settings_patch_tests {
+    use super::*;
+
+    #[test]
+    fn patch_changes_only_named_keys() {
+        let current = AppSettings {
+            audio_coach_volume: 0.4,
+            ..AppSettings::default()
+        };
+        let merged =
+            merge_settings_patch(&current, serde_json::json!({ "audioFlagsEnabled": false }))
+                .unwrap();
+        assert!(!merged.audio_flags_enabled);
+        assert_eq!(merged.audio_coach_volume, 0.4);
+        assert_eq!(merged.vr_mode, current.vr_mode);
+    }
+
+    #[test]
+    fn patch_rejects_wrong_types_and_non_objects() {
+        let current = AppSettings::default();
+        assert!(
+            merge_settings_patch(&current, serde_json::json!({ "audioFlagsEnabled": "no" }))
+                .is_err()
+        );
+        assert!(merge_settings_patch(&current, serde_json::json!([1, 2])).is_err());
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsVoiceInfo {
+    pub display_name: String,
+    pub language: String,
+    pub gender: String,
+    pub neural: bool,
+}
+
+/// Installed Windows speech voices for the coach voice picker.
+#[tauri::command]
+pub async fn list_tts_voices_cmd() -> Result<Vec<TtsVoiceInfo>, String> {
+    let voices = tokio::task::spawn_blocking(crate::audio::tts_winrt::WinRtTts::list_voices)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    Ok(voices
+        .into_iter()
+        .map(|v| TtsVoiceInfo {
+            display_name: v.display_name,
+            language: v.language,
+            gender: v.gender,
+            neural: v.neural,
+        })
+        .collect())
+}
+
+// --- VR recenter -------------------------------------------------------------
+
+#[tauri::command]
+pub fn vr_recenter_cmd(state: State<'_, Arc<AppState>>) {
+    state.vr.request_recenter();
+}
+
+/// Wait up to 10 s for the next wheel / button-box press and return it as a
+/// binding (not saved; the UI saves it with the rest of the settings).
+#[tauri::command]
+pub async fn capture_controller_button_cmd(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Option<ControllerBinding>, String> {
+    let Some(input) = state.input.get().cloned() else {
+        return Err("Controller input is not available".into());
+    };
+    tokio::task::spawn_blocking(move || input.capture_next(Duration::from_secs(10)))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // --- Audio ------------------------------------------------------------------
@@ -369,27 +570,40 @@ pub fn get_native_vr_status(state: State<'_, Arc<AppState>>) -> NativeVrStatus {
 fn vr_layer_manifest_path(app: &AppHandle) -> Result<String, String> {
     use tauri::Manager;
     let rel = ["resources", "openxr-layer", crate::vr::MANIFEST_FILE];
-    let candidate = app
-        .path()
-        .resource_dir()
+    let cargo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(dir) = app.path().resource_dir() {
+        candidates.push(rel.iter().fold(dir, |acc, p| acc.join(p)));
+    }
+    // `tauri dev`: files live under src-tauri/resources (resource_dir is often target/debug).
+    candidates.push(
+        cargo
+            .join("resources")
+            .join("openxr-layer")
+            .join(crate::vr::MANIFEST_FILE),
+    );
+    // Repo source manifest (DLL must sit beside it — prefer staged resources above).
+    candidates.push(
+        cargo
+            .join("..")
+            .join("openxr-layer")
+            .join("manifest")
+            .join(crate::vr::MANIFEST_FILE),
+    );
+    if let Some(dir) = std::env::current_exe()
         .ok()
-        .map(|dir| rel.iter().fold(dir, |acc, p| acc.join(p)))
-        .or_else(|| {
-            // Dev fallback: repo openxr-layer build output / source tree.
-            let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("openxr-layer")
-                .join(crate::vr::MANIFEST_FILE);
-            if manifest.is_file() {
-                Some(manifest)
-            } else {
-                std::env::current_exe().ok().and_then(|exe| {
-                    exe.parent()
-                        .map(|d| rel.iter().fold(d.to_path_buf(), |acc, p| acc.join(p)))
-                })
-            }
-        })
-        .ok_or_else(|| "Could not resolve VR layer manifest path".to_string())?;
+        .and_then(|exe| exe.parent().map(PathBuf::from))
+    {
+        candidates.push(rel.iter().fold(dir, |acc, p| acc.join(p)));
+    }
+    let candidate = candidates
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            "Could not resolve VR layer manifest path. Stage openxr-layer into \
+             src-tauri/resources/openxr-layer (see docs/NATIVE_VR.md)."
+                .to_string()
+        })?;
     Ok(candidate.to_string_lossy().into_owned())
 }
 

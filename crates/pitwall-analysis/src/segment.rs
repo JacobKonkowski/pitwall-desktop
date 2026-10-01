@@ -1,75 +1,86 @@
 //! Frame -> lap segmentation.
 //!
-//! Laps are split on any change of `(SessionNum, Lap)`. The official lap time and
-//! the `_OK` flags for a completed lap are published by iRacing on the *next*
-//! lap's first frame, so we sample them there when closing each bucket.
+//! Laps are split on any change of `(SessionNum, Lap)`. The `_OK` flags for a
+//! completed lap are sampled on the next lap's first frame. The official lap
+//! time is published a second or two *later*: `LapLastLapTime` still holds the
+//! previous lap's value on the transition frame, so we take the first update
+//! that follows it.
 
 use std::collections::HashMap;
 
 use super::types::{LapFrames, RawFrame};
 
+/// How long after a lap change to wait for `LapLastLapTime` to update. iRacing
+/// typically publishes 1–2 s after the line; no update in this window means the
+/// lap has no official time (reset, tow, or session end).
+const LAP_TIME_PUBLISH_WINDOW_S: f64 = 5.0;
+
 pub fn segment_laps(
     frames: Vec<RawFrame>,
     session_labels: &HashMap<i32, String>,
 ) -> Vec<LapFrames> {
-    if frames.is_empty() {
-        return Vec::new();
-    }
+    // (transition index, official time, OK flags) for every lap boundary.
+    let closes: Vec<_> = (1..frames.len())
+        .filter(|&i| {
+            frames[i].session_num != frames[i - 1].session_num || frames[i].lap != frames[i - 1].lap
+        })
+        .map(|i| {
+            (
+                i,
+                published_lap_time_ms(&frames, i),
+                frames[i].delta_best_ok,
+                frames[i].delta_session_best_ok,
+            )
+        })
+        .collect();
 
     let mut laps: Vec<LapFrames> = Vec::new();
-    let mut current_session = frames[0].session_num;
-    let mut current_lap = frames[0].lap;
+    let mut closes = closes.into_iter().peekable();
     let mut bucket: Vec<RawFrame> = Vec::new();
-
-    for frame in frames {
-        let session_changed = frame.session_num != current_session;
-        let lap_changed = frame.lap != current_lap;
-        if (session_changed || lap_changed) && !bucket.is_empty() {
-            // The transition frame carries the completed lap's official time and
-            // the sim's validity flags for it.
-            let sdk_ms = sdk_lap_time_ms(frame.lap_last_lap_time);
+    for (i, frame) in frames.into_iter().enumerate() {
+        if let Some((_, sdk_ms, ok_best, ok_session)) = closes.next_if(|c| c.0 == i) {
             laps.push(finish_bucket(
-                current_session,
                 session_labels,
-                current_lap,
                 std::mem::take(&mut bucket),
                 sdk_ms,
-                frame.delta_best_ok,
-                frame.delta_session_best_ok,
+                ok_best,
+                ok_session,
             ));
-            current_session = frame.session_num;
-            current_lap = frame.lap;
         }
         bucket.push(frame);
     }
-
     if !bucket.is_empty() {
         // Final lap: no following frame, so no official time or flags.
-        laps.push(finish_bucket(
-            current_session,
-            session_labels,
-            current_lap,
-            bucket,
-            None,
-            None,
-            None,
-        ));
+        laps.push(finish_bucket(session_labels, bucket, None, None, None));
     }
 
     assign_lap_numbers(&mut laps);
     laps
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The official time for the lap that ended just before `transition`: the first
+/// `LapLastLapTime` value that differs from the one the lap ran with.
+fn published_lap_time_ms(frames: &[RawFrame], transition: usize) -> Option<f64> {
+    let at = &frames[transition];
+    let stale = frames[transition - 1].lap_last_lap_time;
+    frames[transition..]
+        .iter()
+        .take_while(|f| {
+            f.session_num == at.session_num
+                && f.session_time - at.session_time <= LAP_TIME_PUBLISH_WINDOW_S
+        })
+        .find(|f| f.lap_last_lap_time != stale)
+        .and_then(|f| sdk_lap_time_ms(f.lap_last_lap_time))
+}
+
 fn finish_bucket(
-    session_num: i32,
     session_labels: &HashMap<i32, String>,
-    iracing_lap: i32,
     frames: Vec<RawFrame>,
     sdk_lap_time_ms: Option<f64>,
     delta_best_ok: Option<bool>,
     delta_session_best_ok: Option<bool>,
 ) -> LapFrames {
+    let (session_num, iracing_lap) = (frames[0].session_num, frames[0].lap);
     LapFrames {
         session_num,
         session_type: session_labels
@@ -132,6 +143,12 @@ mod tests {
             speed: 50.0,
             throttle: 0.0,
             brake: 0.0,
+            throttle_raw: None,
+            brake_raw: None,
+            clutch: None,
+            clutch_raw: None,
+            handbrake_raw: None,
+            abs_active: None,
             steering: 0.0,
             gear: 3,
             fuel_level: 50.0,
@@ -140,6 +157,8 @@ mod tests {
             lap_last_lap_time: last,
             delta_best_ok: ok,
             delta_session_best_ok: ok,
+            lat: None,
+            lon: None,
             lf_temp: 0.0,
             rf_temp: 0.0,
             lr_temp: 0.0,
@@ -165,6 +184,26 @@ mod tests {
         // Final lap has no following frame => no time.
         assert_eq!(laps[1].sdk_lap_time_ms, None);
         assert_eq!(laps[1].delta_best_ok, None);
+    }
+
+    #[test]
+    fn lap_time_published_after_transition() {
+        let at = |lap, t, last| RawFrame {
+            session_time: t,
+            ..frame(0, lap, 0.5, last, Some(true))
+        };
+        let frames = vec![
+            at(1, 0.0, Some(80.0)),
+            // Lap 2 starts still showing lap 0's time; lap 1's arrives 1.5 s later.
+            at(2, 100.0, Some(80.0)),
+            at(2, 101.5, Some(82.5)),
+            // Lap 3 starts, but no update follows within the window (reset).
+            at(3, 190.0, Some(82.5)),
+            at(3, 196.0, Some(79.0)),
+        ];
+        let laps = segment_laps(frames, &HashMap::new());
+        assert_eq!(laps[0].sdk_lap_time_ms, Some(82_500.0));
+        assert_eq!(laps[1].sdk_lap_time_ms, None);
     }
 
     #[test]

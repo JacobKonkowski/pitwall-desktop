@@ -18,8 +18,6 @@ pub async fn run_import(
     import: &ImportHandles,
     path: PathBuf,
 ) -> Result<ImportResult> {
-    let path_label = path.to_string_lossy().to_string();
-
     if let Some(result) = try_skip_import(import, &path)? {
         finish_status(app, import, &result);
         return Ok(result);
@@ -32,6 +30,54 @@ pub async fn run_import(
         return Ok(result);
     }
 
+    let (analyzed, hash, elapsed_ms) = parse_with_status(app, import, &path).await?;
+    let import_save = import.clone();
+    let path_save = path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let db = import_save.db.lock();
+        save_parsed_ibt(&db, &path_save, analyzed, &hash, elapsed_ms)
+    })
+    .await
+    .context("save task join")??;
+
+    finish_status(app, import, &result);
+    // Always emit so the UI can select the session (including skip-of-existing).
+    let _ = app.emit("import-complete", result.session_id);
+    Ok(result)
+}
+
+/// Re-parse an already-imported IBT with the current analysis and replace the
+/// stored session. The old rows are deleted only after the file parses, so a
+/// missing or unreadable file leaves the session intact.
+pub async fn run_reimport(
+    app: &AppHandle,
+    import: &ImportHandles,
+    session_id: i64,
+    path: PathBuf,
+) -> Result<ImportResult> {
+    let _gate = import.import_gate.lock().await;
+    let (analyzed, hash, elapsed_ms) = parse_with_status(app, import, &path).await?;
+    let import_save = import.clone();
+    let path_save = path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let db = import_save.db.lock();
+        db.delete_session(session_id)?;
+        save_parsed_ibt(&db, &path_save, analyzed, &hash, elapsed_ms)
+    })
+    .await
+    .context("save task join")??;
+
+    finish_status(app, import, &result);
+    let _ = app.emit("import-complete", result.session_id);
+    Ok(result)
+}
+
+async fn parse_with_status(
+    app: &AppHandle,
+    import: &ImportHandles,
+    path: &Path,
+) -> Result<(pitwall_analysis::AnalyzedSession, String, u128)> {
+    let path_label = path.to_string_lossy().to_string();
     set_status(
         app,
         import,
@@ -58,7 +104,7 @@ pub async fn run_import(
         );
     }) as ProgressCallback);
 
-    let (analyzed, hash, elapsed_ms) = parse_ibt_file_with_progress(&path, progress)
+    let (analyzed, hash, elapsed_ms) = parse_ibt_file_with_progress(path, progress)
         .await
         .context("parse IBT")?;
 
@@ -78,20 +124,7 @@ pub async fn run_import(
         92.0,
         format!("Saving {lap_count} laps to database..."),
     );
-
-    let import_save = import.clone();
-    let path_save = path.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let db = import_save.db.lock();
-        save_parsed_ibt(&db, &path_save, analyzed, &hash, elapsed_ms)
-    })
-    .await
-    .context("save task join")??;
-
-    finish_status(app, import, &result);
-    // Always emit so the UI can select the session (including skip-of-existing).
-    let _ = app.emit("import-complete", result.session_id);
-    Ok(result)
+    Ok((analyzed, hash, elapsed_ms))
 }
 
 fn try_skip_import(import: &ImportHandles, path: &Path) -> Result<Option<ImportResult>> {

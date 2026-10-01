@@ -63,12 +63,18 @@ pub fn run_hud_server(
     service: Arc<VrOverlayService>,
     live: Arc<LiveService>,
     cancel: CancellationToken,
+    // When true, primary web-mode HUD owns status text; when false, companion preview only.
+    own_status: bool,
 ) -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{HUD_PORT}");
     let listener = TcpListener::bind(&addr)?;
-    service.status.lock().message = format!("HUD ready at {}", hud_url());
-    service.status.lock().runtime = "OpenXR (Web HUD)".into();
-    service.status.lock().active = true;
+    if own_status {
+        service.status.lock().message = format!("HUD ready at {}", hud_url());
+        service.status.lock().runtime = "OpenXR (Web HUD)".into();
+        service.status.lock().active = true;
+    } else {
+        tracing::info!("VR browser preview listening at {}", hud_url());
+    }
 
     listener.set_nonblocking(true)?;
 
@@ -87,8 +93,10 @@ pub fn run_hud_server(
         }
     }
 
-    service.status.lock().active = false;
-    service.status.lock().message = "In-headset HUD stopped".into();
+    if own_status {
+        service.status.lock().active = false;
+        service.status.lock().message = "In-headset HUD stopped".into();
+    }
     Ok(())
 }
 
@@ -110,6 +118,13 @@ fn handle_connection(stream: &mut std::net::TcpStream, live: &LiveService) -> st
             let json = serde_json::to_string(&snap).unwrap_or_else(|_| "{}".into());
             ("200 OK", "application/json", json)
         }
+        // Cached circuit outline for the current track; `null` when none exists.
+        "/api/track-map" => {
+            let track = live.snapshot.lock().track.clone();
+            let outline = pitwall_storage::load_track_map(&track);
+            let json = serde_json::to_string(&outline).unwrap_or_else(|_| "null".into());
+            ("200 OK", "application/json", json)
+        }
         "/api/health" => ("200 OK", "application/json", r#"{"ok":true}"#.to_string()),
         "/vr" | "/" => (
             "200 OK",
@@ -129,7 +144,7 @@ fn handle_connection(stream: &mut std::net::TcpStream, live: &LiveService) -> st
 }
 
 // Single page that renders any overlay layout client-side, selected by the
-// `?layout=` query (ironman | standings | relative | radar) and the optional
+// `?layout=` query (ironman | standings | relative | radar | trackmap) and the optional
 // `?pace=` query (best | optimal | both). The native OpenXR layer
 // mirrors the `ironman` coach layout in Direct2D; this page is the browser
 // preview and the visual reference. `?layout=ironman` is the default.
@@ -186,6 +201,12 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
     .radar .me, .radar .car { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); }
     .radar .me { width: 16px; height: 16px; background: #e8fff3; left: 50%; top: 50%; }
     .radar .car { width: 12px; height: 12px; background: #ffb347; left: 50%; }
+    .trackmap { width: 360px; height: 360px; }
+    .trackmap .circuit { fill: none; stroke: rgba(93,255,168,0.55); stroke-width: 0.02; stroke-linejoin: round; }
+    .trackmap .start { fill: none; stroke: #5dffa8; stroke-width: 0.012; }
+    .trackmap .car { fill: #ffb347; }
+    .trackmap .car.pit { fill: rgba(93,255,168,0.5); }
+    .trackmap .me { fill: #e8fff3; }
   </style>
 </head>
 <body>
@@ -300,7 +321,40 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       return '<div class="radar"><div class="me"></div>' + cars + '</div>';
     }
 
-    const RENDERERS = { ironman: renderIronman, standings: renderStandings, relative: renderRelative, radar: renderRadar };
+    // Outline for the current track, fetched on track change (see /api/track-map).
+    let TRACK_MAP = null, TRACK_MAP_FOR = null;
+    function pointAt(points, pct) {
+      const t = ((pct % 1) + 1) % 1;
+      const first = points[0], last = points[points.length - 1];
+      const mix = (a, b, u) => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+      if (t <= first.pct || t >= last.pct) {
+        const span = 1 - last.pct + first.pct;
+        if (span <= 0) return first;
+        const travelled = t >= last.pct ? t - last.pct : 1 - last.pct + t;
+        return mix(last, first, travelled / span);
+      }
+      let hi = points.findIndex(p => p.pct > t);
+      if (hi < 1) hi = points.length - 1;
+      const a = points[hi - 1], b = points[hi], span = b.pct - a.pct;
+      return mix(a, b, span > 0 ? (t - a.pct) / span : 0);
+    }
+    function renderTrackMap(s) {
+      const points = (TRACK_MAP && TRACK_MAP.points) || [];
+      if (points.length < 2) return '<p class="wait">No track map yet</p>';
+      const dot = (pct, cls, r) => {
+        const p = pointAt(points, pct || 0);
+        return '<circle class="' + cls + '" cx="' + p.x + '" cy="' + p.y + '" r="' + r + '"/>';
+      };
+      const cars = (s.competitors || [])
+        .filter(c => !c.isPlayer)
+        .map(c => dot(c.lapDistPct, c.onPitRoad ? 'car pit' : 'car', 0.02)).join("");
+      return '<svg class="trackmap" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet">' +
+        '<path class="circuit" d="' + TRACK_MAP.svgPath + '"/>' +
+        dot(0, 'start', 0.018) + cars + dot(s.lapDistPct, 'me', 0.026) +
+      '</svg>';
+    }
+
+    const RENDERERS = { ironman: renderIronman, standings: renderStandings, relative: renderRelative, radar: renderRadar, trackmap: renderTrackMap };
 
     function render(s) {
       const root = document.getElementById("root");
@@ -308,8 +362,17 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       const fn = RENDERERS[LAYOUT] || renderIronman;
       root.innerHTML = fn(s);
     }
+    async function refreshTrackMap(track) {
+      if (LAYOUT !== "trackmap" || track === TRACK_MAP_FOR) return;
+      TRACK_MAP_FOR = track;
+      try { TRACK_MAP = await (await fetch("/api/track-map")).json(); } catch (_) { TRACK_MAP = null; }
+    }
     async function poll() {
-      try { const r = await fetch("/api/live"); render(await r.json()); } catch (_) {}
+      try {
+        const s = await (await fetch("/api/live")).json();
+        await refreshTrackMap(s.track);
+        render(s);
+      } catch (_) {}
     }
     poll();
     setInterval(poll, 100);
