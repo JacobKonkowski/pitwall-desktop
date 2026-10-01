@@ -843,3 +843,45 @@
 .small {
   font-size: 12px;
 }
+
+.live-trackmap-preview {
+  height: 300px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: #06140d;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.analyze-trackmap {
+  height: 340px;
+}
+.analyze-trackmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.analyze-trackmap-help {
+  margin-left: auto;
+  font-size: 11px;
+}
+.analyze-trackmap-legend .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.class-chip {
+  display: inline-block;
+  min-width: 28px;
+  text-align: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  color: #061018;
+  font-weight: 600;
+  font-size: 12px;
+}

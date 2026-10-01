@@ -16,12 +16,14 @@ pub enum ChatterLevel {
 /// Overlay widget slots, shared by the **monitor** surface and the **VR** compositor.
 /// Enable once (`enabled`); place twice (`desktop*` for monitor windows, `vr*` for
 /// in-headset). The index of each widget in [`OverlayLayout::widgets`] equals its
-/// VR overlay slot and kind (0 = coach, 1 = standings, 2 = relative, 3 = radar).
-pub const WIDGET_COUNT: usize = 4;
+/// VR overlay slot and kind (0 = coach, 1 = standings, 2 = relative, 3 = radar,
+/// 4 = track map).
+pub const WIDGET_COUNT: usize = 5;
 pub const WIDGET_COACH: usize = 0;
 pub const WIDGET_STANDINGS: usize = 1;
 pub const WIDGET_RELATIVE: usize = 2;
 pub const WIDGET_RADAR: usize = 3;
+pub const WIDGET_TRACK_MAP: usize = 4;
 
 /// Per-widget visibility and placement. Desktop fields are screen pixels for the
 /// monitor host window (`monitor-<kind>`); VR fields are meters / multipliers on
@@ -98,6 +100,13 @@ impl Default for OverlayLayout {
             desktop_y: 24.0,
             desktop_w: 200.0,
             desktop_h: 200.0,
+            ..WidgetPlacement::default()
+        };
+        widgets[WIDGET_TRACK_MAP] = WidgetPlacement {
+            desktop_x: 620.0,
+            desktop_y: 24.0,
+            desktop_w: 320.0,
+            desktop_h: 320.0,
             ..WidgetPlacement::default()
         };
         Self {
@@ -251,10 +260,11 @@ pub fn load_settings() -> AppSettings {
     let Ok(content) = fs::read_to_string(&path) else {
         return AppSettings::default();
     };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&content) else {
         return AppSettings::default();
     };
     let had_layout = value.get("overlayLayout").is_some();
+    pad_overlay_widgets(&mut value);
     let Ok(mut settings) = serde_json::from_value::<AppSettings>(value) else {
         return AppSettings::default();
     };
@@ -265,6 +275,30 @@ pub fn load_settings() -> AppSettings {
     settings
 }
 
+
+/// Resize a stored overlayLayout.widgets array to the current slot count.
+///
+/// The array is fixed-length, so a config written before a slot was added would
+/// otherwise fail to deserialize and reset every setting. Missing slots take
+/// their default placement.
+fn pad_overlay_widgets(value: &mut serde_json::Value) {
+    let Some(widgets) = value
+        .get_mut("overlayLayout")
+        .and_then(|layout| layout.get_mut("widgets"))
+        .and_then(|widgets| widgets.as_array_mut())
+    else {
+        return;
+    };
+    let defaults = OverlayLayout::default();
+    while widgets.len() < WIDGET_COUNT {
+        let Ok(placement) = serde_json::to_value(defaults.widgets[widgets.len()]) else {
+            return;
+        };
+        widgets.push(placement);
+    }
+    widgets.truncate(WIDGET_COUNT);
+}
+
 pub fn save_settings(settings: &AppSettings) -> anyhow::Result<()> {
     let path = settings_path();
     if let Some(parent) = path.parent() {
@@ -273,4 +307,70 @@ pub fn save_settings(settings: &AppSettings) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(settings)?;
     fs::write(path, json)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn legacy_four_slot_json() -> serde_json::Value {
+        let defaults = OverlayLayout::default();
+        let mut coach = serde_json::to_value(defaults.widgets[WIDGET_COACH]).unwrap();
+        coach["desktopX"] = serde_json::json!(999.0);
+        serde_json::json!({
+            "overlayLayout": {
+                "widgets": [
+                    coach,
+                    serde_json::to_value(defaults.widgets[WIDGET_STANDINGS]).unwrap(),
+                    serde_json::to_value(defaults.widgets[WIDGET_RELATIVE]).unwrap(),
+                    serde_json::to_value(defaults.widgets[WIDGET_RADAR]).unwrap(),
+                ],
+                "fieldPaceMode": "optimal"
+            },
+            "audioCoachVolume": 0.25
+        })
+    }
+
+    #[test]
+    fn older_layouts_are_padded_not_discarded() {
+        let mut value = legacy_four_slot_json();
+        pad_overlay_widgets(&mut value);
+        let settings: AppSettings = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(settings.overlay_layout.widgets.len(), WIDGET_COUNT);
+        assert_eq!(
+            settings.overlay_layout.widgets[WIDGET_COACH].desktop_x,
+            999.0
+        );
+        assert_eq!(settings.overlay_layout.field_pace_mode, "optimal");
+        assert_eq!(settings.audio_coach_volume, 0.25);
+        assert!(!settings.overlay_layout.widgets[WIDGET_TRACK_MAP].enabled);
+        assert_eq!(
+            settings.overlay_layout.widgets[WIDGET_TRACK_MAP].desktop_w,
+            320.0
+        );
+    }
+
+    #[test]
+    fn longer_layouts_are_truncated() {
+        let mut value = legacy_four_slot_json();
+        let extra = serde_json::to_value(WidgetPlacement::default()).unwrap();
+        for _ in 0..3 {
+            value["overlayLayout"]["widgets"]
+                .as_array_mut()
+                .unwrap()
+                .push(extra.clone());
+        }
+        pad_overlay_widgets(&mut value);
+        assert_eq!(
+            value["overlayLayout"]["widgets"].as_array().unwrap().len(),
+            WIDGET_COUNT
+        );
+    }
+
+    #[test]
+    fn configs_without_a_layout_are_untouched() {
+        let mut value = serde_json::json!({ "audioCoachEnabled": true });
+        pad_overlay_widgets(&mut value);
+        assert!(value.get("overlayLayout").is_none());
+    }
 }

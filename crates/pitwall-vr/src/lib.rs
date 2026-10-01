@@ -21,6 +21,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use tokio_util::sync::CancellationToken;
 
+use pitwall_analysis::TrackOutline;
 use pitwall_live::{LiveService, LiveSnapshot};
 use pitwall_settings::AppSettings;
 
@@ -242,6 +243,9 @@ fn run_native_loop(
 ) -> anyhow::Result<()> {
     let mut writer = shm::ShmWriter::open()?;
     let _ = initial;
+    // Outlines are static per circuit, so the cache is only re-read on a track change.
+    let mut track_map: Option<TrackOutline> = None;
+    let mut track_map_for = String::new();
 
     while !cancel.is_cancelled() {
         let settings = pitwall_settings::load_settings();
@@ -273,8 +277,13 @@ fn run_native_loop(
             };
         }
 
+        if track_map_for != snap.track {
+            track_map = pitwall_storage::load_track_map(&snap.track);
+            track_map_for = snap.track.clone();
+        }
+
         let field_pace = field_pace_ordinal(&layout.field_pace_mode);
-        let block = shm::build_block(&snap, &slots, field_pace);
+        let block = shm::build_block(&snap, &slots, field_pace, track_map.as_ref());
         let overlay_count = slots.iter().filter(|s| s.enabled).count() as u32;
         writer.publish(block);
         *service.last_frame_ms.lock() = Some(now_ms());

@@ -49,6 +49,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_sessions,
             commands::get_session,
+            commands::get_track_map,
             commands::get_lap_traces,
             commands::compare_laps,
             commands::import_ibt,

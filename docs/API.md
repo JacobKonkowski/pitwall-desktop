@@ -13,6 +13,7 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `list_sessions` | `listSessions` | Session summaries (display cleanup applied) |
 | `get_session` | `getSession` | Session + laps (display cleanup applied) |
 | `get_lap_traces` | `getLapTraces` | Trace points for one lap |
+| `get_track_map` | `getTrackMap` | Cached circuit outline for a track; `null` when none generated |
 | `compare_laps` | `compareLaps` | Two-lap comparison payload |
 | `import_ibt` | `importIbt` | Single file (pipeline cleanup on write) |
 | `import_folder_cmd` | `importFolder` | Folder scan |

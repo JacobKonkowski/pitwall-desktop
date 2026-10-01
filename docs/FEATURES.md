@@ -37,3 +37,8 @@ Overlay layout settings configure a **shared widget catalog** (coach / standings
 ## Settings
 
 Persisted via `get_settings` / `save_settings_cmd`. Live page exposes common audio toggles, monitor overlay start/stop, and VR actions. Full `AppSettings` includes VR mode/opacity, overlay layout, and coach chatter / category flags.
+
+## Track map
+
+Circuit outline derived from IBT GPS, shown in Analyze (pedal zones / racing lines),
+the monitor overlay slot, Live preview, and the VR/OpenKneeboard `trackmap` layout.

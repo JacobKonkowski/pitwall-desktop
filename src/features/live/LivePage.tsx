@@ -40,7 +40,9 @@ import type {
   VrLayerDiagnostics,
   VrOverlayStatus,
 } from "../../shared/types";
-import { CoachWidget } from "../../widgets";
+import { useLapTrail } from "../../shared/useLapTrail";
+import { useTrackMap } from "../../shared/useTrackMap";
+import { CoachWidget, TrackMapWidget } from "../../widgets";
 import { SessionLeaderboard } from "./SessionLeaderboard";
 
 const VR_PREVIEW_URL = "http://127.0.0.1:17342/vr";
@@ -206,6 +208,8 @@ export function LivePage() {
   };
 
   const fieldPace = settings?.overlayLayout?.fieldPaceMode ?? "best";
+  const trackMap = useTrackMap(snap?.track);
+  const lapTrail = useLapTrail(snap);
 
   return (
     <div className="live-page">
@@ -309,6 +313,23 @@ export function LivePage() {
                   <Metric label="RF" value={formatTemp(snap.rfTemp)} />
                   <Metric label="LR" value={formatTemp(snap.lrTemp)} />
                   <Metric label="RR" value={formatTemp(snap.rrTemp)} />
+                </div>
+              </div>
+
+              
+              <div className="panel">
+                <div className="panel-header">
+                  <h2>Track map</h2>
+                  <span className="muted">{snap.track}</span>
+                </div>
+                <div className="panel-body">
+                  <div className="pw-widget live-trackmap-preview">
+                    <TrackMapWidget
+                      outline={trackMap}
+                      snap={snap}
+                      candidateTraces={lapTrail}
+                    />
+                  </div>
                 </div>
               </div>
 

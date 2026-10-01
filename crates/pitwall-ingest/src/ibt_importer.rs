@@ -195,6 +195,7 @@ pub fn save_parsed_ibt(
     elapsed_ms: u128,
 ) -> Result<ImportResult> {
     let path_str = path.to_string_lossy().to_string();
+    cache_track_map(&session);
     if let Some(session_id) = db
         .find_session_id_by_hash(hash)?
         .or(db.find_session_id_by_path(&path_str)?)
@@ -211,6 +212,25 @@ pub fn save_parsed_ibt(
         });
     }
     import_ibt_file(db, path, session, hash, elapsed_ms)
+}
+
+/// Persist the session's generated outline for the track, keeping whichever
+/// outline came from the better source lap. Failures are logged, never fatal:
+/// a missing map only costs the track-map widget.
+fn cache_track_map(session: &AnalyzedSession) {
+    let Some(outline) = &session.track_map else {
+        return;
+    };
+    match pitwall_storage::save_track_map(outline) {
+        Ok(true) => info!(
+            "Cached track map for {} ({} points, {:.0}% lap coverage)",
+            outline.track,
+            outline.points.len(),
+            outline.coverage * 100.0
+        ),
+        Ok(false) => {}
+        Err(e) => info!("Track map not cached for {}: {e}", outline.track),
+    }
 }
 
 /// Fast dedup key from path + size + mtime (not a content SHA-256 of the IBT bytes).

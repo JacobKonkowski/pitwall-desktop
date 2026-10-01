@@ -21,6 +21,7 @@ import type {
   NativeVrStatus,
   SessionDetail,
   SessionSummary,
+  TrackOutline,
   TtsVoiceInfo,
   VrLayerDiagnostics,
   VrOverlayStatus,
@@ -38,6 +39,11 @@ export async function getSession(sessionId: number): Promise<SessionDetail | nul
 
 export async function getLapTraces(lapIds: number[]): Promise<LapTrace[]> {
   return invoke("get_lap_traces", { lapIds });
+}
+
+/** Cached circuit outline for a track; `null` until an IBT with GPS is imported. */
+export async function getTrackMap(track: string): Promise<TrackOutline | null> {
+  return invoke("get_track_map", { track });
 }
 
 export async function compareLaps(
@@ -236,8 +242,9 @@ export function buildOpenKneeboardUrl(settings: AppSettings, baseUrl: string): s
     standings: "standings",
     relative: "relative",
     radar: "radar",
+    trackmap: "trackmap",
   };
-  const kinds = ["coach", "standings", "relative", "radar"];
+  const kinds = ["coach", "standings", "relative", "radar", "trackmap"];
   const enabled = settings.overlayLayout.widgets
     .map((w, i) => ({ w, kind: kinds[i] }))
     .filter(({ w }) => w.enabled);

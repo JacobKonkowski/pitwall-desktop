@@ -23,6 +23,10 @@ interface Props {
   candidate: LapSummary | null;
   reference: LapSummary | null;
   onChangeReference: (id: number) => void;
+  /** Lap fraction (0..1) under the cursor, or `null` when the cursor leaves. */
+  onHoverDistPct?: (pct: number | null) => void;
+  /** Optional focus callback (e.g. zoom the track map). */
+  onFocusDistPct?: (pct: number) => void;
 }
 
 function lapLabel(lap: LapSummary): string {
@@ -83,7 +87,7 @@ function approxCumulativeDelta(
   return out;
 }
 
-export function ComparePanel({ laps, candidate, reference, onChangeReference }: Props) {
+export function ComparePanel({ laps, candidate, reference, onChangeReference, onHoverDistPct }: Props) {
   const [comparison, setComparison] = useState<LapComparison | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +196,7 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
 
             <div className="chart-title">Time gain / loss vs distance (approx.)</div>
             <Chart
+              onHoverDistPct={onHoverDistPct}
               data={chartData}
               lines={[{ key: "deltaMs", color: DELTA_COLOR }]}
               yFormatter={(v) => `${v >= 0 ? "+" : ""}${(v / 1000).toFixed(3)}s`}
@@ -200,6 +205,7 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
 
             <div className="chart-title">Speed (km/h)</div>
             <Chart
+              onHoverDistPct={onHoverDistPct}
               data={chartData}
               lines={[
                 { key: "candSpeed", color: CAND_COLOR },
@@ -209,6 +215,7 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
 
             <div className="chart-title">Throttle (%)</div>
             <Chart
+              onHoverDistPct={onHoverDistPct}
               data={chartData}
               domain={[0, 100]}
               lines={[
@@ -219,6 +226,7 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
 
             <div className="chart-title">Brake (%)</div>
             <Chart
+              onHoverDistPct={onHoverDistPct}
               data={chartData}
               domain={[0, 100]}
               lines={[
@@ -301,6 +309,7 @@ function Chart({
   height = 220,
   yFormatter,
   zeroLine,
+  onHoverDistPct,
 }: {
   data: Record<string, number | null>[];
   lines: ChartLine[];
@@ -308,6 +317,7 @@ function Chart({
   height?: number;
   yFormatter?: (v: number) => string;
   zeroLine?: boolean;
+  onHoverDistPct?: (pct: number | null) => void;
 }) {
   return (
     <div className="chart-wrap" style={{ height }}>
@@ -316,6 +326,12 @@ function Chart({
           syncId={SYNC_ID}
           data={data}
           margin={{ top: 6, right: 12, bottom: 6, left: -8 }}
+          onMouseMove={(state) => {
+            if (!onHoverDistPct) return;
+            const x = state?.activeLabel;
+            onHoverDistPct(typeof x === "number" ? x / 100 : null);
+          }}
+          onMouseLeave={() => onHoverDistPct?.(null)}
         >
           <CartesianGrid stroke="#262d3a" strokeDasharray="3 3" />
           <XAxis

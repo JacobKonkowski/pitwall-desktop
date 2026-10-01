@@ -7,8 +7,10 @@ license.workspace = true
 description = "In-headset HUD for iRacing VR"
 
 [dependencies]
+pitwall-analysis = { path = "../pitwall-analysis" }
 pitwall-live = { path = "../pitwall-live" }
 pitwall-settings = { path = "../pitwall-settings" }
+pitwall-storage = { path = "../pitwall-storage" }
 anyhow = "1"
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }

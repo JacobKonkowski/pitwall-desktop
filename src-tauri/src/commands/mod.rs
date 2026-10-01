@@ -9,7 +9,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison};
+use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison, TrackOutline};
 use crate::audio::AudioCoachService;
 use crate::ingest::{
     check_iracing_config, default_telemetry_dir, run_import, run_reimport, spawn_recent_ibt_import,
@@ -19,7 +19,8 @@ use crate::live::{LiveService, LiveSnapshot, LiveStatus, PostSessionImportFn};
 use crate::monitor::MonitorOverlayService;
 use crate::settings::{load_settings, save_settings, AppSettings};
 use crate::storage::{
-    Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail, SessionSummary,
+    load_track_map, Database, ImportStatus, IracingConfigCheck, LapTrace, SessionDetail,
+    SessionSummary,
 };
 use crate::vr::{NativeVrStatus, VrLayerDiagnostics, VrOverlayService, VrOverlayStatus};
 
@@ -77,6 +78,14 @@ pub fn get_session(
         .lock()
         .get_session(session_id)
         .map_err(|e| e.to_string())
+}
+
+
+/// Cached circuit outline for a track, generated from a prior IBT import.
+/// None when no import for that track carried GPS channels.
+#[tauri::command]
+pub fn get_track_map(track: String) -> Option<TrackOutline> {
+    load_track_map(&track)
 }
 
 #[tauri::command]

@@ -70,3 +70,12 @@ Computed on the Analyze page from your session data.
 - [DATA_MODEL.md](DATA_MODEL.md) — schema v5
 - [FEATURES.md](FEATURES.md) — Analyze tab
 - [API.md](API.md) — session/compare/import commands
+
+## Track map
+
+[`track_map.rs`](../crates/pitwall-analysis/src/track_map.rs) builds a circuit outline from the
+cleanest lap's GPS samples (`Lat` / `Lon` + `LapDistPct`). The importer caches it per track under
+`%LOCALAPPDATA%\pitwall-desktop\track-maps\`. Analyze and live widgets place cars by interpolating
+the polyline at `lapDistPct`; when traces keep GPS, racing lines use the outline's stored
+`projection` so they share the same unit box.
+

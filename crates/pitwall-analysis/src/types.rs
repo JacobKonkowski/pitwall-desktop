@@ -131,6 +131,9 @@ pub struct AnalyzedSession {
     pub car: String,
     pub session_date: String,
     pub laps: Vec<AnalyzedLap>,
+    /// Circuit outline generated from this session's GPS samples, when the
+    /// source carried `Lat` / `Lon` and one lap covered the track.
+    pub track_map: Option<super::track_map::TrackOutline>,
 }
 
 impl AnalyzedSession {

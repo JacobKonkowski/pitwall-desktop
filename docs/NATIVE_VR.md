@@ -156,3 +156,10 @@ native layer and the browser HUD at `http://127.0.0.1:17342/vr`.
 | HUD shows but no data | Live monitor running? Diagnostics **write age** should stay low while HUD is started |
 | Compositor always false | Layer does not write a heartbeat file; status uses producer write age + layer installed |
 | Spotter pack line never shows | Requires on-track traffic and `CarLeftRight` mapping in `live/pack.rs` |
+
+## Shared-memory version (track map)
+
+`PITWALL_VR_VERSION` / `shm::VERSION` is **2** on the track-map branch: `MAX_OVERLAYS` is 5
+(slot 4 = track map) and `PwSnapshot` carries `PwTrackMap`. A consumer built for v1 must refuse
+a v2 block. World-lock recenter (`recenter_seq`, SHM v3 in the full WIP) is intentionally not
+included here so assists can land that bump separately.

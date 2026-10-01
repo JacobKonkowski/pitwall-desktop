@@ -40,6 +40,7 @@ void HudDimensions(uint32_t kind, uint32_t& width, uint32_t& height) {
         case PW_OVERLAY_STANDINGS: width = 512; height = 640; break;  // tall list
         case PW_OVERLAY_RELATIVE:  width = 512; height = 512; break;  // square board
         case PW_OVERLAY_RADAR:     width = 512; height = 512; break;  // square dish
+        case PW_OVERLAY_TRACKMAP:  width = 512; height = 512; break;  // square circuit
         case PW_OVERLAY_COACH:
         default:                   width = 1024; height = 288; break; // wide-short
     }

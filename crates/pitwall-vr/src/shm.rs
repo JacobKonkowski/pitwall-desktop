@@ -7,14 +7,18 @@
 //! a char array of length divisible by 4) so neither side needs explicit
 //! packing, and 64-bit values are split into lo/hi `u32` pairs.
 
+use pitwall_analysis::TrackOutline;
 use pitwall_live::{LiveSnapshot, PackState};
 
 pub const MAGIC: u32 = 0x5256_5750; // "PWVR"
-pub const VERSION: u32 = 1;
+/// v2 added slot 4 (track map) and `PwSnapshot.track_map`.
+/// World-lock recenter_seq stays out of this branch (no v3 bump).
+pub const VERSION: u32 = 2;
 pub const SHM_NAME: &str = r"Local\PitWallVR";
 
-pub const MAX_OVERLAYS: usize = 4;
+pub const MAX_OVERLAYS: usize = 5;
 pub const MAX_COMPETITORS: usize = 64;
+pub const MAX_TRACK_MAP_POINTS: usize = 256;
 pub const MAX_SECTORS: usize = 3;
 pub const NUM_LEN: usize = 8;
 pub const NAME_LEN: usize = 40;
@@ -28,6 +32,7 @@ pub const KIND_COACH: u32 = 0;
 pub const KIND_STANDINGS: u32 = 1;
 pub const KIND_RELATIVE: u32 = 2;
 pub const KIND_RADAR: u32 = 3;
+pub const KIND_TRACK_MAP: u32 = 4;
 
 pub const LOCK_VIEW: u32 = 0;
 #[allow(dead_code)]
@@ -67,6 +72,22 @@ pub struct PwCompetitor {
     pub name: [u8; NAME_LEN],
 }
 
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PwTrackMapPoint {
+    pub x: f32,
+    pub y: f32,
+    pub pct: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PwTrackMap {
+    pub point_count: u32,
+    pub points: [PwTrackMapPoint; MAX_TRACK_MAP_POINTS],
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PwSnapshot {
@@ -99,6 +120,7 @@ pub struct PwSnapshot {
     pub track: [u8; TRACK_LEN],
     pub session_type: [u8; SESSION_LEN],
     pub competitors: [PwCompetitor; MAX_COMPETITORS],
+    pub track_map: PwTrackMap,
 }
 
 #[repr(C)]
@@ -147,6 +169,8 @@ fn base_pose(kind: u32) -> ([f32; 3], [f32; 2]) {
         KIND_RELATIVE => ([0.85, -0.30, -1.4], [0.46, 0.46]),
         // Square dish, low-center (512 x 512 texture).
         KIND_RADAR => ([0.0, -0.55, -1.25], [0.40, 0.40]),
+        // Square circuit, upper-right (512 x 512 texture).
+        KIND_TRACK_MAP => ([0.85, 0.30, -1.4], [0.46, 0.46]),
         // Coach (and any unknown kind): wide-short, centered upper windshield
         // (1024 x 288 texture).
         _ => ([0.0, 0.0, -1.2], [0.80, 0.225]),
@@ -172,12 +196,14 @@ fn copy_str<const N: usize>(s: &str, dst: &mut [u8; N]) {
 /// Build the shared block from the current snapshot and per-slot placement.
 ///
 /// `slots` is indexed by widget kind (0 = coach, 1 = standings, 2 = relative,
-/// 3 = radar); each enabled slot becomes a composition-layer quad. Disabled
-/// slots are packed out so the layer only iterates the active ones.
+/// 3 = radar, 4 = track map); each enabled slot becomes a composition-layer
+/// quad. Disabled slots are packed out so the layer only iterates the active
+/// ones. `track_map` is the cached outline for `snap.track`, if one exists.
 pub fn build_block(
     snap: &LiveSnapshot,
     slots: &[SlotPlacement; MAX_OVERLAYS],
     field_pace_mode: u32,
+    track_map: Option<&TrackOutline>,
 ) -> PwSharedBlock {
     let mut block = PwSharedBlock::empty();
 
@@ -237,6 +263,20 @@ pub fn build_block(
         copy_str(&c.driver_name, &mut dst.name);
     }
 
+
+    // A missing outline leaves point_count at 0; the layer draws its empty state.
+    if let Some(outline) = track_map {
+        let points = outline.points.len().min(MAX_TRACK_MAP_POINTS);
+        s.track_map.point_count = points as u32;
+        for (i, p) in outline.points.iter().take(points).enumerate() {
+            s.track_map.points[i] = PwTrackMapPoint {
+                x: p.x as f32,
+                y: p.y as f32,
+                pct: p.pct as f32,
+            };
+        }
+    }
+
     // Fixed slots: overlay[kind] always represents that kind so the layer can
     // keep a stable, correctly-sized swapchain per slot. Disabled widgets carry
     // `enabled = 0` and are skipped by the compositor.
@@ -294,6 +334,36 @@ fn sector_progress(snap: &LiveSnapshot, sector_num: i32) -> f32 {
         return 0.0;
     }
     ((snap.lap_dist_pct - start) / span).clamp(0.0, 1.0)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::size_of;
+
+    #[test]
+    fn struct_sizes_need_no_packing() {
+        assert_eq!(size_of::<PwOverlay>(), 13 * 4);
+        assert_eq!(size_of::<PwCompetitor>(), 8 * 4 + NUM_LEN + NAME_LEN);
+        assert_eq!(size_of::<PwTrackMapPoint>(), 3 * 4);
+        assert_eq!(
+            size_of::<PwTrackMap>(),
+            4 + MAX_TRACK_MAP_POINTS * size_of::<PwTrackMapPoint>()
+        );
+        assert_eq!(size_of::<PwSnapshot>() % 4, 0);
+        // Header is 6 u32s (no recenter_seq on v2).
+        assert_eq!(
+            size_of::<PwSharedBlock>(),
+            6 * 4 + MAX_OVERLAYS * size_of::<PwOverlay>() + size_of::<PwSnapshot>()
+        );
+    }
+
+    #[test]
+    fn track_map_slot_matches_settings() {
+        assert_eq!(KIND_TRACK_MAP as usize, pitwall_settings::WIDGET_TRACK_MAP);
+        assert_eq!(MAX_OVERLAYS, pitwall_settings::WIDGET_COUNT);
+    }
 }
 
 #[cfg(windows)]
