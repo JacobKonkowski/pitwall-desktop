@@ -126,7 +126,7 @@ feature adjacency**, not a finding of infringement or non-infringement.
 | Patent / family | Owner (as listed publicly) | Claim focus (high level) | Overlap vs PitWall (engineering view) |
 |-----------------|----------------------------|--------------------------|----------------------------------------|
 | [US 11,151,900 B2](https://patents.google.com/patent/US11151900B2) | RaceVoice LLC → Finger Lakes Consulting Group Inc. | Pre-race UI to select **track points** + guidance options; while racing, detect location at a selected point; annunciate vehicle parameter via audio actuator in a **driver’s race helmet** | **Highest thematic risk for voice coaching.** RaceVoice also markets sim products and offers licensing. PitWall’s current coach is mostly **event/edge driven** (flag/pack/sector/lap), not a “pick map points → announce speed at GPS corner” product. That difference may or may not matter under claim construction — counsel must decide. Active; 4th-year maintenance fee recorded (2025). |
-| [US 11,830,375 B2](https://patents.google.com/patent/US11830375B2) and continuations (e.g. [US 12,606,023 B2](https://patents.google.com/patent/US12606023B2)) | Garmin | Build an **optimal path of travel** from multiple geolocated laps; audible/visual coaching; some claims tie to brake-pedal sensors / camera | Lower overlap with current PitWall: no removable brake sensor, no GNSS coach device, no “stitch best segments into optimal line” coaching pipeline. Analyze track maps from IBT GPS are visualization, not this claimed coaching method. Still a watch if you add turn-by-turn “brake earlier / later” from path reconstruction. |
+| [US 11,830,375 B2](https://patents.google.com/patent/US11830375B2) and continuations (e.g. [US 12,606,023 B2](https://patents.google.com/patent/US12606023B2)) | Garmin | Build an **optimal path of travel** from multiple geolocated laps; provide audible/visual coaching along that path; some claims require a **removable brake-pedal sensor** and/or camera | **Medium thematic watch for Analyze brake-point UI**, not a match to the live voice coach. PitWall already shows post-session “braked X m earlier/later” vs a chosen reference lap and a consistency scatter (sim `Brake`/`BrakeRaw` traces, not a physical pedal sensor). It does **not** (today) stitch multi-lap GNSS paths into an optimal line, nor speak brake instructions while driving. That product gap may matter under claim construction — counsel must decide. Raise priority if you add live “brake earlier/later” callouts or ideal-line coaching from geolocated paths. |
 | Broader VR / game overlay art (e.g. cloud-gaming VRAM overlays, HMD compositors) | Various | Injecting / blending overlays into rendered frames | OpenXR **API layers** that append composition quads are a **published Khronos / community pattern** (not PitWall-specific). No patent was found in this scan that clearly claims “OpenXR API layer injects HUD quads into another app’s `xrEndFrame`.” Broader overlay patents still exist; using the loader-supported layer path is not itself a clearance. |
 | Telemetry+video sync (e.g. [US 10,016,689 B2](https://patents.google.com/patent/US10016689B2)) | Various | Associate gameplay video timestamps with telemetry events | Low overlap today (PitWall does not ship synchronized video↔telemetry replay as a core feature). |
 
@@ -138,8 +138,12 @@ feature adjacency**, not a finding of infringement or non-infringement.
    PitWall announces **sim session events and timing edges**, not a race-vehicle
    helmet VGS at preselected track geolocations — but do not treat that as a
    legal safe harbor.
-2. **Path / “optimal line” coaching** — watch Garmin family before shipping
-   geolocation-stitched ideal lines with live audible brake/throttle instructions.
+2. **Brake-point / path coaching (Garmin family)** — PitWall already ships
+   **post-session** brake earlier/later deltas and consistency charts in Analyze.
+   Keep that distinct from Garmin-style **live** coaching along an optimal
+   geolocated path with pedal-sensor/camera hardware. Escalate for counsel before
+   adding live spoken brake instructions or “ideal line” reconstruction from
+   multi-lap GPS paths.
 3. **VR HUD** — lower specific-patent signal in this scan; rely on OpenXR public
    APIs and avoid copying proprietary overlay implementations. Still get FTO if
    commercializing widely.
