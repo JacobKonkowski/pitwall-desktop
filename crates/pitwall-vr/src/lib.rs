@@ -14,6 +14,7 @@ mod hud_server;
 mod layer_install;
 mod shm;
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -40,6 +41,8 @@ pub struct VrOverlayService {
     last_overlay_count: Mutex<u32>,
     /// Last native-loop error (cleared on successful start).
     last_error: Mutex<Option<String>>,
+    /// Incremented per recenter request and published to the layer.
+    recenter_seq: AtomicU32,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -87,7 +90,15 @@ impl VrOverlayService {
             last_frame_ms: Mutex::new(None),
             last_overlay_count: Mutex::new(0),
             last_error: Mutex::new(None),
+            recenter_seq: AtomicU32::new(0),
         }
+    }
+
+    /// Re-anchor world-locked overlays to the driver's current head pose on the
+    /// layer's next frame. Harmless when the HUD is not running.
+    pub fn request_recenter(&self) {
+        self.recenter_seq.fetch_add(1, Ordering::Relaxed);
+        tracing::info!("VR recenter requested");
     }
 
     pub fn is_active(&self) -> bool {
@@ -168,7 +179,7 @@ impl VrOverlayService {
         };
         let service = Arc::clone(self);
         thread::spawn(move || {
-            if let Err(e) = hud_server::run_hud_server(service.clone(), live, token) {
+            if let Err(e) = hud_server::run_hud_server(service.clone(), live, token, true) {
                 let msg = format!("HUD server error: {e:#}");
                 *service.last_error.lock() = Some(msg.clone());
                 service.status.lock().message = msg;
@@ -197,6 +208,18 @@ impl VrOverlayService {
             mode: "native".into(),
             layer_installed: installed,
         };
+
+        // Browser preview shares this cancel token; stop HUD tears both down.
+        let preview_service = Arc::clone(self);
+        let preview_live = Arc::clone(&live);
+        let preview_token = token.clone();
+        thread::spawn(move || {
+            if let Err(e) =
+                hud_server::run_hud_server(preview_service, preview_live, preview_token, false)
+            {
+                tracing::warn!("VR browser preview server: {e:#}");
+            }
+        });
 
         let service = Arc::clone(self);
         thread::spawn(move || {
@@ -234,7 +257,7 @@ fn field_pace_ordinal(mode: &str) -> u32 {
 
 /// Publish the live snapshot to shared memory at ~30 Hz until cancelled.
 /// When live data is empty, publishes a test pattern with the coach quad enabled
-/// at the default VIEW pose (~1.2 m forward).
+/// at its configured placement.
 fn run_native_loop(
     service: Arc<VrOverlayService>,
     live: Arc<LiveService>,
@@ -251,30 +274,15 @@ fn run_native_loop(
         let settings = pitwall_settings::load_settings();
         let mut snap = live.snapshot.lock().clone();
         let layout = &settings.overlay_layout;
-        let mut slots = [shm::SlotPlacement {
-            enabled: false,
-            vertical_offset: 0.0,
-            scale: 1.0,
-            opacity: 1.0,
-        }; shm::MAX_OVERLAYS];
+        let mut slots = [shm::SlotPlacement::DISABLED; shm::MAX_OVERLAYS];
         for (i, w) in layout.widgets.iter().enumerate() {
-            slots[i] = shm::SlotPlacement {
-                enabled: w.enabled,
-                vertical_offset: w.vr_offset_y,
-                scale: w.vr_scale.max(0.1),
-                opacity: w.vr_opacity.clamp(0.0, 1.0),
-            };
+            slots[i] = shm::SlotPlacement::from_widget(w);
         }
 
-        // Test pattern: ensure coach is visible with default VIEW pose when idle.
+        // Test pattern: ensure the coach is visible when idle, at the user's placement.
         if snap.track.is_empty() && snap.lap <= 0 {
             snap = test_pattern_snapshot();
-            slots[shm::KIND_COACH as usize] = shm::SlotPlacement {
-                enabled: true,
-                vertical_offset: 0.0,
-                scale: 1.0,
-                opacity: 1.0,
-            };
+            slots[shm::KIND_COACH as usize].enabled = true;
         }
 
         if track_map_for != snap.track {
@@ -283,7 +291,13 @@ fn run_native_loop(
         }
 
         let field_pace = field_pace_ordinal(&layout.field_pace_mode);
-        let block = shm::build_block(&snap, &slots, field_pace, track_map.as_ref());
+        let block = shm::build_block(
+            &snap,
+            &slots,
+            field_pace,
+            track_map.as_ref(),
+            service.recenter_seq.load(Ordering::Relaxed),
+        );
         let overlay_count = slots.iter().filter(|s| s.enabled).count() as u32;
         writer.publish(block);
         *service.last_frame_ms.lock() = Some(now_ms());

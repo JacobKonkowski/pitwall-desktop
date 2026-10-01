@@ -6,6 +6,7 @@
 //! Domains must not depend on `commands`.
 
 pub mod commands;
+mod recenter;
 
 pub use pitwall_analysis as analysis;
 pub use pitwall_audio as audio;
@@ -36,6 +37,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(recenter::hotkey_plugin())
         .manage(state.clone())
         .setup(move |app| {
             #[cfg(feature = "updater")]
@@ -44,6 +46,7 @@ pub fn run() {
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
             }
             start_watcher(app.handle().clone(), state.import.clone());
+            recenter::init(app.handle(), &state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +72,8 @@ pub fn run() {
             commands::stop_demo_clock,
             commands::get_settings,
             commands::save_settings_cmd,
+            commands::patch_settings_cmd,
+            commands::list_tts_voices_cmd,
             commands::start_audio_coach,
             commands::stop_audio_coach,
             commands::get_audio_coach_status,
@@ -87,6 +92,8 @@ pub fn run() {
             commands::get_vr_layer_diagnostics,
             commands::check_vr_hud_health,
             commands::open_vr_hud_preview_cmd,
+            commands::vr_recenter_cmd,
+            commands::capture_controller_button_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

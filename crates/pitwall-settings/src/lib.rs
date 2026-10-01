@@ -25,6 +25,34 @@ pub const WIDGET_RELATIVE: usize = 2;
 pub const WIDGET_RADAR: usize = 3;
 pub const WIDGET_TRACK_MAP: usize = 4;
 
+/// Default VR quad scale and opacity. Scale 1.0 fills too much of a Quest FOV at
+/// the base poses, so widgets start smaller and semi-transparent.
+pub const DEFAULT_VR_SCALE: f32 = 0.55;
+pub const DEFAULT_VR_OPACITY: f32 = 0.75;
+
+/// What a VR widget is anchored to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum VrLock {
+    /// Fixed in the cockpit, relative to the recenter anchor.
+    #[default]
+    World,
+    /// Follows the head.
+    Head,
+}
+
+/// A button on a DirectInput game controller (wheel, button box, ...).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerBinding {
+    /// DirectInput instance GUID, stable per device on this machine.
+    pub device_guid: String,
+    /// Product name shown in the UI and used as a fallback match.
+    pub device_name: String,
+    /// Zero-based button index.
+    pub button: u32,
+}
+
 /// Per-widget visibility and placement. Desktop fields are screen pixels for the
 /// monitor host window (`monitor-<kind>`); VR fields are meters / multipliers on
 /// top of the per-kind base pose the compositor uses.
@@ -36,8 +64,15 @@ pub struct WidgetPlacement {
     pub desktop_y: f32,
     pub desktop_w: f32,
     pub desktop_h: f32,
+    pub vr_lock: VrLock,
+    /// Sideways nudge applied to the widget's VR base pose, in meters (+ = right).
+    pub vr_offset_x: f32,
     /// Vertical nudge applied to the widget's VR base pose, in meters.
     pub vr_offset_y: f32,
+    /// Depth nudge applied to the widget's VR base pose, in meters (+ = closer).
+    pub vr_offset_z: f32,
+    /// Pitch of the VR quad in degrees (+ = top tilted away).
+    pub vr_tilt_deg: f32,
     /// VR quad scale multiplier.
     pub vr_scale: f32,
     /// VR quad opacity, 0.0ΓÇô1.0.
@@ -52,9 +87,13 @@ impl Default for WidgetPlacement {
             desktop_y: 24.0,
             desktop_w: 320.0,
             desktop_h: 180.0,
+            vr_lock: VrLock::World,
+            vr_offset_x: 0.0,
             vr_offset_y: 0.0,
-            vr_scale: 1.0,
-            vr_opacity: 1.0,
+            vr_offset_z: 0.0,
+            vr_tilt_deg: 0.0,
+            vr_scale: DEFAULT_VR_SCALE,
+            vr_opacity: DEFAULT_VR_OPACITY,
         }
     }
 }
@@ -150,6 +189,8 @@ pub struct AppSettings {
     pub vr_hud_opacity: f32,
     /// Optional global recenter hotkey (e.g. "Ctrl+F10"); empty = disabled.
     pub vr_recenter_hotkey: String,
+    /// Optional wheel / button-box button that recenters the VR anchor.
+    pub vr_recenter_button: Option<ControllerBinding>,
     /// Field pace shown on the HUD: "best", "optimal", or "both".
     pub vr_field_pace_mode: String,
     /// Shared widget catalog for monitor windows and the VR compositor.
@@ -212,11 +253,12 @@ impl Default for AppSettings {
             overlay_width: 720,
             overlay_height: 520,
             vr_overlay_enabled: false,
-            vr_overlay_scale: 1.0,
+            vr_overlay_scale: DEFAULT_VR_SCALE,
             vr_mode: "native".into(),
             vr_hud_offset: 0.0,
-            vr_hud_opacity: 1.0,
+            vr_hud_opacity: DEFAULT_VR_OPACITY,
             vr_recenter_hotkey: String::new(),
+            vr_recenter_button: None,
             vr_field_pace_mode: "best".into(),
             overlay_layout: OverlayLayout::default(),
             audio_coach_enabled: true,
@@ -275,7 +317,7 @@ pub fn load_settings() -> AppSettings {
     settings
 }
 
-/// Resize a stored overlayLayout.widgets array to the current slot count.
+/// Resize a stored `overlayLayout.widgets` array to the current slot count.
 ///
 /// The array is fixed-length, so a config written before a slot was added would
 /// otherwise fail to deserialize and reset every setting. Missing slots take
@@ -312,6 +354,7 @@ pub fn save_settings(settings: &AppSettings) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    /// A config written by the four-slot build, with a customized coach slot.
     fn legacy_four_slot_json() -> serde_json::Value {
         let defaults = OverlayLayout::default();
         let mut coach = serde_json::to_value(defaults.widgets[WIDGET_COACH]).unwrap();
@@ -334,14 +377,17 @@ mod tests {
     fn older_layouts_are_padded_not_discarded() {
         let mut value = legacy_four_slot_json();
         pad_overlay_widgets(&mut value);
+
         let settings: AppSettings = serde_json::from_value(value).expect("deserialize");
         assert_eq!(settings.overlay_layout.widgets.len(), WIDGET_COUNT);
+        // Existing placement and unrelated settings survive the migration.
         assert_eq!(
             settings.overlay_layout.widgets[WIDGET_COACH].desktop_x,
             999.0
         );
         assert_eq!(settings.overlay_layout.field_pace_mode, "optimal");
         assert_eq!(settings.audio_coach_volume, 0.25);
+        // The new slot lands on its default placement, disabled.
         assert!(!settings.overlay_layout.widgets[WIDGET_TRACK_MAP].enabled);
         assert_eq!(
             settings.overlay_layout.widgets[WIDGET_TRACK_MAP].desktop_w,
@@ -360,10 +406,48 @@ mod tests {
                 .push(extra.clone());
         }
         pad_overlay_widgets(&mut value);
+
         assert_eq!(
             value["overlayLayout"]["widgets"].as_array().unwrap().len(),
             WIDGET_COUNT
         );
+    }
+
+    #[test]
+    fn widgets_without_vr_placement_fields_default_to_world_lock() {
+        let value = serde_json::json!({
+            "overlayLayout": {
+                "widgets": [{ "enabled": true, "vrOffsetY": 0.1, "vrScale": 0.8 }],
+            },
+        });
+        let mut value = value;
+        pad_overlay_widgets(&mut value);
+        let settings: AppSettings = serde_json::from_value(value).expect("deserialize");
+        let coach = settings.overlay_layout.widgets[WIDGET_COACH];
+        assert_eq!(coach.vr_lock, VrLock::World);
+        assert_eq!(coach.vr_offset_x, 0.0);
+        assert_eq!(coach.vr_offset_z, 0.0);
+        assert_eq!(coach.vr_tilt_deg, 0.0);
+        assert_eq!(coach.vr_offset_y, 0.1);
+        assert_eq!(coach.vr_scale, 0.8);
+        assert!(settings.vr_recenter_button.is_none());
+    }
+
+    #[test]
+    fn recenter_button_round_trips() {
+        let settings = AppSettings {
+            vr_recenter_button: Some(ControllerBinding {
+                device_guid: "{abc}".into(),
+                device_name: "Wheel".into(),
+                button: 7,
+            }),
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_value(&settings).unwrap();
+        assert_eq!(json["vrRecenterButton"]["button"], 7);
+        assert_eq!(json["overlayLayout"]["widgets"][0]["vrLock"], "world");
+        let back: AppSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(back.vr_recenter_button, settings.vr_recenter_button);
     }
 
     #[test]

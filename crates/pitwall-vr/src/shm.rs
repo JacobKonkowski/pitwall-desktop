@@ -9,11 +9,12 @@
 
 use pitwall_analysis::TrackOutline;
 use pitwall_live::{LiveSnapshot, PackState};
+use pitwall_settings::{VrLock, WidgetPlacement};
 
 pub const MAGIC: u32 = 0x5256_5750; // "PWVR"
 /// v2 added slot 4 (track map) and `PwSnapshot.track_map`.
-/// World-lock recenter_seq stays out of this branch (no v3 bump).
-pub const VERSION: u32 = 2;
+/// v3 added `PwSharedBlock.recenter_seq` for world-locked anchoring.
+pub const VERSION: u32 = 3;
 pub const SHM_NAME: &str = r"Local\PitWallVR";
 
 pub const MAX_OVERLAYS: usize = 5;
@@ -35,7 +36,6 @@ pub const KIND_RADAR: u32 = 3;
 pub const KIND_TRACK_MAP: u32 = 4;
 
 pub const LOCK_VIEW: u32 = 0;
-#[allow(dead_code)]
 pub const LOCK_LOCAL: u32 = 1;
 
 pub const FLAG_IS_PLAYER: u32 = 0x1;
@@ -131,6 +131,9 @@ pub struct PwSharedBlock {
     pub overlay_count: u32,
     pub write_ms_lo: u32,
     pub write_ms_hi: u32,
+    /// Bumped by the producer on each recenter request; the layer re-anchors
+    /// world-locked overlays to the current head pose when it changes.
+    pub recenter_seq: u32,
     pub overlays: [PwOverlay; MAX_OVERLAYS],
     pub snapshot: PwSnapshot,
 }
@@ -150,9 +153,51 @@ impl PwSharedBlock {
 #[derive(Clone, Copy)]
 pub struct SlotPlacement {
     pub enabled: bool,
-    pub vertical_offset: f32,
+    /// World-locked (anchor space) rather than head-locked.
+    pub world: bool,
+    /// Meters added to the base pose position (x right, y up, z toward the driver).
+    pub offset: [f32; 3],
+    /// Degrees; positive tilts the top away so the panel faces up.
+    pub tilt_deg: f32,
     pub scale: f32,
     pub opacity: f32,
+}
+
+impl SlotPlacement {
+    pub const DISABLED: SlotPlacement = SlotPlacement {
+        enabled: false,
+        world: true,
+        offset: [0.0; 3],
+        tilt_deg: 0.0,
+        scale: 1.0,
+        opacity: 1.0,
+    };
+
+    pub fn from_widget(w: &WidgetPlacement) -> Self {
+        Self {
+            enabled: w.enabled,
+            world: w.vr_lock == VrLock::World,
+            offset: [w.vr_offset_x, w.vr_offset_y, w.vr_offset_z],
+            tilt_deg: w.vr_tilt_deg,
+            scale: w.vr_scale.max(0.1),
+            opacity: w.vr_opacity.clamp(0.0, 1.0),
+        }
+    }
+}
+
+/// Orientation (xyzw) that yaws the quad's front (+Z) toward the origin of its
+/// space, then pitches it by `tilt_deg`, so side panels angle toward the driver.
+fn facing_rotation(pos: [f32; 3], tilt_deg: f32) -> [f32; 4] {
+    let yaw = if pos[0].abs() < 1e-4 {
+        0.0
+    } else {
+        (-pos[0]).atan2(-pos[2])
+    };
+    let pitch = -tilt_deg.to_radians();
+    let (ay, aw) = ((yaw * 0.5).sin(), (yaw * 0.5).cos());
+    let (bx, bw) = ((pitch * 0.5).sin(), (pitch * 0.5).cos());
+    // q_yaw * q_pitch with q_yaw = (0, ay, 0, aw), q_pitch = (bx, 0, 0, bw).
+    [aw * bx, ay * bw, -ay * bx, aw * bw]
 }
 
 /// Base VR pose (position + quad size in meters) for a widget kind, before the
@@ -198,13 +243,16 @@ fn copy_str<const N: usize>(s: &str, dst: &mut [u8; N]) {
 /// 3 = radar, 4 = track map); each enabled slot becomes a composition-layer
 /// quad. Disabled slots are packed out so the layer only iterates the active
 /// ones. `track_map` is the cached outline for `snap.track`, if one exists.
+/// `recenter_seq` is passed through so the layer can detect recenter requests.
 pub fn build_block(
     snap: &LiveSnapshot,
     slots: &[SlotPlacement; MAX_OVERLAYS],
     field_pace_mode: u32,
     track_map: Option<&TrackOutline>,
+    recenter_seq: u32,
 ) -> PwSharedBlock {
     let mut block = PwSharedBlock::empty();
+    block.recenter_seq = recenter_seq;
 
     let s = &mut block.snapshot;
     s.lap = snap.lap;
@@ -262,7 +310,7 @@ pub fn build_block(
         copy_str(&c.driver_name, &mut dst.name);
     }
 
-    // A missing outline leaves point_count at 0; the layer draws its empty state.
+    // A missing outline leaves `point_count` at 0; the layer draws its empty state.
     if let Some(outline) = track_map {
         let points = outline.points.len().min(MAX_TRACK_MAP_POINTS);
         s.track_map.point_count = points as u32;
@@ -282,13 +330,19 @@ pub fn build_block(
         let slot = slots[kind as usize];
         let (base_pos, base_size) = base_pose(kind);
         let scale = slot.scale.max(0.1);
+        let pos = [
+            base_pos[0] + slot.offset[0],
+            base_pos[1] + slot.offset[1],
+            // Never let the quad reach (or pass) the eye point.
+            (base_pos[2] + slot.offset[2]).min(-0.2),
+        ];
         block.overlays[kind as usize] = PwOverlay {
             enabled: slot.enabled as u32,
             kind,
-            lock_space: LOCK_VIEW,
+            lock_space: if slot.world { LOCK_LOCAL } else { LOCK_VIEW },
             opacity: slot.opacity.clamp(0.0, 1.0),
-            pos: [base_pos[0], base_pos[1] + slot.vertical_offset, base_pos[2]],
-            rot: [0.0, 0.0, 0.0, 1.0],
+            pos,
+            rot: facing_rotation(pos, slot.tilt_deg),
             size: [base_size[0] * scale, base_size[1] * scale],
         };
     }
@@ -339,6 +393,9 @@ mod tests {
     use super::*;
     use std::mem::size_of;
 
+    /// The header relies on every field being 4 bytes (or a char array whose
+    /// length divides by 4) so no compiler inserts hidden padding. If a struct
+    /// size stops being a multiple of 4, C++ and Rust have diverged.
     #[test]
     fn struct_sizes_need_no_packing() {
         assert_eq!(size_of::<PwOverlay>(), 13 * 4);
@@ -349,11 +406,97 @@ mod tests {
             4 + MAX_TRACK_MAP_POINTS * size_of::<PwTrackMapPoint>()
         );
         assert_eq!(size_of::<PwSnapshot>() % 4, 0);
-        // Header is 6 u32s (no recenter_seq on v2).
         assert_eq!(
             size_of::<PwSharedBlock>(),
-            6 * 4 + MAX_OVERLAYS * size_of::<PwOverlay>() + size_of::<PwSnapshot>()
+            7 * 4 + MAX_OVERLAYS * size_of::<PwOverlay>() + size_of::<PwSnapshot>()
         );
+    }
+
+    fn rotate(q: [f32; 4], v: [f32; 3]) -> [f32; 3] {
+        // v' = v + 2w(u x v) + 2u x (u x v), u = q.xyz
+        let u = [q[0], q[1], q[2]];
+        let w = q[3];
+        let cross = |a: [f32; 3], b: [f32; 3]| {
+            [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ]
+        };
+        let t = cross(u, v);
+        let t2 = cross(u, t);
+        [
+            v[0] + 2.0 * (w * t[0] + t2[0]),
+            v[1] + 2.0 * (w * t[1] + t2[1]),
+            v[2] + 2.0 * (w * t[2] + t2[2]),
+        ]
+    }
+
+    fn slots_with(kind: usize, slot: SlotPlacement) -> [SlotPlacement; MAX_OVERLAYS] {
+        let mut slots = [SlotPlacement::DISABLED; MAX_OVERLAYS];
+        slots[kind] = slot;
+        slots
+    }
+
+    #[test]
+    fn world_and_head_lock_map_to_spaces() {
+        let world = SlotPlacement::from_widget(&WidgetPlacement {
+            enabled: true,
+            ..WidgetPlacement::default()
+        });
+        let block = build_block(&LiveSnapshot::default(), &slots_with(0, world), 0, None, 9);
+        assert_eq!(block.overlays[0].lock_space, LOCK_LOCAL);
+        assert_eq!(block.recenter_seq, 9);
+
+        let head = SlotPlacement {
+            world: false,
+            ..world
+        };
+        let block = build_block(&LiveSnapshot::default(), &slots_with(0, head), 0, None, 0);
+        assert_eq!(block.overlays[0].lock_space, LOCK_VIEW);
+    }
+
+    #[test]
+    fn offsets_are_added_to_the_base_pose() {
+        let slot = SlotPlacement {
+            enabled: true,
+            offset: [0.1, -0.2, 0.3],
+            ..SlotPlacement::DISABLED
+        };
+        let block = build_block(&LiveSnapshot::default(), &slots_with(0, slot), 0, None, 0);
+        let pos = block.overlays[0].pos;
+        assert!((pos[0] - 0.1).abs() < 1e-6);
+        assert!((pos[1] + 0.2).abs() < 1e-6);
+        assert!((pos[2] + 0.9).abs() < 1e-6);
+    }
+
+    #[test]
+    fn side_panels_face_the_origin() {
+        let slot = SlotPlacement {
+            enabled: true,
+            ..SlotPlacement::DISABLED
+        };
+        let block = build_block(
+            &LiveSnapshot::default(),
+            &slots_with(KIND_RELATIVE as usize, slot),
+            0,
+            None,
+            0,
+        );
+        let ov = block.overlays[KIND_RELATIVE as usize];
+        let normal = rotate(ov.rot, [0.0, 0.0, 1.0]);
+        let to_origin = [-ov.pos[0], 0.0, -ov.pos[2]];
+        let len = (to_origin[0].powi(2) + to_origin[2].powi(2)).sqrt();
+        assert!((normal[0] - to_origin[0] / len).abs() < 1e-4);
+        assert!((normal[2] - to_origin[2] / len).abs() < 1e-4);
+    }
+
+    #[test]
+    fn positive_tilt_faces_the_panel_upward() {
+        let q = facing_rotation([0.0, -0.5, -1.0], 20.0);
+        let normal = rotate(q, [0.0, 0.0, 1.0]);
+        assert!(normal[1] > 0.3);
+        assert!(normal[2] > 0.9);
     }
 
     #[test]

@@ -63,12 +63,18 @@ pub fn run_hud_server(
     service: Arc<VrOverlayService>,
     live: Arc<LiveService>,
     cancel: CancellationToken,
+    // When true, primary web-mode HUD owns status text; when false, companion preview only.
+    own_status: bool,
 ) -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{HUD_PORT}");
     let listener = TcpListener::bind(&addr)?;
-    service.status.lock().message = format!("HUD ready at {}", hud_url());
-    service.status.lock().runtime = "OpenXR (Web HUD)".into();
-    service.status.lock().active = true;
+    if own_status {
+        service.status.lock().message = format!("HUD ready at {}", hud_url());
+        service.status.lock().runtime = "OpenXR (Web HUD)".into();
+        service.status.lock().active = true;
+    } else {
+        tracing::info!("VR browser preview listening at {}", hud_url());
+    }
 
     listener.set_nonblocking(true)?;
 
@@ -87,8 +93,10 @@ pub fn run_hud_server(
         }
     }
 
-    service.status.lock().active = false;
-    service.status.lock().message = "In-headset HUD stopped".into();
+    if own_status {
+        service.status.lock().active = false;
+        service.status.lock().message = "In-headset HUD stopped".into();
+    }
     Ok(())
 }
 
@@ -313,7 +321,7 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       return '<div class="radar"><div class="me"></div>' + cars + '</div>';
     }
 
-// Outline for the current track, fetched on track change (see /api/track-map).
+    // Outline for the current track, fetched on track change (see /api/track-map).
     let TRACK_MAP = null, TRACK_MAP_FOR = null;
     function pointAt(points, pct) {
       const t = ((pct % 1) + 1) % 1;
@@ -346,7 +354,7 @@ const VR_HUD_HTML: &str = r#"<!DOCTYPE html>
       '</svg>';
     }
 
-        const RENDERERS = { ironman: renderIronman, standings: renderStandings, relative: renderRelative, radar: renderRadar, trackmap: renderTrackMap };
+    const RENDERERS = { ironman: renderIronman, standings: renderStandings, relative: renderRelative, radar: renderRadar, trackmap: renderTrackMap };
 
     function render(s) {
       const root = document.getElementById("root");

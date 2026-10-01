@@ -62,8 +62,8 @@ channel (cars without ABS still record it, as `0`).
 
 JSON beside the DB (`settings/mod.rs` → `AppSettings`). Includes:
 
-- `vrMode` (`native` \| `web`), HUD offset/opacity, recenter hotkey
-- `overlayLayout` — four widget slots (monitor + VR) + field pace mode
+- `vrMode` (`native` \| `web`), HUD offset/opacity, recenter bindings (`vrRecenterHotkey` accelerator string, `vrRecenterButton` `{deviceGuid, deviceName, button}` or null)
+- `overlayLayout` — five widget slots (monitor + VR) + field pace mode; layouts saved by older builds are padded to the current slot count on load. Each slot's VR fields: `vrLock` (`world` \| `head`), `vrOffsetX/Y/Z`, `vrTiltDeg`, `vrScale`, `vrOpacity`; missing fields load as world-locked with zero offsets
 - Audio coach rate/volume/voice, chatter level, category toggles, gaps
 
 Shared `enabled` flags; `desktop*` places monitor windows, `vr*` places the in-headset HUD (enable once, place twice).

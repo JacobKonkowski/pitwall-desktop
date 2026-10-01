@@ -378,10 +378,24 @@ export interface WidgetPlacement {
   desktopY: number;
   desktopW: number;
   desktopH: number;
-  /** VR placement (meters / multipliers). */
+  /** VR anchor: fixed in the cockpit ("world") or following the head. */
+  vrLock: VrLock;
+  /** VR placement (meters / degrees / multipliers) on top of the per-kind base pose. */
+  vrOffsetX: number;
   vrOffsetY: number;
+  vrOffsetZ: number;
+  vrTiltDeg: number;
   vrScale: number;
   vrOpacity: number;
+}
+
+export type VrLock = "world" | "head";
+
+/** A DirectInput controller button (wheel, button box, ...). */
+export interface ControllerBinding {
+  deviceGuid: string;
+  deviceName: string;
+  button: number;
 }
 
 export interface OverlayLayout {
@@ -397,9 +411,13 @@ export function defaultOverlayLayout(): OverlayLayout {
     desktopY: 24,
     desktopW: 320,
     desktopH: 180,
+    vrLock: "world",
+    vrOffsetX: 0,
     vrOffsetY: 0,
-    vrScale: 1,
-    vrOpacity: 1,
+    vrOffsetZ: 0,
+    vrTiltDeg: 0,
+    vrScale: 0.55,
+    vrOpacity: 0.75,
     ...over,
   });
   return {
@@ -428,6 +446,8 @@ export interface AppSettings {
   vrHudOffset: number;
   vrHudOpacity: number;
   vrRecenterHotkey: string;
+  /** Optional wheel / button-box button that recenters the VR anchor. */
+  vrRecenterButton: ControllerBinding | null;
   vrFieldPaceMode: string;
   overlayLayout: OverlayLayout;
   audioCoachEnabled: boolean;
