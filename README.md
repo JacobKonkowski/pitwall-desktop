@@ -6,6 +6,8 @@ PitWall is iRacing telemetry for Windows: post-session IBT analysis, live shared
 
 **Repository:** [github.com/JacobKonkowski/pitwall-desktop](https://github.com/JacobKonkowski/pitwall-desktop)
 
+iRacing® is a trademark of iRacing.com Motorsport Simulations, LLC. PitWall Desktop is an independent project and is not affiliated with, endorsed by, or sponsored by iRacing. See [docs/IP.md](docs/IP.md) and [NOTICE](NOTICE) for license, trademark, and patent hygiene.
+
 ## Quick start
 
 ```powershell
@@ -84,4 +86,4 @@ Start at [docs/FOUNDATION.md](docs/FOUNDATION.md) and [docs/README.md](docs/READ
 
 ## License
 
-See repository license file.
+MIT — see [LICENSE](LICENSE). Third-party notices: [NOTICE](NOTICE). IP checklist: [docs/IP.md](docs/IP.md).

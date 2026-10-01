@@ -37,6 +37,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: npm license allowlist
+        run: npm run check:licenses
+
       - name: IPC drift check
         run: powershell -ExecutionPolicy Bypass -File scripts/check-ipc-drift.ps1
 

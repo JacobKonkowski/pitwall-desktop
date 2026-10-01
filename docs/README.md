@@ -15,6 +15,7 @@ PitWall Desktop helps you get faster in iRacing: **Analyze** your IBT telemetry 
 | [DATA_MODEL.md](DATA_MODEL.md) | SQLite schema v2, settings |
 | [FRONTEND.md](FRONTEND.md) | `features/`, `shared/`, `widgets/`, shell |
 | [PRIVACY.md](PRIVACY.md) | Local-only data policy |
+| [IP.md](IP.md) | Copyright, licenses, trademarks, patents |
 | [FIXTURES.md](FIXTURES.md) | Tests without personal IBTs |
 | [PLUGINS.md](PLUGINS.md) | Extension seams for widgets/rules |
 | [I18N.md](I18N.md) | UI string catalogs |

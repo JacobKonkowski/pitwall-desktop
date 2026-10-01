@@ -19,7 +19,9 @@ Direct2D/DirectWrite and appends it as an `XrCompositionLayerQuad`.
 ## Build
 
 Requires CMake 3.22+, a C++17 MSVC toolchain, and the Windows SDK (D3D11, D2D1,
-DirectWrite). The OpenXR SDK headers are fetched automatically.
+DirectWrite). The OpenXR SDK headers are fetched automatically from the Khronos
+OpenXR-SDK (Apache-2.0); see the repository [NOTICE](../NOTICE) and
+[docs/IP.md](../docs/IP.md).
 
 ```powershell
 cmake -S . -B build -A x64

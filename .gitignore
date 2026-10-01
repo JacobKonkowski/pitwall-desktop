@@ -37,3 +37,6 @@ src-tauri/resources/openxr-layer/*.dll
 
 # Generated API docs (npm run docs:api)
 docs/.api-out/
+
+# Generated third-party inventory (npm run gen:notice) — merge into NOTICE
+NOTICE.generated.md

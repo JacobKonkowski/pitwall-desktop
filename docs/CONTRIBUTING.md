@@ -22,6 +22,8 @@ Same as [SETUP.md](SETUP.md):
 | `npm run tauri build` | Release installer |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit tests |
 | `npm run docs:api` | Generate rustdoc + TypeDoc (output in `docs/.api-out/`, gitignored) |
+| `npm run check:licenses` | npm dependency license allowlist (see [IP.md](IP.md)) |
+| `cargo deny check licenses bans sources` | Rust license / ban / source policy |
 
 OpenXR layer build: [NATIVE_VR.md](NATIVE_VR.md) and [openxr-layer/README.md](../openxr-layer/README.md).
 

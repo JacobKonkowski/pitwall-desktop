@@ -1,24 +1,95 @@
 # Third-party notices
 
-PitWall Desktop is MIT-licensed (see [LICENSE](LICENSE)). It redistributes
-dependencies from crates.io and npm.
+PitWall Desktop original code is MIT-licensed (see [LICENSE](LICENSE)). This file
+records third-party software and marks that the project redistributes, links
+against, or refers to. Exact license texts ship with each package on crates.io,
+npm, or the upstream repository.
 
-## Generating this file
+## Generating dependency inventories
 
 ```powershell
 npm run gen:notice
 ```
 
-Or manually:
+That writes `NOTICE.generated.md` (gitignored inventory). Maintainers should
+refresh and merge relevant lines into this file before each tagged release.
 
-```powershell
-cargo tree -p pitwall-desktop --prefix none | Sort-Object -Unique
-npm ls --all --parseable
-```
+Policy: Rust licenses are enforced by [`deny.toml`](deny.toml) (`cargo deny`).
+npm licenses are enforced by `npm run check:licenses`. Engineering guidance:
+[docs/IP.md](docs/IP.md).
 
-Maintainers should refresh NOTICE before each tagged release. Exact license texts
-for Apache-2.0 / MIT crates are available from crates.io / the package LICENSE files.
+---
 
-## Policy
+## Software dependencies (summary)
 
-See `deny.toml` for the allowed license set enforced in CI via `cargo deny`.
+### pitwall (We Race)
+
+- **What:** Rust crate used for live iRacing shared-memory telemetry and IBT
+  reading (`pitwall`, `pitwall-derive` on crates.io).
+- **License:** MIT
+- **Project:** https://crates.io/crates/pitwall — https://werace.au/opensource/pitwall
+- **Note:** PitWall Desktop is a separate application that depends on this
+  library. It is not published by We Race unless stated otherwise.
+
+### Tauri / WebView stack
+
+- **What:** Desktop application shell (`tauri`, plugins, `wry`, `tao`, etc.).
+- **License:** Apache-2.0 and/or MIT (per crate)
+- **Project:** https://tauri.app/
+
+### OpenXR SDK headers (Khronos Group)
+
+- **What:** `openxr/*.h` headers fetched at build time by
+  `openxr-layer/CMakeLists.txt` from https://github.com/KhronosGroup/OpenXR-SDK
+  (tag `release-1.1.43` or as pinned there).
+- **License:** Apache License 2.0
+- **Copyright:** Copyright (c) The Khronos Group Inc.
+- **Trademark:** OpenXR and the OpenXR logo are trademarks of the Khronos Group.
+
+### OpenXR API layer pattern (reference only)
+
+- PitWall’s `openxr-layer/` sources are original. The negotiate →
+  `xrGetInstanceProcAddr` → `xrEndFrame` shim structure follows the public
+  OpenXR API-layer model and community examples such as
+  https://github.com/Ybalrid/OpenXR-API-Layer-Template (MIT,
+  Copyright (c) 2021-2023 Arthur Brainville). That template is **not** vendored
+  in this repository.
+
+### Frontend / Node packages
+
+Primary runtime/build packages include React, React DOM, Recharts,
+`@tauri-apps/*`, Vite, TypeScript, Vitest, and TypeDoc. Licenses are MIT, ISC,
+Apache-2.0, BSD-*-Clause, BlueOak-1.0.0, CC-BY-4.0 (e.g. `caniuse-lite` data),
+or Python-2.0 (e.g. `argparse` via TypeDoc), plus CC-BY-3.0 data packages pulled
+by tooling. Run `npm run check:licenses` for the allowlisted set.
+
+### Coach audio clips
+
+WAV files under `src-tauri/resources/audio/coach/default/` are generated with
+Windows speech synthesis for PitWall phrases (`scripts/generate-audio-clips.ps1`).
+They are not licensed third-party spotter packs.
+
+### Other Rust crates
+
+The full Cargo graph (Tokio, Serde, Windows crates, Rodio, SQLite bindings, etc.)
+is MIT/Apache-2.0/BSD/ISC/MPL-2.0/Zlib/Unicode-3.0/CC0/BSL/0BSD as allowed in
+`deny.toml`. See crates.io LICENSE files for each crate.
+
+---
+
+## Trademarks
+
+- **iRacing** and related marks are trademarks of iRacing.com Motorsport
+  Simulations, LLC. PitWall Desktop is not affiliated with, endorsed by, or
+  sponsored by iRacing.
+- **OpenXR** / **Khronos** are trademarks of the Khronos Group.
+- Names of other products (OpenKneeboard, RaceLab, Meta, SteamVR, etc.) appear
+  only to describe compatibility.
+
+---
+
+## Patents
+
+Third-party patent licenses (if any) apply only as stated in each dependency’s
+license (for example, Apache-2.0 §3 for that contribution). This NOTICE does
+not grant patent rights to PitWall Desktop as a whole. See [docs/IP.md](docs/IP.md).

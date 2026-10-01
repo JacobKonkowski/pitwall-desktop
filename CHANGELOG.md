@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Modular foundation work in progress (workspace crates, dual-surface widgets, OSS hygiene).
+- IP hygiene: [docs/IP.md](docs/IP.md), expanded [NOTICE](NOTICE), npm license allowlist (`npm run check:licenses`) in CI, README trademark disclaimer.
 
 ## [0.1.0] - 2026-09-09
 

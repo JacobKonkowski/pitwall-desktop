@@ -55,6 +55,7 @@ Surfaces for live widgets: **monitor** (always-on-top windows) and **VR** (OpenX
 - [SETUP.md](SETUP.md) — race-night checklist
 - [ARCHITECTURE.md](ARCHITECTURE.md) — module map
 - [PRIVACY.md](PRIVACY.md) — local-only data
+- [IP.md](IP.md) — copyright / trademark / patent hygiene
 - [FIXTURES.md](FIXTURES.md) — tests without personal IBTs
 - [PLUGINS.md](PLUGINS.md) — extension points
 - [SECURITY.md](../SECURITY.md) — vulnerability reporting

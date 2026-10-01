@@ -5,9 +5,10 @@
 // quad per enabled PitWall overlay, drawing the pixels with Direct2D from the
 // shared-memory snapshot produced by the PitWall desktop process.
 //
-// Structure follows the standard implicit-layer pattern from
-// Ybalrid/OpenXR-API-Layer-Template: negotiate -> create-instance shim ->
-// per-function dispatch via xrGetInstanceProcAddr.
+// Structure follows the standard implicit-layer pattern (Khronos OpenXR API
+// layers; community examples such as Ybalrid/OpenXR-API-Layer-Template, MIT):
+// negotiate -> create-instance shim -> per-function dispatch via xrGetInstanceProcAddr.
+// This file is original PitWall code; see NOTICE and docs/IP.md.
 
 #include <d3d11.h>
 #include <windows.h>

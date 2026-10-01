@@ -2,6 +2,7 @@
   "name": "pitwall-desktop",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +12,8 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "docs:api": "powershell -ExecutionPolicy Bypass -File scripts/build-api-docs.ps1",
-    "gen:notice": "powershell -ExecutionPolicy Bypass -File scripts/gen-notice.ps1"
+    "gen:notice": "powershell -ExecutionPolicy Bypass -File scripts/gen-notice.ps1",
+    "check:licenses": "node scripts/check-npm-licenses.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -26,6 +28,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "license-checker": "^25.0.1",
     "typedoc": "^0.28.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",

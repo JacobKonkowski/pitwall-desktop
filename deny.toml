@@ -1,4 +1,5 @@
 # cargo-deny configuration — see https://embarkstudios.github.io/cargo-deny/
+# IP / license policy overview: docs/IP.md (npm allowlist is separate: npm run check:licenses)
 
 [graph]
 all-features = true

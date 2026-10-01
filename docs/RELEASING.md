@@ -15,8 +15,9 @@ Keep these aligned on every release. Prefer SemVer (`0.1.0`).
 
 1. Update [CHANGELOG.md](../CHANGELOG.md) (`## [x.y.z] - date`).
 2. Bump versions in the four places above.
-3. `git tag v0.1.0 && git push origin v0.1.0`
-4. CI `release` job builds MSI/NSIS and uploads artifacts.
+3. IP hygiene ([IP.md](IP.md)): `cargo deny check licenses bans sources`, `npm run check:licenses`, refresh [NOTICE](../NOTICE) via `npm run gen:notice`.
+4. `git tag v0.1.0 && git push origin v0.1.0`
+5. CI `release` job builds MSI/NSIS and uploads artifacts.
 
 ## Auto-updater
 
