@@ -21,6 +21,8 @@ pub struct SessionSummary {
     /// Fastest pace-eligible lap, if any.
     pub best_lap_ms: Option<f64>,
     pub imported_at: String,
+    /// Session type of the latest sub-session (by `session_num`), e.g. "Race". Derived, not stored.
+    pub session_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

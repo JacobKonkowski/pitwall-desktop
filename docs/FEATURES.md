@@ -6,7 +6,7 @@ PitWall exposes two features via `src/features/registry.ts`: **Analyze** and **L
 
 | Capability | Notes |
 |------------|--------|
-| Session browser | Lists imported IBTs; delete per session |
+| Session browser | Lists imported IBTs; search by track/car/date; sort by date/car/track; hide sessions with no pace-eligible laps; shows a color-coded session-type letter (R/Q/P/T) per session; delete per session |
 | Import | File / folder pickers; folder watcher auto-import |
 | Config tip | Reminds when disk recording looks disabled |
 | Lap table | Session type grouping; sectors; `paceEligible` (official time + both `_OK` flags + near-full coverage) |

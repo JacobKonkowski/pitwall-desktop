@@ -292,6 +292,7 @@ impl Database {
             apply_lap_display_cleanup(&mut laps);
             session.lap_count = laps.len() as i32;
             session.best_lap_ms = best_pace_eligible_ms(&laps);
+            session.session_type = latest_session_type(&laps);
         }
         Ok(sessions)
     }
@@ -305,6 +306,7 @@ impl Database {
         // Refresh summary fields from cleaned display rows (covers pre-cleanup imports).
         session.lap_count = laps.len() as i32;
         session.best_lap_ms = best_pace_eligible_ms(&laps);
+        session.session_type = latest_session_type(&laps);
         Ok(Some(SessionDetail { session, laps }))
     }
 
@@ -514,7 +516,16 @@ fn row_to_session_summary(row: &rusqlite::Row) -> rusqlite::Result<SessionSummar
         lap_count: row.get(5)?,
         best_lap_ms: row.get(6)?,
         imported_at: row.get(7)?,
+        session_type: String::new(),
     })
+}
+
+/// Session type of the latest stint (highest `session_num`), e.g. "Race".
+fn latest_session_type(laps: &[LapSummary]) -> String {
+    laps.iter()
+        .max_by_key(|l| l.session_num)
+        .map(|l| l.session_type.clone())
+        .unwrap_or_default()
 }
 
 pub fn db_path() -> PathBuf {
