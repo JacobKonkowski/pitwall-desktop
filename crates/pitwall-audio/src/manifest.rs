@@ -18,6 +18,14 @@ impl ClipManifest {
         Ok(Self { base_dir, clips })
     }
 
+    /// A manifest with no clips; every clip lookup misses and playback skips it.
+    pub fn empty(base_dir: PathBuf) -> Self {
+        Self {
+            base_dir,
+            clips: HashMap::new(),
+        }
+    }
+
     pub fn path(&self, key: &str) -> Option<PathBuf> {
         self.clips
             .get(key)

@@ -393,6 +393,22 @@ fn vr_layer_manifest_path(app: &AppHandle) -> Result<String, String> {
     Ok(candidate.to_string_lossy().into_owned())
 }
 
+/// Coach clip folder: bundled resources in a packaged build, else the `src-tauri`
+/// tree under `tauri dev`. `None` when neither holds a `manifest.json`.
+pub(crate) fn coach_clips_dir(app: &AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join(crate::audio::COACH_CLIPS_REL));
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(crate::audio::COACH_CLIPS_REL);
+    bundled
+        .into_iter()
+        .chain(std::iter::once(dev))
+        .find(|dir| dir.join("manifest.json").is_file())
+}
+
 #[tauri::command]
 pub fn is_vr_layer_installed() -> bool {
     crate::vr::is_layer_installed()

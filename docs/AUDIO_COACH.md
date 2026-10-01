@@ -29,7 +29,7 @@ flowchart LR
 | `audio/session_mode.rs` | Practice / qual / race behavior |
 | `audio/mod.rs` | `AudioCoachService` — 250 ms poll loop |
 
-Clips ship in `src-tauri/resources/audio/coach/default/` (`manifest.json` + `*.wav`).
+Clips ship in `src-tauri/resources/audio/coach/default/` (`manifest.json` + `*.wav`) and are bundled via `bundle.resources` in `tauri.conf.json`. At startup the host passes the resolved folder (Tauri resource dir in a packaged build, the `src-tauri` tree under `tauri dev`) to `AudioCoachService::set_clips_dir`. If no `manifest.json` is found, the coach logs a warning and continues TTS-only; clip callouts are skipped.
 
 ---
 
@@ -113,7 +113,9 @@ cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine
 ```
 
 1. Edit [`scripts/audio-phrases.txt`](../scripts/audio-phrases.txt) (`key=spoken text`)
-2. Run the script — writes `src-tauri/resources/audio/coach/default/*.wav` + `manifest.json`
+2. Run the script — writes `src-tauri/resources/audio/coach/default/*.wav` + `manifest.json`.
+   To add clips without re-recording the rest, pass `-Only key1,key2`; other WAVs
+   and manifest entries are kept. `radio_beep` is a synthesized chirp, not speech.
 3. Commit WAVs so release builds bundle your voice
 4. Add a rule under `audio/engine/rules/` (or extend an existing rule) if it's a new alert type
 5. Add a settings toggle if user-configurable
@@ -124,7 +126,7 @@ cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine
 
 ## How to add a new callout
 
-1. Add phrase key to `audio-phrases.txt` and regenerate clips
+1. Add phrase key to `audio-phrases.txt` and generate it (`-Only <key>`)
 2. Implement detection in `audio/engine/rules/<topic>.rs` and register it in the rule set
 3. Return `(SpeechPriority, SpeechPlan)` — use `SpeechPlan::sequence` for clip + numbers
 4. Wire a settings toggle in `AppSettings` + `features/live/LivePage.tsx` if needed

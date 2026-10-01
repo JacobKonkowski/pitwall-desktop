@@ -6,12 +6,15 @@
 #   .\scripts\generate-audio-clips.ps1 -Voice "Jenny"
 #   .\scripts\generate-audio-clips.ps1 -ListVoices
 #   .\scripts\generate-audio-clips.ps1 -Engine Placeholder
+#   .\scripts\generate-audio-clips.ps1 -Only tyre_hot,lap_invalid,radio_beep
 
 param(
     [ValidateSet("WinRT", "Placeholder")]
     [string]$Engine = "WinRT",
     [string]$Voice = "",
-    [switch]$ListVoices
+    [switch]$ListVoices,
+    # Regenerate only these keys; other clips and manifest entries are kept.
+    [string[]]$Only = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +42,9 @@ try {
 
     if ($Voice) {
         $cargoArgs += "--voice", $Voice
+    }
+    if ($Only.Count -gt 0) {
+        $cargoArgs += "--only", ($Only -join ",")
     }
 
     Write-Host "Exporting clips (engine=$engineFlag). Neural runs here only, not in PitWall at runtime." -ForegroundColor Cyan
