@@ -1,4 +1,4 @@
-﻿use std::fs;
+use std::fs;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -274,7 +274,6 @@ pub fn load_settings() -> AppSettings {
     }
     settings
 }
-
 
 /// Resize a stored overlayLayout.widgets array to the current slot count.
 ///

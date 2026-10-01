@@ -72,7 +72,6 @@ pub struct PwCompetitor {
     pub name: [u8; NAME_LEN],
 }
 
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PwTrackMapPoint {
@@ -263,7 +262,6 @@ pub fn build_block(
         copy_str(&c.driver_name, &mut dst.name);
     }
 
-
     // A missing outline leaves point_count at 0; the layer draws its empty state.
     if let Some(outline) = track_map {
         let points = outline.points.len().min(MAX_TRACK_MAP_POINTS);
@@ -335,7 +333,6 @@ fn sector_progress(snap: &LiveSnapshot, sector_num: i32) -> f32 {
     }
     ((snap.lap_dist_pct - start) / span).clamp(0.0, 1.0)
 }
-
 
 #[cfg(test)]
 mod tests {

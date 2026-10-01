@@ -83,7 +83,6 @@ pub fn get_session(
         .map_err(|e| e.to_string())
 }
 
-
 /// Cached circuit outline for a track, generated from a prior IBT import.
 /// None when no import for that track carried GPS channels.
 #[tauri::command]
