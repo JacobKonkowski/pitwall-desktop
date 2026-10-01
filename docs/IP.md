@@ -112,9 +112,9 @@ risk require counsel.
 
 | Feature area | What PitWall does today |
 |--------------|-------------------------|
-| Audio coach | Rule-based callouts from live IRSDK (flags, pack/spotter, fuel, gaps, sector/lap times, race clock) via WAV + WinRT TTS |
+| Audio coach | Rule-based callouts from live IRSDK (flags, pack/spotter, fuel, gaps, sector/lap times, race clock) via WAV + WinRT TTS. **No** live “brake earlier / later” speech. |
 | Live field UI | Leaderboard, gaps, pack state from shared memory |
-| Analyze | IBT import, lap cleanup, two-lap compare, client-side insights |
+| Analyze | IBT import, lap cleanup, two-lap compare, corner technique, **brake-point deltas** (“X m earlier/later” vs a reference lap) and brake-point consistency scatter (`corners.rs`, `consistency.rs`) |
 | Native VR HUD | Implicit OpenXR API layer appends `XrCompositionLayerQuad`s; desktop writes SHM |
 
 ### Notable US patents / families (watch list)
