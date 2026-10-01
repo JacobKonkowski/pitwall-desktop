@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   checkIracingConfig,
   confirmDialog,
@@ -6,6 +6,7 @@ import {
   getSession,
   listSessions,
   onImportComplete,
+  reimportSession,
 } from "../../shared/api";
 import { showToast } from "../../shared/toast";
 import type {
@@ -64,6 +65,9 @@ export function AnalyzePage() {
   const [candidateLapId, setCandidateLapId] = useState<number | null>(null);
   const [referenceLapId, setReferenceLapId] = useState<number | null>(null);
   const [config, setConfig] = useState<IracingConfigCheck | null>(null);
+  const [reimporting, setReimporting] = useState(false);
+  /** Suppresses auto-select on each import-complete during "Re-import all". */
+  const bulkReimport = useRef(false);
   const importActions = useImportActions();
 
   const selectSession = useCallback((id: number | null) => {
@@ -98,6 +102,7 @@ export function AnalyzePage() {
   // Refresh (and auto-select) when an import completes.
   useEffect(() => {
     const unlisten = onImportComplete(async (sessionId) => {
+      if (bulkReimport.current) return;
       const list = await refreshSessions();
       if (sessionId && list.some((s) => s.id === sessionId)) {
         selectSession(sessionId);
@@ -177,6 +182,59 @@ export function AnalyzePage() {
     }
   }, [sessions, refreshSessions]);
 
+  const handleReimport = useCallback(
+    async (sessionId: number) => {
+      setReimporting(true);
+      try {
+        const newId = await reimportSession(sessionId);
+        await refreshSessions();
+        selectSession(newId);
+        showToast("Session re-imported with the latest analysis.", "success");
+      } catch (e) {
+        showToast(String(e), "error");
+      } finally {
+        setReimporting(false);
+      }
+    },
+    [refreshSessions, selectSession],
+  );
+
+  const handleReimportAll = useCallback(async () => {
+    if (sessions.length === 0) return;
+    const ok = await confirmDialog(
+      `Re-analyze all ${sessions.length} session(s) from their IBT files? Sessions whose file is gone are left as they are.`,
+      "Re-import all sessions",
+    );
+    if (!ok) return;
+    setReimporting(true);
+    bulkReimport.current = true;
+    let done = 0;
+    const failed: string[] = [];
+    let nextSelected = selectedId;
+    try {
+      for (const s of sessions) {
+        try {
+          const newId = await reimportSession(s.id);
+          if (s.id === selectedId) nextSelected = newId;
+          done += 1;
+        } catch {
+          failed.push(s.track || `session ${s.id}`);
+        }
+      }
+    } finally {
+      bulkReimport.current = false;
+      setReimporting(false);
+      await refreshSessions();
+      selectSession(nextSelected);
+    }
+    showToast(
+      failed.length === 0
+        ? `Re-imported ${done} session(s).`
+        : `Re-imported ${done}; ${failed.length} skipped (IBT missing or unreadable).`,
+      failed.length === 0 ? "success" : "info",
+    );
+  }, [sessions, selectedId, refreshSessions, selectSession]);
+
   const laps = detail?.laps ?? [];
   const stats = useMemo(() => computeSessionStats(laps), [laps]);
   const sessionTypes = useMemo(
@@ -199,6 +257,8 @@ export function AnalyzePage() {
         onSelect={selectSession}
         onDelete={handleDelete}
         onDeleteAll={handleDeleteAll}
+        onReimportAll={handleReimportAll}
+        reimporting={reimporting}
       />
       <div className="analyze-workspace">
         {selectedId == null ? (
@@ -214,6 +274,8 @@ export function AnalyzePage() {
                 session={detail.session}
                 stats={stats}
                 sessionTypes={sessionTypes}
+                onReimport={() => handleReimport(detail.session.id)}
+                reimporting={reimporting}
               />
             </div>
 

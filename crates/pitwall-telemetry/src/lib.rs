@@ -24,6 +24,17 @@ pub struct RawFrame {
     pub throttle: f32,
     /// `Brake` — 0..1.
     pub brake: f32,
+    /// `ThrottleRaw` — the driver's pedal before auto-blip / traction control.
+    /// `None` when the source omits the channel.
+    pub throttle_raw: Option<f32>,
+    /// `BrakeRaw` — the driver's pedal before ABS.
+    pub brake_raw: Option<f32>,
+    /// `Clutch` — 0=disengaged to 1=fully engaged, as applied.
+    pub clutch: Option<f32>,
+    /// `ClutchRaw` — the driver's clutch pedal.
+    pub clutch_raw: Option<f32>,
+    /// `HandbrakeRaw` — 0=released to 1=max force.
+    pub handbrake_raw: Option<f32>,
     /// `SteeringWheelAngle` — radians.
     pub steering: f32,
     /// `Gear`.
@@ -43,6 +54,10 @@ pub struct RawFrame {
     pub delta_best_ok: Option<bool>,
     /// `LapDeltaToSessionBestLap_OK`.
     pub delta_session_best_ok: Option<bool>,
+    /// `Lat` — degrees of latitude. `None` when the source omits GPS channels.
+    pub lat: Option<f64>,
+    /// `Lon` — degrees of longitude.
+    pub lon: Option<f64>,
     /// `LFtempM` — left-front middle surface tire temp (°C).
     pub lf_temp: f32,
     /// `RFtempM`.

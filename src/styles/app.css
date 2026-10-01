@@ -568,6 +568,12 @@
   font-family: var(--font-mono);
 }
 
+.session-header .sh-reimport {
+  font-family: var(--font-sans, inherit);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
 .compare-secondary {
   margin-top: 12px;
   color: var(--color-text-muted);

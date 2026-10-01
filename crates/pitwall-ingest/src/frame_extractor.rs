@@ -21,6 +21,13 @@ pub struct FastFrameExtractor {
     lap_last_lap_time: Option<VariableInfo>,
     delta_best_ok: Option<VariableInfo>,
     delta_session_best_ok: Option<VariableInfo>,
+    lat: Option<VariableInfo>,
+    lon: Option<VariableInfo>,
+    throttle_raw: Option<VariableInfo>,
+    brake_raw: Option<VariableInfo>,
+    clutch: Option<VariableInfo>,
+    clutch_raw: Option<VariableInfo>,
+    handbrake_raw: Option<VariableInfo>,
     lf_temp: Option<VariableInfo>,
     rf_temp: Option<VariableInfo>,
     lr_temp: Option<VariableInfo>,
@@ -58,6 +65,13 @@ impl FastFrameExtractor {
             lap_last_lap_time: schema.get_variable("LapLastLapTime").cloned(),
             delta_best_ok: schema.get_variable("LapDeltaToBestLap_OK").cloned(),
             delta_session_best_ok: schema.get_variable("LapDeltaToSessionBestLap_OK").cloned(),
+            lat: schema.get_variable("Lat").cloned(),
+            lon: schema.get_variable("Lon").cloned(),
+            throttle_raw: schema.get_variable("ThrottleRaw").cloned(),
+            brake_raw: schema.get_variable("BrakeRaw").cloned(),
+            clutch: schema.get_variable("Clutch").cloned(),
+            clutch_raw: schema.get_variable("ClutchRaw").cloned(),
+            handbrake_raw: schema.get_variable("HandbrakeRaw").cloned(),
             lf_temp: tire_temp(schema, "LFtempM", "LFtempCM"),
             rf_temp: tire_temp(schema, "RFtempM", "RFtempCM"),
             lr_temp: tire_temp(schema, "LRtempM", "LRtempCM"),
@@ -78,6 +92,11 @@ impl FastFrameExtractor {
             speed: read_f32(data, &self.speed),
             throttle: read_f32(data, &self.throttle),
             brake: read_f32(data, &self.brake),
+            throttle_raw: self.throttle_raw.as_ref().map(|v| read_f32(data, v)),
+            brake_raw: self.brake_raw.as_ref().map(|v| read_f32(data, v)),
+            clutch: self.clutch.as_ref().map(|v| read_f32(data, v)),
+            clutch_raw: self.clutch_raw.as_ref().map(|v| read_f32(data, v)),
+            handbrake_raw: self.handbrake_raw.as_ref().map(|v| read_f32(data, v)),
             steering: read_f32(data, &self.steering),
             gear: read_i32(data, &self.gear),
             fuel_level: read_f32(data, &self.fuel_level),
@@ -89,6 +108,8 @@ impl FastFrameExtractor {
                 .delta_session_best_ok
                 .as_ref()
                 .map(|v| read_bool(data, v)),
+            lat: self.lat.as_ref().map(|v| read_f64(data, v)),
+            lon: self.lon.as_ref().map(|v| read_f64(data, v)),
             lf_temp: self
                 .lf_temp
                 .as_ref()

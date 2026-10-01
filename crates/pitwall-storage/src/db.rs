@@ -1,9 +1,10 @@
 //! SQLite storage. Persists [`AnalyzedSession`] products and serves read models.
 //!
-//! Schema is versioned via `PRAGMA user_version`. Current schema is **v2**.
+//! Schema is versioned via `PRAGMA user_version`. Current schema is **v5**.
 //! Versions older than 2 are wiped once (pre-v2 had incompatible lap taxonomy);
-//! upgrades from v2 onward use incremental migrations. Full wipe remains available
-//! via the explicit `clear_database` debug command only.
+//! upgrades from v2 onward use incremental migrations (v3 GPS, v4 elapsed_ms,
+//! v5 raw pedals). Full wipe remains available via the explicit `clear_database`
+//! debug command only.
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -15,7 +16,7 @@ use pitwall_analysis::{
 
 use super::models::*;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 5;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
@@ -71,7 +72,15 @@ CREATE TABLE IF NOT EXISTS lap_traces (
     throttle REAL NOT NULL,
     brake REAL NOT NULL,
     gear INTEGER NOT NULL,
-    steering REAL NOT NULL
+    steering REAL NOT NULL,
+    lat REAL,
+    lon REAL,
+    elapsed_ms REAL,
+    throttle_raw REAL,
+    brake_raw REAL,
+    clutch REAL,
+    clutch_raw REAL,
+    handbrake_raw REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(session_id);
@@ -114,11 +123,33 @@ impl Database {
                  DROP TABLE IF EXISTS sessions;",
             )?;
             conn.execute_batch(SCHEMA)?;
-            conn.execute_batch("PRAGMA user_version = 2;")?;
+            // A fresh schema already matches the current version.
+            conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
         } else {
             conn.execute_batch(SCHEMA)?;
-            // Incremental upgrades from v2 → SCHEMA_VERSION go here, e.g.:
-            // if version < 3 { conn.execute_batch("ALTER TABLE ...")?; }
+            // v3 keeps GPS on trace samples for racing lines. Existing rows stay
+            // NULL until their session is re-imported.
+            if version < 3 {
+                add_column_if_missing(conn, "lap_traces", "lat", "REAL")?;
+                add_column_if_missing(conn, "lap_traces", "lon", "REAL")?;
+            }
+            // v4 keeps elapsed lap time on trace samples for corner timing.
+            if version < 4 {
+                add_column_if_missing(conn, "lap_traces", "elapsed_ms", "REAL")?;
+            }
+            // v5 keeps the driver's raw pedals (before auto-blip / TC / ABS)
+            // alongside the applied values, plus clutch and handbrake.
+            if version < 5 {
+                for col in [
+                    "throttle_raw",
+                    "brake_raw",
+                    "clutch",
+                    "clutch_raw",
+                    "handbrake_raw",
+                ] {
+                    add_column_if_missing(conn, "lap_traces", col, "REAL")?;
+                }
+            }
             if version < SCHEMA_VERSION {
                 conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
             }
@@ -207,8 +238,9 @@ impl Database {
         let mut sector_stmt =
             tx.prepare("INSERT INTO sectors (lap_id, sector_num, time_ms) VALUES (?1, ?2, ?3)")?;
         let mut trace_stmt = tx.prepare(
-            "INSERT INTO lap_traces (lap_id, dist_pct, speed, throttle, brake, gear, steering)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO lap_traces (lap_id, dist_pct, speed, throttle, brake, gear, steering, lat, lon, elapsed_ms,
+                 throttle_raw, brake_raw, clutch, clutch_raw, handbrake_raw)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
 
         for lap in &session.laps {
@@ -248,6 +280,14 @@ impl Database {
                     point.brake,
                     point.gear,
                     point.steering,
+                    point.lat,
+                    point.lon,
+                    point.elapsed_ms,
+                    point.throttle_raw,
+                    point.brake_raw,
+                    point.clutch,
+                    point.clutch_raw,
+                    point.handbrake_raw,
                 ])?;
             }
         }
@@ -424,7 +464,8 @@ impl Database {
 
     fn get_trace_points(&self, lap_id: i64) -> Result<Vec<TracePoint>> {
         let mut stmt = self.conn.prepare(
-            "SELECT dist_pct, speed, throttle, brake, gear, steering
+            "SELECT dist_pct, speed, throttle, brake, gear, steering, lat, lon, elapsed_ms,
+                    throttle_raw, brake_raw, clutch, clutch_raw, handbrake_raw
              FROM lap_traces WHERE lap_id = ?1 ORDER BY dist_pct",
         )?;
         let points = stmt
@@ -436,6 +477,14 @@ impl Database {
                     brake: row.get(3)?,
                     gear: row.get(4)?,
                     steering: row.get(5)?,
+                    lat: row.get(6)?,
+                    lon: row.get(7)?,
+                    elapsed_ms: row.get(8)?,
+                    throttle_raw: row.get(9)?,
+                    brake_raw: row.get(10)?,
+                    clutch: row.get(11)?,
+                    clutch_raw: row.get(12)?,
+                    handbrake_raw: row.get(13)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -526,6 +575,19 @@ fn latest_session_type(laps: &[LapSummary]) -> String {
         .max_by_key(|l| l.session_num)
         .map(|l| l.session_type.clone())
         .unwrap_or_default()
+}
+
+/// `ALTER TABLE ... ADD COLUMN` that tolerates the column already existing, so a
+/// database created from the current `SCHEMA` can still run older migration steps.
+fn add_column_if_missing(conn: &Connection, table: &str, column: &str, ty: &str) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .any(|name| name.map(|n| n == column).unwrap_or(false));
+    if !exists {
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ty};"))?;
+    }
+    Ok(())
 }
 
 pub fn db_path() -> PathBuf {

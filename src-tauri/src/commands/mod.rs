@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, State};
 use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison};
 use crate::audio::AudioCoachService;
 use crate::ingest::{
-    check_iracing_config, default_telemetry_dir, run_import, spawn_recent_ibt_import,
+    check_iracing_config, default_telemetry_dir, run_import, run_reimport, spawn_recent_ibt_import,
     validate_import_path, ImportHandles,
 };
 use crate::live::{LiveService, LiveSnapshot, LiveStatus, PostSessionImportFn};
@@ -142,6 +142,33 @@ pub async fn import_ibt(
             msg
         })?;
     Ok(state.import.import_status.lock().message.clone())
+}
+
+/// Re-parse a session's source IBT with the current analysis pipeline, replacing
+/// the old rows. Returns the new session id.
+#[tauri::command]
+pub async fn reimport_session_cmd(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    session_id: i64,
+) -> Result<i64, String> {
+    let ibt_path = state
+        .import
+        .db
+        .lock()
+        .get_session(session_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("Session not found")?
+        .session
+        .ibt_path;
+    let path = validate_import_path(&ibt_path)?;
+    if !path.is_file() {
+        return Err(format!("Source IBT no longer exists: {ibt_path}"));
+    }
+    run_reimport(&app, &state.import, session_id, path)
+        .await
+        .map(|r| r.session_id)
+        .map_err(|e| format!("Re-import failed: {e:#}"))
 }
 
 #[tauri::command]

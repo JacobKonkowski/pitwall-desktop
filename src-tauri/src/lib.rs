@@ -53,6 +53,7 @@ pub fn run() {
             commands::compare_laps,
             commands::import_ibt,
             commands::import_folder_cmd,
+            commands::reimport_session_cmd,
             commands::check_iracing_config_cmd,
             commands::get_import_status,
             commands::pick_ibt_file,

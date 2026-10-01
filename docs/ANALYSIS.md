@@ -35,8 +35,10 @@ Skip of an already-imported file returns the **existing** `session_id` and still
 1. **Lap segmenter** — splits on `(SessionNum, Lap)`; official time + `_OK` flags sampled on the next lap's first frame
 2. **Sector splitter** — YAML boundaries; ignores sector 0 at 0%; no equal-thirds invention
 3. **Fuel / tire** — per-lap aggregates
-4. **Traces** — downsampled speed/throttle/brake/gear/steering for compare
+4. **Traces** — every 6th frame (~10 Hz from a 60 Hz IBT): speed/throttle/brake/gear/steering, plus GPS (`lat`/`lon`), `elapsed_ms`, and raw pedal channels when present (see [DATA_MODEL.md](DATA_MODEL.md))
 5. **Cleanup** — [`analysis/cleanup.rs`](../src-tauri/src/analysis/cleanup.rs) (`finalize_analyzed_laps`)
+
+Applied pedals (`Throttle` / `Brake`) stay on the charts; `ThrottleRaw` / `BrakeRaw` (schema v5) are stored for driver-intent consumers and fall back to applied when missing.
 
 ### Lap cleanup (A / B / C)
 
@@ -65,6 +67,6 @@ Computed on the Analyze page from your session data.
 
 ## Related docs
 
-- [DATA_MODEL.md](DATA_MODEL.md) — schema v2
+- [DATA_MODEL.md](DATA_MODEL.md) — schema v5
 - [FEATURES.md](FEATURES.md) — Analyze tab
 - [API.md](API.md) — session/compare/import commands

@@ -21,10 +21,12 @@ States (`LiveConnectionState`): `disconnected`, `waitingForSession`, `reconnecti
 
 | Stream | Rate | Purpose |
 |--------|------|---------|
-| `AnalysisFrame` | Max 10 Hz | Player lap, sectors, fuel, temps, lap dist |
+| `AnalysisFrame` | Max 10 Hz | Player lap, sectors, fuel, temps, lap dist, applied + raw pedals, GPS when present |
 | `CarIdxFrame` | Max 4 Hz | All cars — positions, gaps, flags, pack |
 
 `session_updates()` provides track/car name, sector boundaries, and driver roster (`competitors::build_roster`).
+
+The snapshot carries the player's current `throttle`, `brake`, `lat`, and `lon`, plus driver pedals `throttle_raw`, `brake_raw`, `clutch`, `clutch_raw`, and `handbrake_raw` (`None` when the sim omits them).
 
 ---
 
