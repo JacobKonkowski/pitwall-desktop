@@ -4,7 +4,7 @@ Frontend IPC lives in `src/shared/api.ts` and `src/shared/types.ts`. TypeDoc: `n
 
 Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`.
 
-**38 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
+**42 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
 
 ## Analyze / storage
 
@@ -40,7 +40,9 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | Command | TS helper | Notes |
 |---------|-----------|--------|
 | `get_settings` | `getSettings` | Full `AppSettings` |
-| `save_settings_cmd` | `saveSettings` | Persists + may emit `settings-changed` |
+| `save_settings_cmd` | `saveSettings` | Full write; applies recenter bindings; emits `settings-changed` |
+| `patch_settings_cmd` | `patchSettings` | Merge top-level camelCase keys; nested objects replaced whole |
+| `list_tts_voices_cmd` | `listTtsVoices` | Installed Windows speech voices for the coach picker |
 
 ## Audio
 
@@ -74,6 +76,8 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `get_vr_layer_diagnostics` | `getVrLayerDiagnostics` | Ready / DLL / issues |
 | `check_vr_hud_health` | `checkVrHudHealth` | Web HUD health |
 | `open_vr_hud_preview_cmd` | `openVrHudPreview` | Opens browser preview |
+| `vr_recenter_cmd` | `recenterVr` | Bump SHM `recenter_seq`; layer re-anchors world-locked widgets |
+| `capture_controller_button_cmd` | `captureControllerButton` | Wait up to 10 s for the next DirectInput button press |
 
 ## Events
 
@@ -82,7 +86,8 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 
 ## Notes for contributors
 
-TS may still declare helpers for `patch_settings_cmd` / `list_tts_voices_cmd` — they are **not** in the Rust invoke handler until re-added.
+Keep `src/shared/api.ts` in sync with every `#[tauri::command]` registered in `lib.rs`
+(`scripts/check-ipc-drift.ps1`).
 
 ## Capabilities
 

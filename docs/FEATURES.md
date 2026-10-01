@@ -1,6 +1,6 @@
 # Features
 
-PitWall exposes two features via `src/features/registry.ts`: **Analyze** and **Live**.
+PitWall exposes features via `src/features/registry.ts`: **Analyze**, **Live**, and **Settings**.
 
 ## Analyze
 
@@ -32,11 +32,11 @@ Phantom reset buckets and sticky duplicate lap times are cleaned in the analysis
 | Monitor overlays | Always-on-top transparent windows per enabled widget |
 | Layer install / diagnostics | Registry stage, DLL presence, producer write age |
 
-Overlay layout settings configure a **shared widget catalog** (coach / standings / relative / radar). Enable once; place twice (`desktop*` for monitor windows, `vr*` for the headset). The Live page shows an in-app coach preview; the same slot config drives monitor, native VR, and the web HUD.
+Overlay layout settings configure a **shared widget catalog** (coach / standings / relative / radar / track map). Enable once; place twice (`desktop*` for monitor windows, `vr*` for the headset). The Live page shows an in-app coach preview; the same slot config drives monitor, native VR, and the web HUD.
 
 ## Settings
 
-Persisted via `get_settings` / `save_settings_cmd`. Live page exposes common audio toggles, monitor overlay start/stop, and VR actions. Full `AppSettings` includes VR mode/opacity, overlay layout, and coach chatter / category flags.
+Persisted via `get_settings` / `save_settings_cmd` (full write) or `patch_settings_cmd` (merge top-level keys). The **Settings** page covers VR HUD mode, per-widget VR placement, recenter bindings (keyboard / wheel button), and the audio coach: voice (from `list_tts_voices_cmd`), speed, volume, pause between calls, low-fuel threshold, chatter level, fuel-call margin, radio beep, and every callout category. The Live page keeps quick toggles for common audio categories plus monitor overlay and VR actions (including Recenter and coach VR size/opacity/height sliders).
 
 ## Track map
 

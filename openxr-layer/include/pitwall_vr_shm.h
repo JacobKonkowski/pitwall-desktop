@@ -3,7 +3,7 @@
 // This header is the single source of truth for the binary layout exchanged
 // between the PitWall desktop process (producer, written in Rust) and the
 // pitwall-openxr-layer DLL (consumer, this C++ project). The Rust mirror lives
-// in `src-tauri/src/vr/shm.rs` and MUST stay byte-for-byte identical.
+// in `crates/pitwall-vr/src/shm.rs` and MUST stay byte-for-byte identical.
 //
 // Layout rules that keep both sides in sync without compiler-specific packing:
 //   * Every field is 4 bytes (i32 / u32 / f32) or a char array whose length is
@@ -27,10 +27,10 @@ extern "C" {
 
 // "PWVR" as little-endian bytes ('P'=0x50, 'W'=0x57, 'V'=0x56, 'R'=0x52).
 #define PITWALL_VR_MAGIC 0x52565750u
-// v2 added slot 4 (track map) and PwSnapshot.track_map. Consumers built
+// v2 added slot 4 (track map) and `PwSnapshot.track_map`. Consumers built
 // against v1 must refuse a v2 block: both MAX_OVERLAYS and PwSnapshot changed.
-// (Assists / world-lock recenter_seq is a later SHM bump — kept out of this branch.)
-#define PITWALL_VR_VERSION 2u
+// v3 added `PwSharedBlock.recenter_seq`, shifting every later field.
+#define PITWALL_VR_VERSION 3u
 
 #define PITWALL_VR_SHM_NAME "Local\\PitWallVR"
 
@@ -42,7 +42,7 @@ extern "C" {
 #define PITWALL_VR_TRACK_LEN 64
 #define PITWALL_VR_SESSION_LEN 32
 
-// Overlay slot kind. The kind equals its index in overlays.
+// Overlay slot kind. The kind equals its index in `overlays`.
 enum PwOverlayKind {
     PW_OVERLAY_COACH = 0,
     PW_OVERLAY_STANDINGS = 1,
@@ -91,8 +91,8 @@ typedef struct PwCompetitor {
 #define PW_COMPETITOR_IS_PLAYER 0x1u
 #define PW_COMPETITOR_ON_PIT_ROAD 0x2u
 
-// One vertex of the generated circuit outline. x / y are normalized into a
-// 0..1 box (y grows downward); pct is the lap fraction at that vertex.
+// One vertex of the generated circuit outline. `x` / `y` are normalized into a
+// 0..1 box (y grows downward); `pct` is the lap fraction at that vertex.
 typedef struct PwTrackMapPoint {
     float x;
     float y;
@@ -100,13 +100,12 @@ typedef struct PwTrackMapPoint {
 } PwTrackMapPoint;
 
 // Circuit outline for the current track, built by the desktop app from IBT GPS
-// and cached per track. point_count == 0 means no outline is available; the
+// and cached per track. `point_count == 0` means no outline is available; the
 // track map overlay then draws its empty state.
 typedef struct PwTrackMap {
     uint32_t point_count;
     PwTrackMapPoint points[PITWALL_VR_MAX_TRACK_MAP_POINTS];
 } PwTrackMap;
-
 
 // Field-pace display preference, mirrors AppSettings.vr_field_pace_mode.
 enum PwFieldPaceMode {
@@ -168,6 +167,7 @@ typedef struct PwSharedBlock {
     uint32_t overlay_count; // active overlays in `overlays`
     uint32_t write_ms_lo;   // low 32 bits of last write time (ms since epoch)
     uint32_t write_ms_hi;   // high 32 bits
+    uint32_t recenter_seq;  // v3: changes on each recenter request
     PwOverlay overlays[PITWALL_VR_MAX_OVERLAYS];
     PwSnapshot snapshot;
 } PwSharedBlock;

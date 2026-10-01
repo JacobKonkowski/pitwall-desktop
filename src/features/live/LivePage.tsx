@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildOpenKneeboardUrl,
   checkVrHudHealth,
@@ -15,6 +15,8 @@ import {
   onLiveTelemetry,
   openVrHudPreview,
   patchSettings,
+  recenterVr,
+  saveSettings,
   startAudioCoach,
   startDemoClock,
   startLiveMonitor,
@@ -29,6 +31,7 @@ import {
   uninstallVrLayer,
 } from "../../shared/api";
 import { formatDelta, formatLapTime, formatLiters, formatTemp } from "../../shared/format";
+import { Slider } from "../../shared/Slider";
 import { showToast } from "../../shared/toast";
 import type {
   AppSettings,
@@ -39,6 +42,7 @@ import type {
   NativeVrStatus,
   VrLayerDiagnostics,
   VrOverlayStatus,
+  WidgetPlacement,
 } from "../../shared/types";
 import { useLapTrail } from "../../shared/useLapTrail";
 import { useTrackMap } from "../../shared/useTrackMap";
@@ -137,7 +141,7 @@ export function LivePage() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!vrStatus?.active || vrStatus.mode === "native") {
+    if (!vrStatus?.active) {
       setVrHudHealthy(null);
       return;
     }
@@ -157,7 +161,7 @@ export function LivePage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [vrStatus?.active, vrStatus?.mode]);
+  }, [vrStatus?.active]);
 
   useEffect(() => {
     if (!vrStatus?.active || vrStatus.mode !== "native") return;
@@ -207,6 +211,27 @@ export function LivePage() {
     }
   };
 
+  const vrSaveTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (vrSaveTimer.current !== null) window.clearTimeout(vrSaveTimer.current);
+    },
+    [],
+  );
+
+  // Only the coach slot's VR fields change here; desktop* stays with the monitor overlay.
+  const updateCoachVr = (patch: Partial<WidgetPlacement>) => {
+    if (!settings) return;
+    const widgets = settings.overlayLayout.widgets.map((w, i) => (i === 0 ? { ...w, ...patch } : w));
+    const next = { ...settings, overlayLayout: { ...settings.overlayLayout, widgets } };
+    setSettings(next);
+    if (vrSaveTimer.current !== null) window.clearTimeout(vrSaveTimer.current);
+    vrSaveTimer.current = window.setTimeout(() => {
+      saveSettings(next).catch((e) => showToast(`VR settings save failed: ${String(e)}`, "error"));
+    }, 150);
+  };
+
+  const coachPlacement = settings?.overlayLayout?.widgets?.[0];
   const fieldPace = settings?.overlayLayout?.fieldPaceMode ?? "best";
   const trackMap = useTrackMap(snap?.track);
   const lapTrail = useLapTrail(snap);
@@ -480,6 +505,16 @@ export function LivePage() {
                 >
                   {vrStatus?.active ? "Stop HUD" : "Start HUD"}
                 </button>
+                {vrStatus?.active ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    title="Re-anchor world-locked widgets in front of your current head position"
+                    onClick={() => run("Recenter", recenterVr)}
+                  >
+                    Recenter
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn"
@@ -505,6 +540,39 @@ export function LivePage() {
               {vrHudHealthy === false && (
                 <span className="vr-health-pill vr-health-err">HUD server not responding</span>
               )}
+
+              {coachPlacement ? (
+                <div className="vr-sliders">
+                  <h3>Coach in headset</h3>
+                  <Slider
+                    label="Size"
+                    value={coachPlacement.vrScale}
+                    min={0.25}
+                    max={1.25}
+                    step={0.05}
+                    format={(v) => `${v.toFixed(2)}×`}
+                    onChange={(v) => updateCoachVr({ vrScale: v })}
+                  />
+                  <Slider
+                    label="Opacity"
+                    value={coachPlacement.vrOpacity}
+                    min={0.2}
+                    max={1}
+                    step={0.05}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onChange={(v) => updateCoachVr({ vrOpacity: v })}
+                  />
+                  <Slider
+                    label="Height"
+                    value={coachPlacement.vrOffsetY}
+                    min={-0.4}
+                    max={0.4}
+                    step={0.02}
+                    format={(v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)} m`}
+                    onChange={(v) => updateCoachVr({ vrOffsetY: v })}
+                  />
+                </div>
+              ) : null}
 
               <div className="vr-checklist">
                 <h3>RaceLab-off checklist</h3>

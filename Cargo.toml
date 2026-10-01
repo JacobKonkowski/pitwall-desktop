@@ -10,6 +10,7 @@ members = [
     "crates/pitwall-audio",
     "crates/pitwall-vr",
     "crates/pitwall-monitor",
+    "crates/pitwall-input",
     "src-tauri",
 ]
 

@@ -11,6 +11,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
   AudioCoachStatus,
+  ControllerBinding,
   ImportStatus,
   IracingConfigCheck,
   LapComparison,
@@ -220,6 +221,16 @@ export async function checkVrHudHealth(): Promise<boolean> {
 
 export async function openVrHudPreview(): Promise<void> {
   return invoke("open_vr_hud_preview_cmd");
+}
+
+/** Re-anchor world-locked VR widgets to the current head pose. */
+export async function recenterVr(): Promise<void> {
+  return invoke("vr_recenter_cmd");
+}
+
+/** Wait (up to 10 s) for the next wheel / button-box press; null on timeout. */
+export async function captureControllerButton(): Promise<ControllerBinding | null> {
+  return invoke("capture_controller_button_cmd");
 }
 
 /* --- Monitor overlays --- */
