@@ -1,10 +1,10 @@
 //! SQLite storage. Persists [`AnalyzedSession`] products and serves read models.
 //!
-//! Schema is versioned via `PRAGMA user_version`. Current schema is **v5**.
+//! Schema is versioned via `PRAGMA user_version`. Current schema is **v6**.
 //! Versions older than 2 are wiped once (pre-v2 had incompatible lap taxonomy);
 //! upgrades from v2 onward use incremental migrations (v3 GPS, v4 elapsed_ms,
-//! v5 raw pedals). Full wipe remains available via the explicit `clear_database`
-//! debug command only.
+//! v5 raw pedals, v6 abs_active). Full wipe remains available via the explicit
+//! `clear_database` debug command only.
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -16,7 +16,7 @@ use pitwall_analysis::{
 
 use super::models::*;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS lap_traces (
     brake_raw REAL,
     clutch REAL,
     clutch_raw REAL,
-    handbrake_raw REAL
+    handbrake_raw REAL,
+    abs_active INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(session_id);
@@ -149,6 +150,10 @@ impl Database {
                 ] {
                     add_column_if_missing(conn, "lap_traces", col, "REAL")?;
                 }
+            }
+            // v6 keeps `BrakeABSactive` for assist analysis.
+            if version < 6 {
+                add_column_if_missing(conn, "lap_traces", "abs_active", "INTEGER")?;
             }
             if version < SCHEMA_VERSION {
                 conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
@@ -239,8 +244,8 @@ impl Database {
             tx.prepare("INSERT INTO sectors (lap_id, sector_num, time_ms) VALUES (?1, ?2, ?3)")?;
         let mut trace_stmt = tx.prepare(
             "INSERT INTO lap_traces (lap_id, dist_pct, speed, throttle, brake, gear, steering, lat, lon, elapsed_ms,
-                 throttle_raw, brake_raw, clutch, clutch_raw, handbrake_raw)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                 throttle_raw, brake_raw, clutch, clutch_raw, handbrake_raw, abs_active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         )?;
 
         for lap in &session.laps {
@@ -288,6 +293,7 @@ impl Database {
                     point.clutch,
                     point.clutch_raw,
                     point.handbrake_raw,
+                    point.abs_active,
                 ])?;
             }
         }
@@ -465,7 +471,7 @@ impl Database {
     fn get_trace_points(&self, lap_id: i64) -> Result<Vec<TracePoint>> {
         let mut stmt = self.conn.prepare(
             "SELECT dist_pct, speed, throttle, brake, gear, steering, lat, lon, elapsed_ms,
-                    throttle_raw, brake_raw, clutch, clutch_raw, handbrake_raw
+                    throttle_raw, brake_raw, clutch, clutch_raw, handbrake_raw, abs_active
              FROM lap_traces WHERE lap_id = ?1 ORDER BY dist_pct",
         )?;
         let points = stmt
@@ -485,6 +491,7 @@ impl Database {
                     clutch: row.get(11)?,
                     clutch_raw: row.get(12)?,
                     handbrake_raw: row.get(13)?,
+                    abs_active: row.get(14)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

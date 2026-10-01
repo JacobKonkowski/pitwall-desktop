@@ -35,6 +35,8 @@ pub struct RawFrame {
     pub clutch_raw: Option<f32>,
     /// `HandbrakeRaw` — 0=released to 1=max force.
     pub handbrake_raw: Option<f32>,
+    /// `BrakeABSactive` — ABS is currently reducing brake pressure.
+    pub abs_active: Option<bool>,
     /// `SteeringWheelAngle` — radians.
     pub steering: f32,
     /// `Gear`.

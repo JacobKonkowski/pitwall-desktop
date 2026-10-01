@@ -10,12 +10,21 @@ PitWall exposes features via `src/features/registry.ts`: **Analyze**, **Live**, 
 | Import | File / folder pickers; folder watcher auto-import |
 | Config tip | Reminds when disk recording looks disabled |
 | Lap table | Session type grouping; sectors; `paceEligible` (official time + both `_OK` flags + near-full coverage) |
-| Compare | Two-lap traces via `compare_laps` |
+| Compare | Two-lap traces, running time delta, and a **corner table** (time lost per corner split into entry/exit, brake-point and full-throttle deltas in metres, minimum speeds) via `compare_laps`. Clicking a corner row expands the **corner detail**. Throttle / brake charts shade where TC and ABS intervened. |
 | Re-import | Session header / sidebar buttons re-analyze IBTs still on disk with the latest pipeline (`reimport_session_cmd`) |
 | Fuel / tire panels | From stored lap aggregates |
 | Insights strip | Deterministic client-side bullets from your laps |
 
 Phantom reset buckets and sticky duplicate lap times are cleaned in the analysis pipeline (and when loading older sessions). See [ANALYSIS.md](ANALYSIS.md).
+
+### Corner detail and driver aids
+
+Clicking a corner row expands a detail panel:
+
+- **Technique** — for candidate and reference: ABS time, TC time, peak brake, trail-braking time, coasting time, and apex-to-full-throttle time (definitions in [ANALYSIS.md](ANALYSIS.md#corner-technique)).
+- **Brake-point consistency** — a scatter of every complete, non-pit lap in the reference's sub-session: brake point relative to the reference (metres) against time through the corner. Candidate and reference are highlighted, and the header shows the spread. It answers whether braking later actually gained time here. Laps that lost over 3 s (spins, offs) are hidden and counted.
+
+The Compare throttle chart shades where **traction control** held throttle below the driver's pedal, and the brake chart shades where **ABS** was active, in each lap's color. Hovering a shaded stretch names the aid in the tooltip. ABS needs a session imported under schema v6 and TC under v5; re-import older sessions for assist data. Cars without driver aids show zero.
 
 ## Live
 

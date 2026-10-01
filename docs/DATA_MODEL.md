@@ -1,8 +1,8 @@
 # Data model
 
-SQLite at `%LOCALAPPDATA%\pitwall-desktop\` (see `storage/db.rs`). **`PRAGMA user_version = 5`**.
+SQLite at `%LOCALAPPDATA%\pitwall-desktop\` (see `storage/db.rs`). **`PRAGMA user_version = 6`**.
 
-Opening a pre-v2 DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_traces`) and requires reimport. v2 → v5 are additive migrations on `lap_traces` (GPS, elapsed time, raw pedals), so existing sessions survive — they just have no GPS / elapsed time / driver-pedal channels until re-imported.
+Opening a pre-v2 DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_traces`) and requires reimport. v2 → v6 are additive migrations on `lap_traces` (GPS, elapsed time, raw pedals, then ABS activity), so existing sessions survive — they just have no GPS / exact corner timing / driver-pedal coloring / assist data until re-imported.
 
 ## Tables
 
@@ -35,7 +35,9 @@ Per-lap sector times and distance-sampled traces (speed, throttle, brake, gear, 
 
 `lap_traces.lat` / `.lon` (schema v3, nullable) keep the GPS for each sample. They are `NULL` for sessions imported before v3 and for IBTs without GPS channels.
 
-`lap_traces.elapsed_ms` (schema v4, nullable) is the time since the lap's first frame. Older rows leave it `NULL`.
+`lap_traces.elapsed_ms` (schema v4, nullable) is the time since the lap's first frame.
+Compare uses it for the running delta and corner times; older rows fall back to a
+speed-integrated estimate (see [ANALYSIS.md](ANALYSIS.md#lap-compare-and-corners)).
 
 `throttle` / `brake` are the **applied** values (`Throttle` / `Brake`), after auto-blip, traction control and ABS. Schema v5 adds the driver's pedals alongside them, all nullable:
 
@@ -47,7 +49,14 @@ Per-lap sector times and distance-sampled traces (speed, throttle, brake, gear, 
 | `clutch_raw` | `ClutchRaw` | Driver clutch pedal |
 | `handbrake_raw` | `HandbrakeRaw` | Driver handbrake |
 
-They are `NULL` for sessions imported before v5 and for IBTs without the channel. Consumers that need driver intent fall back to applied `throttle` / `brake`. Clutch and handbrake are stored only — nothing displays them yet.
+They are `NULL` for sessions imported before v5 and for IBTs without the channel. Corner
+pickup reads raw with a fallback to applied; compare charts stay on applied. Clutch and
+handbrake are stored only — nothing displays them yet.
+
+`lap_traces.abs_active` (schema v6, nullable `0`/`1`) is `BrakeABSactive`: ABS reducing
+brake pressure. A trace sample stands for 6 IBT frames, and the flag is OR-ed across them
+so short ABS pulses survive downsampling. `NULL` before v6 or when the IBT lacks the
+channel (cars without ABS still record it, as `0`).
 
 ## Settings
 
