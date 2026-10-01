@@ -38,6 +38,10 @@ pub struct TracePoint {
     pub clutch_raw: Option<f64>,
     #[serde(default)]
     pub handbrake_raw: Option<f64>,
+    /// `BrakeABSactive` at any frame folded into this sample. `None` before
+    /// schema v6 or when the IBT lacks the channel.
+    #[serde(default)]
+    pub abs_active: Option<bool>,
     /// Milliseconds since the lap's first frame (`SessionTime` delta). `None`
     /// for sessions imported before the time channel was kept; comparisons then
     /// estimate time from speed.

@@ -9,6 +9,8 @@
 pub mod aggregates;
 pub mod cleanup;
 pub mod compare;
+pub mod consistency;
+pub mod corners;
 pub mod pipeline;
 pub mod sectors;
 pub mod segment;
@@ -19,6 +21,8 @@ pub use cleanup::{
     pace_eligible_from, FULL_LAP_PCT,
 };
 pub use compare::{compare_laps, AlignedPoint, CompareInput, LapComparison, SectorDelta};
+pub use consistency::{corner_consistency, ConsistencyLap, ConsistencyPoint, CornerConsistency};
+pub use corners::{AssistKind, AssistSpan, CornerDelta, CornerTechnique, LapRole, TimingSource};
 pub use pipeline::analyze_session;
 pub use types::{
     AnalyzedLap, AnalyzedSession, LapFrames, RawFrame, SectorBoundary, SessionMeta, TracePoint,

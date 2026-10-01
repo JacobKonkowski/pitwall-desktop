@@ -3,6 +3,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -10,12 +11,17 @@ import {
   YAxis,
 } from "recharts";
 import { compareLaps } from "../../shared/api";
-import type { AlignedPoint, LapComparison, LapSummary } from "../../shared/types";
+import type {
+  AssistKind,
+  AssistSpan,
+  CornerDelta,
+  LapComparison,
+  LapSummary,
+} from "../../shared/types";
 import { deltaClass, formatDelta, formatLapTime } from "../../shared/format";
+import { CornerTable } from "./CornerTable";
+import { CAND_COLOR, DELTA_COLOR, REF_COLOR } from "./compareColors";
 
-const CAND_COLOR = "#4aa3ff";
-const REF_COLOR = "#d29922";
-const DELTA_COLOR = "#a371f7";
 const SYNC_ID = "compare-dist";
 
 interface Props {
@@ -23,6 +29,31 @@ interface Props {
   candidate: LapSummary | null;
   reference: LapSummary | null;
   onChangeReference: (id: number) => void;
+  /** Lap fraction (0..1) under the cursor, or `null` when the cursor leaves. */
+  onHoverDistPct?: (pct: number | null) => void;
+  /** Corner row click: zoom the track map to that lap fraction. */
+  onFocusDistPct?: (pct: number) => void;
+}
+
+const ASSIST_NAMES: Record<AssistKind, string> = { abs: "ABS", tc: "TC" };
+
+/** A shaded x range on a chart, in percent around the lap. */
+interface ChartBand {
+  x1: number;
+  x2: number;
+  color: string;
+  label: string;
+}
+
+function assistBands(spans: AssistSpan[], kind: AssistKind): ChartBand[] {
+  return spans
+    .filter((s) => s.kind === kind)
+    .map((s) => ({
+      x1: +(s.startPct * 100).toFixed(2),
+      x2: +(s.endPct * 100).toFixed(2),
+      color: s.lap === "candidate" ? CAND_COLOR : REF_COLOR,
+      label: `${ASSIST_NAMES[kind]} (${s.lap})`,
+    }));
 }
 
 function lapLabel(lap: LapSummary): string {
@@ -31,59 +62,14 @@ function lapLabel(lap: LapSummary): string {
   return `Lap ${lap.lapNumber}${time}${pace}`;
 }
 
-/**
- * Approximate cumulative time gain/loss (ms) from aligned speeds.
- * Uses estimated track length from candidate avg speed × lap time when available.
- */
-function approxCumulativeDelta(
-  series: AlignedPoint[],
-  candidateTimeMs: number | null,
-): number[] {
-  const speeds = series
-    .map((p) => p.candidateSpeed)
-    .filter((v): v is number => v != null && v > 1);
-  const avgSpeed =
-    speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : null;
-  const trackLenM =
-    avgSpeed != null && candidateTimeMs != null && candidateTimeMs > 0
-      ? avgSpeed * (candidateTimeMs / 1000)
-      : 4000; // fallback nominal length (m)
-
-  const out: number[] = [];
-  let cum = 0;
-  for (let i = 0; i < series.length; i++) {
-    if (i === 0) {
-      out.push(series[i].cumulativeDeltaMs ?? 0);
-      continue;
-    }
-    const prev = series[i - 1];
-    const cur = series[i];
-    if (cur.cumulativeDeltaMs != null) {
-      cum = cur.cumulativeDeltaMs;
-      out.push(cum);
-      continue;
-    }
-    const dd = cur.distPct - prev.distPct;
-    if (dd <= 0) {
-      out.push(cum);
-      continue;
-    }
-    const vc = cur.candidateSpeed;
-    const vr = cur.referenceSpeed;
-    if (vc == null || vr == null || vc < 0.5 || vr < 0.5) {
-      out.push(cum);
-      continue;
-    }
-    const ds = dd * trackLenM;
-    const dtCand = (ds / vc) * 1000;
-    const dtRef = (ds / vr) * 1000;
-    cum += dtCand - dtRef;
-    out.push(cum);
-  }
-  return out;
-}
-
-export function ComparePanel({ laps, candidate, reference, onChangeReference }: Props) {
+export function ComparePanel({
+  laps,
+  candidate,
+  reference,
+  onChangeReference,
+  onHoverDistPct,
+  onFocusDistPct,
+}: Props) {
   const [comparison, setComparison] = useState<LapComparison | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,11 +95,10 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
 
   const chartData = useMemo(() => {
     if (!comparison) return [];
-    const cum = approxCumulativeDelta(comparison.series, comparison.candidateTimeMs);
     const toDeg = (rad: number) => +(rad * (180 / Math.PI)).toFixed(1);
-    return comparison.series.map((p, i) => ({
+    return comparison.series.map((p) => ({
       x: +(p.distPct * 100).toFixed(2),
-      deltaMs: +cum[i].toFixed(1),
+      deltaMs: p.cumulativeDeltaMs == null ? null : +p.cumulativeDeltaMs.toFixed(1),
       candSpeed: p.candidateSpeed == null ? null : +(p.candidateSpeed * 3.6).toFixed(1),
       refSpeed: p.referenceSpeed == null ? null : +(p.referenceSpeed * 3.6).toFixed(1),
       candThrottle: p.candidateThrottle == null ? null : +(p.candidateThrottle * 100).toFixed(0),
@@ -126,6 +111,9 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
       refSteering: p.referenceSteering == null ? null : toDeg(p.referenceSteering),
     }));
   }, [comparison]);
+
+  const absBands = useMemo(() => assistBands(comparison?.assists ?? [], "abs"), [comparison]);
+  const tcBands = useMemo(() => assistBands(comparison?.assists ?? [], "tc"), [comparison]);
 
   return (
     <div className="panel">
@@ -190,17 +178,41 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
 
             <SectorDeltaTable comparison={comparison} />
 
-            <div className="chart-title">Time gain / loss vs distance (approx.)</div>
+            {comparison.timing == null ? (
+              <p className="muted">
+                Not enough trace data on these laps to time them against each other.
+              </p>
+            ) : (
+              <CornerTable
+                corners={comparison.corners}
+                estimated={comparison.timing === "estimated"}
+                laps={laps}
+                candidate={candidate}
+                reference={reference}
+                onHoverDistPct={onHoverDistPct}
+                onFocusDistPct={onFocusDistPct}
+              />
+            )}
+
+            <div className="chart-title">
+              Time gain / loss vs distance
+              {comparison.timing === "estimated" ? " (estimated)" : ""}
+            </div>
             <Chart
               data={chartData}
+              onHoverDistPct={onHoverDistPct}
               lines={[{ key: "deltaMs", color: DELTA_COLOR }]}
               yFormatter={(v) => `${v >= 0 ? "+" : ""}${(v / 1000).toFixed(3)}s`}
               zeroLine
+              corners={comparison.corners}
+              cornerLabels
             />
 
             <div className="chart-title">Speed (km/h)</div>
             <Chart
               data={chartData}
+              onHoverDistPct={onHoverDistPct}
+              corners={comparison.corners}
               lines={[
                 { key: "candSpeed", color: CAND_COLOR },
                 { key: "refSpeed", color: REF_COLOR },
@@ -208,9 +220,18 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
             />
 
             <div className="chart-title">Throttle (%)</div>
+            {tcBands.length > 0 || absBands.length > 0 ? (
+              <p className="muted chart-note">
+                Shaded: traction control cutting throttle, and ABS releasing the brake, in
+                each lap's color.
+              </p>
+            ) : null}
             <Chart
               data={chartData}
+              onHoverDistPct={onHoverDistPct}
+              corners={comparison.corners}
               domain={[0, 100]}
+              bands={tcBands}
               lines={[
                 { key: "candThrottle", color: CAND_COLOR },
                 { key: "refThrottle", color: REF_COLOR },
@@ -220,7 +241,10 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
             <div className="chart-title">Brake (%)</div>
             <Chart
               data={chartData}
+              onHoverDistPct={onHoverDistPct}
+              corners={comparison.corners}
               domain={[0, 100]}
+              bands={absBands}
               lines={[
                 { key: "candBrake", color: CAND_COLOR },
                 { key: "refBrake", color: REF_COLOR },
@@ -232,6 +256,7 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
               <div className="chart-title">Gear</div>
               <Chart
                 data={chartData}
+                onHoverDistPct={onHoverDistPct}
                 height={140}
                 lines={[
                   { key: "candGear", color: CAND_COLOR, step: true },
@@ -241,6 +266,7 @@ export function ComparePanel({ laps, candidate, reference, onChangeReference }: 
               <div className="chart-title">Steering (°)</div>
               <Chart
                 data={chartData}
+                onHoverDistPct={onHoverDistPct}
                 height={140}
                 lines={[
                   { key: "candSteering", color: CAND_COLOR },
@@ -301,6 +327,10 @@ function Chart({
   height = 220,
   yFormatter,
   zeroLine,
+  onHoverDistPct,
+  corners,
+  cornerLabels,
+  bands,
 }: {
   data: Record<string, number | null>[];
   lines: ChartLine[];
@@ -308,6 +338,12 @@ function Chart({
   height?: number;
   yFormatter?: (v: number) => string;
   zeroLine?: boolean;
+  onHoverDistPct?: (pct: number | null) => void;
+  /** Draw a faint marker at each corner's slowest point. */
+  corners?: CornerDelta[];
+  cornerLabels?: boolean;
+  /** Shaded x ranges, named in the tooltip when hovered. */
+  bands?: ChartBand[];
 }) {
   return (
     <div className="chart-wrap" style={{ height }}>
@@ -316,6 +352,12 @@ function Chart({
           syncId={SYNC_ID}
           data={data}
           margin={{ top: 6, right: 12, bottom: 6, left: -8 }}
+          onMouseMove={(state) => {
+            // `activeLabel` is the x axis value: percent around the lap.
+            const label = Number(state?.activeLabel);
+            onHoverDistPct?.(Number.isFinite(label) ? label / 100 : null);
+          }}
+          onMouseLeave={() => onHoverDistPct?.(null)}
         >
           <CartesianGrid stroke="#262d3a" strokeDasharray="3 3" />
           <XAxis
@@ -339,7 +381,12 @@ function Chart({
               borderRadius: 6,
               fontSize: 12,
             }}
-            labelFormatter={(v) => `${v}% around lap`}
+            labelFormatter={(v) => {
+              const active = bands?.filter((b) => v >= b.x1 && v <= b.x2).map((b) => b.label);
+              return active?.length
+                ? `${v}% around lap · ${active.join(", ")}`
+                : `${v}% around lap`;
+            }}
             formatter={(value: number, name: string) => {
               if (name === "deltaMs") {
                 return [formatDelta(value), "Δ time"];
@@ -348,6 +395,30 @@ function Chart({
             }}
           />
           {zeroLine ? <ReferenceLine y={0} stroke="#5b6472" strokeDasharray="4 4" /> : null}
+          {bands?.map((b) => (
+            <ReferenceArea
+              key={`${b.label}-${b.x1}`}
+              x1={b.x1}
+              x2={b.x2}
+              fill={b.color}
+              fillOpacity={0.15}
+              stroke="none"
+              ifOverflow="hidden"
+            />
+          ))}
+          {corners?.map((c) => (
+            <ReferenceLine
+              key={c.number}
+              x={+(c.apexPct * 100).toFixed(2)}
+              stroke="#3a4352"
+              strokeDasharray="2 4"
+              label={
+                cornerLabels
+                  ? { value: `C${c.number}`, position: "insideTop", fill: "#8b95a5", fontSize: 10 }
+                  : undefined
+              }
+            />
+          ))}
           {lines.map((l) => (
             <Line
               key={l.key}

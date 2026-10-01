@@ -48,7 +48,8 @@ pub fn average_speed(frames: &[RawFrame]) -> Option<f64> {
 }
 
 /// Downsample frames into chart trace points. Each point takes its first
-/// frame's values (including raw pedals, GPS, and elapsed lap time).
+/// frame's values; `abs_active` is OR-ed over the frames it stands for so short
+/// ABS pulses between kept frames aren't lost.
 pub fn downsample_traces(frames: &[RawFrame]) -> Vec<TracePoint> {
     let lap_start = frames.first().map(|f| f.session_time);
     frames
@@ -56,6 +57,9 @@ pub fn downsample_traces(frames: &[RawFrame]) -> Vec<TracePoint> {
         .map(|chunk| {
             let f = &chunk[0];
             TracePoint {
+                abs_active: f
+                    .abs_active
+                    .map(|_| chunk.iter().any(|c| c.abs_active == Some(true))),
                 elapsed_ms: lap_start.map(|t0| (f.session_time - t0) * 1000.0),
                 dist_pct: f.lap_dist_pct as f64,
                 speed: f.speed as f64,
@@ -92,6 +96,7 @@ mod tests {
             clutch: None,
             clutch_raw: None,
             handbrake_raw: None,
+            abs_active: None,
             steering: 0.0,
             gear: 3,
             fuel_level: fuel,
@@ -147,5 +152,24 @@ mod tests {
         assert_eq!(points[0].lat, Some(41.0));
         assert_eq!(points[0].lon, Some(-88.0));
         assert_eq!(points[0].elapsed_ms, Some(0.0));
+    }
+
+    #[test]
+    fn abs_pulse_between_kept_frames_survives_downsampling() {
+        let mut frames: Vec<RawFrame> = (0..12)
+            .map(|_| RawFrame {
+                abs_active: Some(false),
+                ..frame(50.0, 40.0, 80.0)
+            })
+            .collect();
+        frames[3].abs_active = Some(true);
+        let points = downsample_traces(&frames);
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].abs_active, Some(true));
+        assert_eq!(points[1].abs_active, Some(false));
+        assert_eq!(
+            downsample_traces(&[frame(50.0, 40.0, 80.0)])[0].abs_active,
+            None
+        );
     }
 }

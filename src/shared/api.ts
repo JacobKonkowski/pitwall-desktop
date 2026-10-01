@@ -11,6 +11,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
   AudioCoachStatus,
+  CornerConsistency,
   ImportStatus,
   IracingConfigCheck,
   LapComparison,
@@ -45,6 +46,14 @@ export async function compareLaps(
   referenceLapId: number,
 ): Promise<LapComparison> {
   return invoke("compare_laps", { candidateLapId, referenceLapId });
+}
+
+/** Each lap's brake point and corner time through the reference lap's corners. */
+export async function cornerConsistency(
+  referenceLapId: number,
+  lapIds: number[],
+): Promise<CornerConsistency[]> {
+  return invoke("corner_consistency", { referenceLapId, lapIds });
 }
 
 export async function importIbt(path: string): Promise<string> {
