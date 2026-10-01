@@ -46,6 +46,7 @@ private:
     void DrawStandings(const PwSnapshot& s, float w, float h);
     void DrawRelative(const PwSnapshot& s, float w, float h);
     void DrawRadar(const PwSnapshot& s, float w, float h);
+    void DrawTrackMap(const PwSnapshot& s, float w, float h);
 
     void DrawText(const wchar_t* text, IDWriteTextFormat* fmt, D2D1_RECT_F rect,
                   D2D1_COLOR_F color);

@@ -2954,6 +2954,7 @@ dependencies = [
  "pitwall-telemetry",
  "rayon",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3079,6 +3080,7 @@ dependencies = [
  "pitwall-analysis",
  "rusqlite",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3091,8 +3093,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "parking_lot",
+ "pitwall-analysis",
  "pitwall-live",
  "pitwall-settings",
+ "pitwall-storage",
  "serde",
  "serde_json",
  "tokio-util",

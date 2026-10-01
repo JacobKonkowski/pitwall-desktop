@@ -71,3 +71,11 @@ Shared `enabled` flags; `desktop*` places monitor windows, `vr*` places the in-h
 Some older geometry fields may still exist in the JSON for migration; the UI drives slots via `overlayLayout`.
 
 Frontend types: `src/shared/types.ts`.
+
+## Track map cache
+
+Generated circuit outlines are stored as JSON beside the database:
+`%LOCALAPPDATA%\pitwall-desktop\track-maps\{slug}.json`. Imports write via
+`pitwall_storage::save_track_map`; Analyze / monitor / VR read via `load_track_map`.
+Outlines require GPS channels on the source IBT. Trace `lat` / `lon` (kept on
+`lap_traces`) let Analyze draw a lap's racing line in the outline's projection.

@@ -1,4 +1,4 @@
-﻿# Post-session analysis
+# Post-session analysis
 
 Imported IBT files flow through segmentation, sector splitting, fuel/tire aggregation,
 lap cleanup, SQLite storage, and deterministic Analyze insights.
@@ -22,7 +22,7 @@ flowchart LR
 | File detect | `ingest/watcher.rs` | `notify` on telemetry folder, create events |
 | Single-flight | `import_runner.rs` | `import_gate` mutex; progress events |
 | Parse | `ibt_importer.rs` | `pitwall` crate; identity key = path+size+mtime |
-| Frames | `frame_extractor.rs` | Pre-resolved offsets; tire channels optional (`*tempM` â†’ `*tempCM`) |
+| Frames | `frame_extractor.rs` | Pre-resolved offsets; tire channels optional (`*tempM` → `*tempCM`) |
 
 Skip of an already-imported file returns the **existing** `session_id` and still emits `import-complete`.
 
@@ -32,11 +32,11 @@ Skip of an already-imported file returns the **existing** `session_id` and still
 
 [`analysis/pipeline.rs`](../src-tauri/src/analysis/pipeline.rs) orchestrates:
 
-1. **Lap segmenter** â€” splits on `(SessionNum, Lap)`; official time + `_OK` flags sampled on the next lap's first frame
-2. **Sector splitter** â€” YAML boundaries; ignores sector 0 at 0%; no equal-thirds invention
-3. **Fuel / tire** â€” per-lap aggregates
-4. **Traces** â€” every 6th frame (~10 Hz from a 60 Hz IBT): speed/throttle/brake/gear/steering, plus GPS (`lat`/`lon`), `elapsed_ms`, and raw pedal channels when present (see [DATA_MODEL.md](DATA_MODEL.md))
-5. **Cleanup** â€” [`analysis/cleanup.rs`](../src-tauri/src/analysis/cleanup.rs) (`finalize_analyzed_laps`)
+1. **Lap segmenter** — splits on `(SessionNum, Lap)`; official time + `_OK` flags sampled on the next lap's first frame
+2. **Sector splitter** — YAML boundaries; ignores sector 0 at 0%; no equal-thirds invention
+3. **Fuel / tire** — per-lap aggregates
+4. **Traces** — every 6th frame (~10 Hz from a 60 Hz IBT): speed/throttle/brake/gear/steering, plus GPS (`lat`/`lon`), `elapsed_ms`, and raw pedal channels when present (see [DATA_MODEL.md](DATA_MODEL.md))
+5. **Cleanup** — [`analysis/cleanup.rs`](../src-tauri/src/analysis/cleanup.rs) (`finalize_analyzed_laps`)
 
 Applied pedals (`Throttle` / `Brake`) stay on the charts; `ThrottleRaw` / `BrakeRaw` (schema v5) are stored for driver-intent consumers and fall back to applied when missing.
 
@@ -48,9 +48,9 @@ sessions for display), PitWall applies:
 
 | Rule | Behavior |
 |------|----------|
-| **A â€” Phantoms** | Drop laps with `iracing_lap == 0` and near-zero distance (`max pct < 0.01`), then renumber 1..N per sub-session |
-| **B â€” Sticky times** | If a lapâ€™s time matches the last *kept* time and the lap is incomplete or not both-`_OK`, clear `lap_time_ms` |
-| **C â€” Coverage** | Pace eligibility requires near-full distance (`lap_dist_pct_max â‰¥ 0.95`) in addition to an official time and both `_OK` flags |
+| **A — Phantoms** | Drop laps with `iracing_lap == 0` and near-zero distance (`max pct < 0.01`), then renumber 1..N per sub-session |
+| **B — Sticky times** | If a lap’s time matches the last *kept* time and the lap is incomplete or not both-`_OK`, clear `lap_time_ms` |
+| **C — Coverage** | Pace eligibility requires near-full distance (`lap_dist_pct_max ≥ 0.95`) in addition to an official time and both `_OK` flags |
 
 `paceEligible` / session `best_lap_ms` use that rule. Read path cleanup in
 [`storage/db.rs`](../src-tauri/src/storage/db.rs) updates list/detail summaries without
@@ -70,22 +70,22 @@ Computed on the Analyze page from your session data.
 [`compare.rs`](../crates/pitwall-analysis/src/compare.rs) aligns two laps on a 200-point
 distance grid; [`corners.rs`](../crates/pitwall-analysis/src/corners.rs) adds timing.
 
-- **Time curve** ΓÇö each lap's elapsed time vs lap distance. Uses the recorded
+- **Time curve** G�� each lap's elapsed time vs lap distance. Uses the recorded
   `elapsed_ms` trace channel (schema v4) when present; otherwise speed is integrated over
   distance and scaled to the official lap time (`timing: "estimated"`). On real laps the
   estimate is within ~150 ms per corner; re-import for exact numbers.
-- **Running delta** ΓÇö `cumulativeDeltaMs` on each aligned point: candidate minus
+- **Running delta** G�� `cumulativeDeltaMs` on each aligned point: candidate minus
   reference, zero where both laps' coverage starts. Its end value matches the official
   lap delta.
-- **Corners** ΓÇö found on the reference lap's smoothed speed: a slow-down and pick-up of at
+- **Corners** G�� found on the reference lap's smoothed speed: a slow-down and pick-up of at
   least max(2.5 m/s, 6%). Each corner runs from the speed peak before it to the peak after
   it (the first/last corner extend to the range ends), so corner deltas sum to the lap gap.
   Numbering is in track order and may not match official turn numbers.
-- **Per corner** ΓÇö time delta split at the reference apex (entry / exit), each lap's
-  minimum speed, brake-point delta (first brake ΓëÑ 10%) and full-throttle delta (first
-  throttle ΓëÑ 90% after the lap's own slowest point) in metres. Metres use the track length
+- **Per corner** G�� time delta split at the reference apex (entry / exit), each lap's
+  minimum speed, brake-point delta (first brake G�� 10%) and full-throttle delta (first
+  throttle G�� 90% after the lap's own slowest point) in metres. Metres use the track length
   implied by the reference lap's speed and time.
-- **Driver vs applied pedals** ΓÇö brake and throttle pickup read the driver's pedals
+- **Driver vs applied pedals** G�� brake and throttle pickup read the driver's pedals
   (`ThrottleRaw` / `BrakeRaw`, schema v5) so a downshift auto-blip or ABS release doesn't
   move them; sessions imported before v5 fall back to applied `Throttle` / `Brake`. The
   throttle and brake **charts** stay on applied values, so blips and TC/ABS
@@ -116,9 +116,9 @@ timeline with driver pedals:
 |-------|---------|
 | `absMs` / `tcMs` | Time with the aid active in the corner segment |
 | `peakBrake` | Highest brake before the reference apex (`null` if under 10%) |
-| `trailBrakeMs` | From the last sample at ΓëÑ 90% of peak brake to brake below 10% |
+| `trailBrakeMs` | From the last sample at G�� 90% of peak brake to brake below 10% |
 | `coastMs` | Time with both pedals at or below 5% |
-| `apexToThrottleMs` | From the lap's own slowest point to full throttle (ΓëÑ 90%); `null` when taken flat |
+| `apexToThrottleMs` | From the lap's own slowest point to full throttle (G�� 90%); `null` when taken flat |
 
 ### Brake-point consistency
 
@@ -133,9 +133,18 @@ a corner (spins, offs) so the scatter stays readable.
 
 ---
 
+
+## Track map
+
+[`track_map.rs`](../crates/pitwall-analysis/src/track_map.rs) builds a circuit outline from the
+cleanest lap's GPS samples (`Lat` / `Lon` + `LapDistPct`). The importer caches it per track under
+`%LOCALAPPDATA%\pitwall-desktop\track-maps\`. Analyze and live widgets place cars by interpolating
+the polyline at `lapDistPct`; when traces keep GPS, racing lines use the outline's stored
+`projection` so they share the same unit box.
+
 ## Related docs
 
-- [DATA_MODEL.md](DATA_MODEL.md) — schema v6
-- [FEATURES.md](FEATURES.md) — Analyze tab
-- [API.md](API.md) — session/compare/import commands
+- [DATA_MODEL.md](DATA_MODEL.md) � schema v6
+- [FEATURES.md](FEATURES.md) � Analyze tab
+- [API.md](API.md) � session/compare/import commands
 

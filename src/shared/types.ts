@@ -307,15 +307,67 @@ export interface LiveSnapshot {
   onTrack: boolean;
 }
 
-export type WidgetKind = "coach" | "standings" | "relative" | "radar";
 
-export const WIDGET_KINDS: WidgetKind[] = ["coach", "standings", "relative", "radar"];
+/** One outline vertex: lap fraction plus position in a `0 0 1 1` viewBox. */
+export interface OutlinePoint {
+  pct: number;
+  x: number;
+  y: number;
+}
+
+/** Maps GPS degrees into an outline's unit box; mirrors `TrackProjection`. */
+export interface TrackProjection {
+  originLat: number;
+  originLon: number;
+  minX: number;
+  minY: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/** Circuit outline generated from IBT GPS samples (`get_track_map`). */
+export interface TrackOutline {
+  track: string;
+  points: OutlinePoint[];
+  /** Closed SVG path over a `0 0 1 1` viewBox. */
+  svgPath: string;
+  /** Lap fraction spanned by the source samples. */
+  coverage: number;
+  /** GPS samples the outline was built from. */
+  sampleCount: number;
+  /** Absent on outlines cached before racing lines; GPS cannot be placed then. */
+  projection?: TrackProjection | null;
+}
+
+/** Minimum shape needed to draw a pedal-colored path (a `TracePoint` fits). */
+export interface TrailSample {
+  distPct: number;
+  throttle: number;
+  brake: number;
+  /** Driver pedals; pedal coloring prefers these over applied when present. */
+  throttleRaw?: number | null;
+  brakeRaw?: number | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+export type WidgetKind = "coach" | "standings" | "relative" | "radar" | "trackmap";
+
+export const WIDGET_KINDS: WidgetKind[] = [
+  "coach",
+  "standings",
+  "relative",
+  "radar",
+  "trackmap",
+];
 
 export const WIDGET_LABELS: Record<WidgetKind, string> = {
   coach: "Coach HUD",
   standings: "Standings",
   relative: "Relative",
   radar: "Radar",
+  trackmap: "Track Map",
 };
 
 export interface WidgetPlacement {
@@ -356,6 +408,7 @@ export function defaultOverlayLayout(): OverlayLayout {
       base({ desktopX: 24, desktopY: 244, desktopW: 320, desktopH: 300 }),
       base({ desktopX: 360, desktopY: 244, desktopW: 300, desktopH: 240 }),
       base({ desktopX: 404, desktopY: 24, desktopW: 200, desktopH: 200 }),
+      base({ desktopX: 620, desktopY: 24, desktopW: 320, desktopH: 320 }),
     ],
     fieldPaceMode: "best",
   };

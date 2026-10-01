@@ -10,11 +10,13 @@ use super::aggregates::{average_speed, downsample_traces, fuel_stats, tire_avera
 use super::cleanup::finalize_analyzed_laps;
 use super::sectors::compute_sector_times;
 use super::segment::{lap_dist_range, segment_laps};
+use super::track_map::outline_from_laps;
 use super::types::{AnalyzedLap, AnalyzedSession, LapFrames, SessionMeta};
 
 /// Analyze a full session's frames using the resolved session metadata.
 pub fn analyze_session(frames: Vec<super::types::RawFrame>, meta: &SessionMeta) -> AnalyzedSession {
     let groups = segment_laps(frames, &meta.session_labels);
+    let track_map = outline_from_laps(&meta.track, &groups);
 
     let laps: Vec<AnalyzedLap> = groups
         .into_par_iter()
@@ -35,6 +37,7 @@ pub fn analyze_session(frames: Vec<super::types::RawFrame>, meta: &SessionMeta) 
         car: meta.car.clone(),
         session_date: meta.session_date.clone(),
         laps,
+        track_map,
     }
 }
 

@@ -9,6 +9,7 @@ import {
   reimportSession,
 } from "../../shared/api";
 import { showToast } from "../../shared/toast";
+import { useTrackMap } from "../../shared/useTrackMap";
 import type {
   IracingConfigCheck,
   LapSummary,
@@ -22,6 +23,7 @@ import { InsightsStrip } from "./InsightsStrip";
 import { LapTable } from "./LapTable";
 import { SessionBrowser } from "./SessionBrowser";
 import { SessionHeader } from "./SessionHeader";
+import { TrackMapPanel } from "./TrackMapPanel";
 import { computeSessionStats } from "./sessionStats";
 import { useImportActions } from "./useImportActions";
 
@@ -65,6 +67,14 @@ export function AnalyzePage() {
   const [candidateLapId, setCandidateLapId] = useState<number | null>(null);
   const [referenceLapId, setReferenceLapId] = useState<number | null>(null);
   const [config, setConfig] = useState<IracingConfigCheck | null>(null);
+  /** Lap fraction hovered on the compare charts, mirrored on the track map. */
+  const [highlightPct, setHighlightPct] = useState<number | null>(null);
+  /** Corner-table / chart focus: zoom the map there. `seq` re-triggers the same pct. */
+  const [mapFocus, setMapFocus] = useState<{ pct: number; seq: number } | null>(null);
+  const focusMapAt = useCallback(
+    (pct: number) => setMapFocus((prev) => ({ pct, seq: (prev?.seq ?? 0) + 1 })),
+    [],
+  );
   const [reimporting, setReimporting] = useState(false);
   /** Suppresses auto-select on each import-complete during "Re-import all". */
   const bulkReimport = useRef(false);
@@ -129,6 +139,7 @@ export function AnalyzePage() {
         const ref = d ? defaultReferenceLap(d.laps) : null;
         setReferenceLapId(ref?.id ?? null);
         setCandidateLapId(null);
+        setMapFocus(null);
       })
       .catch((e) => {
         console.error("getSession failed", e);
@@ -241,6 +252,7 @@ export function AnalyzePage() {
     () => [...new Set(laps.map((l) => l.sessionType).filter(Boolean))],
     [laps],
   );
+  const trackMap = useTrackMap(detail?.session.track);
   const hasEligible = useMemo(() => laps.some((l) => l.paceEligible), [laps]);
   const okChannelPresent = useMemo(
     () => laps.some((l) => l.deltaBestOk !== null),
@@ -308,11 +320,22 @@ export function AnalyzePage() {
               </div>
             </div>
 
+            <TrackMapPanel
+              outline={trackMap}
+              track={detail.session.track}
+              candidate={candidate}
+              reference={reference}
+              highlightPct={highlightPct}
+              focus={mapFocus}
+            />
+
             <ComparePanel
               laps={laps}
               candidate={candidate}
               reference={reference}
               onChangeReference={setReferenceLapId}
+              onHoverDistPct={setHighlightPct}
+              onFocusDistPct={focusMapAt}
             />
 
             <FuelTirePanel laps={laps} />

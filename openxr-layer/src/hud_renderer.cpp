@@ -65,6 +65,43 @@ D2D1_COLOR_F DeltaColor(float ms) {
     return ms > 0.0f ? kSlow : kFast;
 }
 
+// Track-map vertices are normalized 0..1; letterbox them into the render target
+// so the circuit keeps its aspect ratio on a non-square overlay.
+D2D1_POINT_2F TrackMapPixel(const PwTrackMapPoint& p, float w, float h) {
+    const float side = w < h ? w : h;
+    return {(w - side) * 0.5f + p.x * side, (h - side) * 0.5f + p.y * side};
+}
+
+// Interpolate a lap fraction onto the outline, treating the gap between the last
+// and first vertex as the closing segment. Mirrors `track_map::point_at`.
+D2D1_POINT_2F TrackMapPointAt(const PwTrackMap& map, float pct, float w, float h) {
+    const uint32_t count = map.point_count;
+    float t = std::fmod(pct, 1.0f);
+    if (t < 0.0f) t += 1.0f;
+
+    const PwTrackMapPoint& first = map.points[0];
+    const PwTrackMapPoint& last = map.points[count - 1];
+    if (t <= first.pct || t >= last.pct) {
+        const float span = 1.0f - last.pct + first.pct;
+        if (span <= 0.0f) return TrackMapPixel(first, w, h);
+        const float travelled = t >= last.pct ? t - last.pct : 1.0f - last.pct + t;
+        const float u = travelled / span;
+        const PwTrackMapPoint lerped = {last.x + (first.x - last.x) * u,
+                                        last.y + (first.y - last.y) * u, t};
+        return TrackMapPixel(lerped, w, h);
+    }
+
+    uint32_t hi = 1;
+    while (hi < count && map.points[hi].pct <= t) ++hi;
+    if (hi >= count) hi = count - 1;
+    const PwTrackMapPoint& a = map.points[hi - 1];
+    const PwTrackMapPoint& b = map.points[hi];
+    const float span = b.pct - a.pct;
+    const float u = span > 0.0f ? (t - a.pct) / span : 0.0f;
+    const PwTrackMapPoint lerped = {a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, t};
+    return TrackMapPixel(lerped, w, h);
+}
+
 }  // namespace
 
 bool HudRenderer::Initialize(ID3D11Device* device) {
@@ -177,6 +214,7 @@ bool HudRenderer::Render(ID3D11Texture2D* target, const PwOverlay& overlay,
         case PW_OVERLAY_STANDINGS: DrawStandings(snapshot, size.width, size.height); break;
         case PW_OVERLAY_RELATIVE: DrawRelative(snapshot, size.width, size.height); break;
         case PW_OVERLAY_RADAR: DrawRadar(snapshot, size.width, size.height); break;
+        case PW_OVERLAY_TRACKMAP: DrawTrackMap(snapshot, size.width, size.height); break;
         case PW_OVERLAY_COACH:
         default: DrawCoach(snapshot, size.width, size.height); break;
     }
@@ -350,5 +388,56 @@ void HudRenderer::DrawRadar(const PwSnapshot& s, float w, float h) {
         }
         const float y = cy - c.gap_to_player_s * scale * 4.0f;
         m_d2dContext->FillEllipse(D2D1::Ellipse({cx, y}, 6.0f, 6.0f), them.Get());
+    }
+}
+
+void HudRenderer::DrawTrackMap(const PwSnapshot& s, float w, float h) {
+    const PwTrackMap& map = s.track_map;
+    if (map.point_count < 2) {
+        DrawText(L"NO TRACK MAP", m_label.Get(),
+                 {0.0f, h * 0.5f - 16.0f, w, h * 0.5f + 16.0f}, kGlowDim);
+        return;
+    }
+    const uint32_t count = map.point_count < PITWALL_VR_MAX_TRACK_MAP_POINTS
+                               ? map.point_count
+                               : PITWALL_VR_MAX_TRACK_MAP_POINTS;
+
+    ComPtr<ID2D1SolidColorBrush> circuit, me, them, pit;
+    m_d2dContext->CreateSolidColorBrush(kGlowDim, circuit.GetAddressOf());
+    m_d2dContext->CreateSolidColorBrush(kHero, me.GetAddressOf());
+    m_d2dContext->CreateSolidColorBrush(kWarn, them.GetAddressOf());
+    m_d2dContext->CreateSolidColorBrush(kGlowDim, pit.GetAddressOf());
+    if (!circuit) {
+        return;
+    }
+
+    // Closed polyline: one segment per vertex, last wrapping back to the start.
+    for (uint32_t i = 0; i < count; ++i) {
+        const D2D1_POINT_2F a = TrackMapPixel(map.points[i], w, h);
+        const D2D1_POINT_2F b = TrackMapPixel(map.points[(i + 1) % count], w, h);
+        m_d2dContext->DrawLine(a, b, circuit.Get(), 5.0f);
+    }
+
+    // Start / finish marker.
+    const D2D1_POINT_2F start = TrackMapPixel(map.points[0], w, h);
+    m_d2dContext->DrawEllipse(D2D1::Ellipse(start, 9.0f, 9.0f), circuit.Get(), 3.0f);
+
+    const uint32_t cars = s.competitor_count < PITWALL_VR_MAX_COMPETITORS
+                              ? s.competitor_count
+                              : PITWALL_VR_MAX_COMPETITORS;
+    for (uint32_t i = 0; i < cars && them && pit; ++i) {
+        const PwCompetitor& c = s.competitors[i];
+        if (c.flags & PW_COMPETITOR_IS_PLAYER) {
+            continue;  // the player is drawn from the snapshot below
+        }
+        ID2D1SolidColorBrush* brush =
+            (c.flags & PW_COMPETITOR_ON_PIT_ROAD) ? pit.Get() : them.Get();
+        const D2D1_POINT_2F at = TrackMapPointAt(map, c.lap_dist_pct, w, h);
+        m_d2dContext->FillEllipse(D2D1::Ellipse(at, 7.0f, 7.0f), brush);
+    }
+
+    if (me) {
+        const D2D1_POINT_2F at = TrackMapPointAt(map, s.lap_dist_pct, w, h);
+        m_d2dContext->FillEllipse(D2D1::Ellipse(at, 9.0f, 9.0f), me.Get());
     }
 }

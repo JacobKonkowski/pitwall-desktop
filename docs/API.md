@@ -4,7 +4,7 @@ Frontend IPC lives in `src/shared/api.ts` and `src/shared/types.ts`. TypeDoc: `n
 
 Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`.
 
-**39 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
+**40 commands** covering Analyze storage, Live, settings, audio coach, monitor overlays, and VR/HUD.
 
 ## Analyze / storage
 
@@ -13,6 +13,7 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `list_sessions` | `listSessions` | Session summaries (display cleanup applied) |
 | `get_session` | `getSession` | Session + laps (display cleanup applied) |
 | `get_lap_traces` | `getLapTraces` | Trace points for one lap |
+| `get_track_map` | `getTrackMap` | Cached circuit outline for a track; `null` when none generated |
 | `compare_laps` | `compareLaps` | Two-lap comparison: sectors, aligned traces, running delta, corners with per-lap technique, ABS / TC spans |
 | `corner_consistency` | `cornerConsistency` | Each given lap's brake point and corner time through the reference lap's corners |
 | `import_ibt` | `importIbt` | Single file (pipeline cleanup on write) |
