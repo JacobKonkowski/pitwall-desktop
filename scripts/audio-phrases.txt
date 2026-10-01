@@ -40,6 +40,9 @@ position_down=Dropped to position.
 
 incident_intro=Incident.
 
+tyre_hot=Tyres are running hot.
+lap_invalid=Invalid lap.
+
 fuel_good_to_finish=Fuel is good to the finish.
 fuel_low=Fuel low.
 fuel_pit_this_lap=Pit this lap or next.

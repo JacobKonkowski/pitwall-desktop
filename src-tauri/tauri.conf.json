@@ -27,6 +27,7 @@
     "active": true,
     "targets": "all",
     "resources": [
+      "resources/audio/coach/default/**/*",
       "resources/openxr-layer/**/*"
     ],
     "icon": [

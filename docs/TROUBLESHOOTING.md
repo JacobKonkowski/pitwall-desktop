@@ -22,7 +22,7 @@
 
 | Symptom | Check |
 |---------|--------|
-| Test Coach works, live silent | Missing WAVs under `resources/audio/coach/default/` — regenerate clips |
+| Test Coach works, live silent | Missing WAVs under `src-tauri/resources/audio/coach/default/` — regenerate clips. Look for `Coach clips unavailable, continuing TTS-only` in the log |
 | No Test Coach either | Windows speech / WinRT voices installed; coach not muted in settings |
 | Pack / clear wrong | Pack uses `CarLeftRight` enum; confirm on-track / not pit-road suppression |
 | Clip key missing | Phrase in `scripts/audio-phrases.txt` + regenerate; player skips missing files |

@@ -45,6 +45,9 @@ pub fn run() {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
             }
+            if let Some(dir) = commands::coach_clips_dir(app.handle()) {
+                state.audio.set_clips_dir(dir);
+            }
             start_watcher(app.handle().clone(), state.import.clone());
             recenter::init(app.handle(), &state);
             Ok(())

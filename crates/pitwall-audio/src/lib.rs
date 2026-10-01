@@ -31,10 +31,14 @@ use player::AudioPlayer;
 use queue::SpeechQueue;
 use speech::SpeechUnit;
 
+/// Coach clip folder relative to a resource root (`manifest.json` + `*.wav`).
+pub const COACH_CLIPS_REL: &str = "resources/audio/coach/default";
+
 pub struct AudioCoachService {
     cancel: Mutex<Option<CancellationToken>>,
     active: Mutex<bool>,
     last_message: Mutex<String>,
+    clips_dir: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -50,7 +54,13 @@ impl AudioCoachService {
             cancel: Mutex::new(None),
             active: Mutex::new(false),
             last_message: Mutex::new(String::new()),
+            clips_dir: Mutex::new(None),
         }
+    }
+
+    /// Directory the host resolved for coach clips; tried before workspace fallbacks.
+    pub fn set_clips_dir(&self, dir: PathBuf) {
+        *self.clips_dir.lock() = Some(dir);
     }
 
     pub fn is_active(&self) -> bool {
@@ -110,25 +120,47 @@ impl Default for AudioCoachService {
     }
 }
 
-fn coach_clips_dir() -> PathBuf {
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/audio/coach/default");
-    if dev.join("manifest.json").is_file() {
-        return dev;
+/// The clip set committed in the repo, which `tauri dev` and tests run against.
+fn workspace_clips_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../src-tauri")
+        .join(COACH_CLIPS_REL)
+}
+
+/// Clip directories in lookup order: host override, repo `src-tauri`, this crate,
+/// then beside the running executable.
+fn clip_dir_candidates(override_dir: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = override_dir.into_iter().collect();
+    candidates.push(workspace_clips_dir());
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(COACH_CLIPS_REL));
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(PathBuf::from))
+    {
+        candidates.push(dir.join(COACH_CLIPS_REL));
     }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let bundled = dir.join("resources/audio/coach/default");
-            if bundled.join("manifest.json").is_file() {
-                return bundled;
-            }
-        }
-    }
-    dev
+    candidates
+}
+
+fn coach_clips_dir(service: &AudioCoachService) -> PathBuf {
+    let override_dir = service.clips_dir.lock().clone();
+    clip_dir_candidates(override_dir)
+        .into_iter()
+        .find(|dir| dir.join("manifest.json").is_file())
+        .unwrap_or_else(workspace_clips_dir)
+}
+
+/// Load the clip manifest, falling back to an empty one so TTS lines still play.
+fn load_manifest(service: &AudioCoachService) -> ClipManifest {
+    let dir = coach_clips_dir(service);
+    ClipManifest::load(dir.clone()).unwrap_or_else(|e| {
+        tracing::warn!("Coach clips unavailable, continuing TTS-only: {e:#}");
+        ClipManifest::empty(dir)
+    })
 }
 
 fn run_speak_test(service: Arc<AudioCoachService>) -> anyhow::Result<()> {
-    let clips_dir = coach_clips_dir();
-    let manifest = ClipManifest::load(clips_dir)?;
+    let manifest = load_manifest(&service);
     let settings = load_settings();
     let player = AudioPlayer::new(
         manifest,
@@ -147,8 +179,7 @@ fn run_audio_loop(
     live: Arc<LiveService>,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
-    let clips_dir = coach_clips_dir();
-    let manifest = ClipManifest::load(clips_dir)?;
+    let manifest = load_manifest(&service);
     let settings = load_settings();
     let mut player = AudioPlayer::new(
         manifest,
@@ -235,11 +266,40 @@ fn play(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::speech::SpeechPlan;
+    use super::{clip_dir_candidates, coach_clips_dir, workspace_clips_dir, AudioCoachService};
 
     #[test]
     fn display_text_sequence() {
         let plan = SpeechPlan::sequence(vec![]);
         assert_eq!(plan.display_text(), "");
+    }
+
+    #[test]
+    fn workspace_clips_dir_holds_manifest() {
+        assert!(workspace_clips_dir().join("manifest.json").is_file());
+    }
+
+    #[test]
+    fn resolves_workspace_clips_without_override() {
+        let service = AudioCoachService::new();
+        assert_eq!(coach_clips_dir(&service), workspace_clips_dir());
+    }
+
+    #[test]
+    fn override_is_tried_first() {
+        let custom = PathBuf::from("custom-clips");
+        let candidates = clip_dir_candidates(Some(custom.clone()));
+        assert_eq!(candidates[0], custom);
+        assert_eq!(candidates[1], workspace_clips_dir());
+    }
+
+    #[test]
+    fn missing_override_falls_through() {
+        let service = AudioCoachService::new();
+        service.set_clips_dir(PathBuf::from("does-not-exist"));
+        assert_eq!(coach_clips_dir(&service), workspace_clips_dir());
     }
 }
