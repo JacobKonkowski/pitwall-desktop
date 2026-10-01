@@ -102,15 +102,63 @@ in NOTICE.
 
 ## Patents
 
-**No repository process can prove patent non-infringement.**
+**No repository process can prove patent non-infringement.** This section is an
+informal engineering landscape note (US-focused web search, April–October 2026
+context). It is **not** a freedom-to-operate (FTO) opinion, claim chart, or legal
+advice. Claim construction, doctrine of equivalents, and jurisdiction-specific
+risk require counsel.
 
-- Software patents (telemetry HUDs, coaching UIs, VR overlays, seqlocks, etc.)
-  may exist independently of copyrighted source.
+### PitWall surfaces that attract patent search
+
+| Feature area | What PitWall does today |
+|--------------|-------------------------|
+| Audio coach | Rule-based callouts from live IRSDK (flags, pack/spotter, fuel, gaps, sector/lap times, race clock) via WAV + WinRT TTS |
+| Live field UI | Leaderboard, gaps, pack state from shared memory |
+| Analyze | IBT import, lap cleanup, two-lap compare, client-side insights |
+| Native VR HUD | Implicit OpenXR API layer appends `XrCompositionLayerQuad`s; desktop writes SHM |
+
+### Notable US patents / families (watch list)
+
+These were the closest public hits when searching for racing voice guidance,
+path-based coaching, and VR/game overlays. “Overlap” below means **thematic /
+feature adjacency**, not a finding of infringement or non-infringement.
+
+| Patent / family | Owner (as listed publicly) | Claim focus (high level) | Overlap vs PitWall (engineering view) |
+|-----------------|----------------------------|--------------------------|----------------------------------------|
+| [US 11,151,900 B2](https://patents.google.com/patent/US11151900B2) | RaceVoice LLC → Finger Lakes Consulting Group Inc. | Pre-race UI to select **track points** + guidance options; while racing, detect location at a selected point; annunciate vehicle parameter via audio actuator in a **driver’s race helmet** | **Highest thematic risk for voice coaching.** RaceVoice also markets sim products and offers licensing. PitWall’s current coach is mostly **event/edge driven** (flag/pack/sector/lap), not a “pick map points → announce speed at GPS corner” product. That difference may or may not matter under claim construction — counsel must decide. Active; 4th-year maintenance fee recorded (2025). |
+| [US 11,830,375 B2](https://patents.google.com/patent/US11830375B2) and continuations (e.g. [US 12,606,023 B2](https://patents.google.com/patent/US12606023B2)) | Garmin | Build an **optimal path of travel** from multiple geolocated laps; audible/visual coaching; some claims tie to brake-pedal sensors / camera | Lower overlap with current PitWall: no removable brake sensor, no GNSS coach device, no “stitch best segments into optimal line” coaching pipeline. Analyze track maps from IBT GPS are visualization, not this claimed coaching method. Still a watch if you add turn-by-turn “brake earlier / later” from path reconstruction. |
+| Broader VR / game overlay art (e.g. cloud-gaming VRAM overlays, HMD compositors) | Various | Injecting / blending overlays into rendered frames | OpenXR **API layers** that append composition quads are a **published Khronos / community pattern** (not PitWall-specific). No patent was found in this scan that clearly claims “OpenXR API layer injects HUD quads into another app’s `xrEndFrame`.” Broader overlay patents still exist; using the loader-supported layer path is not itself a clearance. |
+| Telemetry+video sync (e.g. [US 10,016,689 B2](https://patents.google.com/patent/US10016689B2)) | Various | Associate gameplay video timestamps with telemetry events | Low overlap today (PitWall does not ship synchronized video↔telemetry replay as a core feature). |
+
+### Practical risk ranking for *this* codebase
+
+1. **Audio coach** — watch RaceVoice / US 11,151,900 before expanding into
+   location-triggered corner speed / G-force callouts, map-point configuration
+   UIs, or marketing that mirrors their patented framing. Prefer documenting that
+   PitWall announces **sim session events and timing edges**, not a race-vehicle
+   helmet VGS at preselected track geolocations — but do not treat that as a
+   legal safe harbor.
+2. **Path / “optimal line” coaching** — watch Garmin family before shipping
+   geolocation-stitched ideal lines with live audible brake/throttle instructions.
+3. **VR HUD** — lower specific-patent signal in this scan; rely on OpenXR public
+   APIs and avoid copying proprietary overlay implementations. Still get FTO if
+   commercializing widely.
+4. **IBT analyze / lap compare / fuel panels** — common analytics patterns; no
+   standout blocking patent surfaced in this pass (absence of evidence ≠ evidence
+   of absence).
+
+### What to do next (counsel / product)
+
+- Before **commercial sale, paid distribution, or fundraising**, commission a
+  real FTO from a patent attorney covering at least US (and any launch markets),
+  with claim charts against US 11,151,900 and the Garmin racing-coach family.
+- If expanding the coach toward **corner entry/min/exit speeds at track
+  locations**, treat RaceVoice licensing outreach (`patent@racevoice.com` per
+  their site) as a business option to evaluate with counsel — do not DIY a
+  “design around” without advice.
 - Apache-2.0 dependencies grant a limited patent license **for those
-  contributions**; that does not cover unrelated third-party patents or the iRacing
-  platform itself.
-- Before fundraising, App Store distribution, or selling the product, obtain a
-  **freedom-to-operate** review from qualified counsel in relevant jurisdictions.
+  contributions only**; that does not cover RaceVoice, Garmin, iRacing, or
+  unrelated third-party patents.
 - If you knowingly implement a patented method, document the patent number and
   license status in NOTICE — or do not ship it.
 

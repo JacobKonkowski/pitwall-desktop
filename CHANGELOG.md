@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Modular foundation work in progress (workspace crates, dual-surface widgets, OSS hygiene).
 - IP hygiene: [docs/IP.md](docs/IP.md), expanded [NOTICE](NOTICE), npm license allowlist (`npm run check:licenses`) in CI, README trademark disclaimer.
+- Informal US patent landscape notes in [docs/IP.md](docs/IP.md) (RaceVoice / Garmin watch list; not an FTO opinion).
 
 ## [0.1.0] - 2026-09-09
 
