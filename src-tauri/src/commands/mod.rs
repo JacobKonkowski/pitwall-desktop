@@ -9,7 +9,10 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::analysis::{compare_laps as run_compare, CompareInput, LapComparison, TrackOutline};
+use crate::analysis::{
+    compare_laps as run_compare, corner_consistency as run_consistency, CompareInput,
+    ConsistencyLap, CornerConsistency, LapComparison, TracePoint, TrackOutline,
+};
 use crate::audio::AudioCoachService;
 use crate::ingest::{
     check_iracing_config, default_telemetry_dir, run_import, run_reimport, spawn_recent_ibt_import,
@@ -129,6 +132,42 @@ pub fn compare_laps(
         traces: &ref_traces,
     };
     Ok(run_compare(&candidate, &reference))
+}
+
+/// Brake point and corner time for each of `lap_ids` through the reference
+/// lap's corners. The caller picks the laps (clean laps of one sub-session).
+#[tauri::command]
+pub fn corner_consistency(
+    state: State<'_, Arc<AppState>>,
+    reference_lap_id: i64,
+    lap_ids: Vec<i64>,
+) -> Result<Vec<CornerConsistency>, String> {
+    let db = state.import.db.lock();
+    let load = |lap_id: i64| {
+        db.get_lap_compare_data(lap_id)
+            .map(|(time, _, traces)| (lap_id, time, traces))
+            .map_err(|e| e.to_string())
+    };
+    let reference = load(reference_lap_id)?;
+    let others = lap_ids
+        .into_iter()
+        .filter(|&id| id != reference_lap_id)
+        .map(load)
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(db);
+
+    fn input(lap: &(i64, Option<f64>, Vec<TracePoint>)) -> ConsistencyLap<'_> {
+        ConsistencyLap {
+            lap_id: lap.0,
+            lap_time_ms: lap.1,
+            traces: &lap.2,
+        }
+    }
+    let laps: Vec<ConsistencyLap> = std::iter::once(&reference)
+        .chain(&others)
+        .map(input)
+        .collect();
+    Ok(run_consistency(&input(&reference), &laps))
 }
 
 #[tauri::command]

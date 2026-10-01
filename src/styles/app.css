@@ -521,6 +521,99 @@
   font-size: 12px;
   margin: 8px 0 2px;
 }
+.corner-analysis {
+  margin: 8px 0 16px;
+}
+.corner-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.corner-sort {
+  margin-left: auto;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.corner-insight {
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+.corner-note {
+  font-size: 12px;
+  margin: 0 0 6px;
+}
+.corner-table tbody tr {
+  cursor: default;
+}
+.corner-table tbody tr.corner-focusable {
+  cursor: pointer;
+}
+.corner-table tbody tr.corner-worst {
+  box-shadow: inset 3px 0 0 var(--color-slow);
+}
+.corner-table tbody tr.corner-expanded {
+  background: var(--color-surface-alt);
+}
+.corner-table tbody tr.corner-detail-row {
+  cursor: default;
+}
+.corner-table tbody tr.corner-detail-row > td {
+  background: var(--color-surface-alt);
+  padding: 10px 12px 12px;
+}
+.corner-detail {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.corner-detail .corner-note {
+  grid-column: 1;
+}
+.corner-detail .corner-consistency {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-width: 0;
+}
+.corner-technique td,
+.corner-technique th {
+  padding: 3px 8px;
+}
+.scatter-tip {
+  background: #12161f;
+  border: 1px solid #262d3a;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.chart-note {
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+.corner-table .corner-pos {
+  font-size: 11px;
+}
+.corner-table .corner-bar-col {
+  width: 120px;
+  padding-left: 0;
+  padding-right: 0;
+}
+.corner-bar {
+  position: relative;
+  height: 8px;
+  background: var(--color-surface-alt);
+  border-radius: 2px;
+}
+.corner-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: currentColor;
+  border-radius: 2px;
+}
+
 .legend {
   display: flex;
   gap: 16px;

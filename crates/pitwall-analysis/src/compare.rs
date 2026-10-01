@@ -7,6 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::corners::{
+    analyze_corners, AssistSpan, CornerAnalysis, CornerDelta, DeltaCurve, LapTimeline, TimingSource,
+};
 use super::types::TracePoint;
 
 /// Number of points on the shared distance grid used to align two laps.
@@ -47,6 +50,9 @@ pub struct AlignedPoint {
     pub reference_gear: Option<f64>,
     pub candidate_steering: Option<f64>,
     pub reference_steering: Option<f64>,
+    /// Running gap (candidate minus reference, ms) from the start of the range
+    /// both laps cover. `None` where either lap has no time curve.
+    pub cumulative_delta_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +65,14 @@ pub struct LapComparison {
     pub delta_ms: Option<f64>,
     pub sector_deltas: Vec<SectorDelta>,
     pub series: Vec<AlignedPoint>,
+    /// Reference-lap corners in track order, with the candidate's loss in each.
+    pub corners: Vec<CornerDelta>,
+    /// Where ABS / TC intervened on either lap, for shading the pedal charts.
+    pub assists: Vec<AssistSpan>,
+    /// Where the running delta and corner times came from; `None` when either
+    /// lap lacks enough trace to build a time curve.
+    pub timing: Option<TimingSource>,
+    pub track_length_m: Option<f64>,
 }
 
 pub fn compare_laps(candidate: &CompareInput, reference: &CompareInput) -> LapComparison {
@@ -66,6 +80,24 @@ pub fn compare_laps(candidate: &CompareInput, reference: &CompareInput) -> LapCo
         (Some(c), Some(r)) => Some(c - r),
         _ => None,
     };
+    let curve = LapTimeline::from_trace(candidate.traces, candidate.lap_time_ms)
+        .zip(LapTimeline::from_trace(
+            reference.traces,
+            reference.lap_time_ms,
+        ))
+        .and_then(|(c, r)| DeltaCurve::new(c, r));
+
+    let mut series = aligned_series(candidate.traces, reference.traces);
+    if let Some(curve) = &curve {
+        for point in &mut series {
+            point.cumulative_delta_ms = curve.at(point.dist_pct);
+        }
+    }
+
+    let CornerAnalysis { corners, assists } = curve
+        .as_ref()
+        .map(|c| analyze_corners(candidate.traces, reference.traces, c))
+        .unwrap_or_default();
 
     LapComparison {
         candidate_lap_id: candidate.lap_id,
@@ -74,7 +106,11 @@ pub fn compare_laps(candidate: &CompareInput, reference: &CompareInput) -> LapCo
         reference_time_ms: reference.lap_time_ms,
         delta_ms,
         sector_deltas: sector_deltas(candidate.sectors, reference.sectors),
-        series: aligned_series(candidate.traces, reference.traces),
+        series,
+        corners,
+        assists,
+        timing: curve.as_ref().map(DeltaCurve::source),
+        track_length_m: curve.as_ref().and_then(DeltaCurve::track_length_m),
     }
 }
 
@@ -127,6 +163,7 @@ fn aligned_series(candidate: &[TracePoint], reference: &[TracePoint]) -> Vec<Ali
                 reference_gear: interp(reference, dist_pct, |p| p.gear as f64),
                 candidate_steering: interp(candidate, dist_pct, |p| p.steering),
                 reference_steering: interp(reference, dist_pct, |p| p.steering),
+                cumulative_delta_ms: None,
             }
         })
         .collect()
@@ -134,7 +171,11 @@ fn aligned_series(candidate: &[TracePoint], reference: &[TracePoint]) -> Vec<Ali
 
 /// Linear interpolation of a channel at `x` over points sorted by `dist_pct`.
 /// Returns `None` when the trace is empty or `x` falls outside its coverage.
-fn interp(points: &[TracePoint], x: f64, accessor: impl Fn(&TracePoint) -> f64) -> Option<f64> {
+pub(crate) fn interp(
+    points: &[TracePoint],
+    x: f64,
+    accessor: impl Fn(&TracePoint) -> f64,
+) -> Option<f64> {
     if points.len() < 2 {
         return points.first().map(&accessor);
     }
@@ -171,15 +212,16 @@ mod tests {
             speed,
             throttle: 0.0,
             brake: 0.0,
-            gear,
-            steering,
-            lat: None,
-            lon: None,
             throttle_raw: None,
             brake_raw: None,
             clutch: None,
             clutch_raw: None,
             handbrake_raw: None,
+            abs_active: None,
+            gear,
+            steering,
+            lat: None,
+            lon: None,
             elapsed_ms: None,
         }
     }

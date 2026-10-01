@@ -102,6 +102,7 @@ mod tests {
             clutch: None,
             clutch_raw: None,
             handbrake_raw: None,
+            abs_active: None,
             steering: 0.0,
             gear: 4,
             fuel_level: 50.0,
