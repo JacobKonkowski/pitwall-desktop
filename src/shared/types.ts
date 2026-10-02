@@ -432,7 +432,7 @@ export function defaultOverlayLayout(): OverlayLayout {
   };
 }
 
-/** User preferences persisted to `%LOCALAPPDATA%\\pitwall-desktop\\settings.json`. */
+/** User preferences persisted to `%LOCALAPPDATA%\\race-refinery\\settings.json`. */
 export interface AppSettings {
   ollamaUrl?: string;
   ollamaModel?: string;

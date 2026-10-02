@@ -1,6 +1,6 @@
 # Privacy
 
-PitWall Desktop is designed to run **entirely on your machine**.
+Race Refinery is designed to run **entirely on your machine**.
 
 ## What we do not do
 
@@ -12,7 +12,7 @@ PitWall Desktop is designed to run **entirely on your machine**.
 
 | Data | Location |
 |------|----------|
-| Imported sessions / laps | SQLite under `%LOCALAPPDATA%\pitwall-desktop\` |
+| Imported sessions / laps | SQLite under `%LOCALAPPDATA%\race-refinery\` |
 | Settings | JSON beside the database |
 | Coach WAV clips | Bundled app resources (and any you generate locally) |
 | OpenXR layer install | Per-user registry + staged DLL under AppData |

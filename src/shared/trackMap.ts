@@ -1,4 +1,4 @@
-/** Track outline geometry helpers, mirroring `pitwall_analysis::track_map`. */
+/** Track outline geometry helpers, mirroring `race_refinery_analysis::track_map`. */
 import type { OutlinePoint, TrackOutline, TrailSample } from "./types";
 
 export interface MapPoint {

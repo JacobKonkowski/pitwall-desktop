@@ -1,6 +1,6 @@
 //! Dev-only: batch-export coach WAV clips from `scripts/audio-phrases.txt`.
 //!
-//! **Not invoked by the PitWall app at runtime.** Use while developing to bake
+//! **Not invoked by the Race Refinery app at runtime.** Use while developing to bake
 //! the bundled Piper voice into committed WAV files, so fixed callouts match the
 //! live numbers the app synthesizes with the same voice.
 //!
@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use pitwall_desktop_lib::audio::{
+use race_refinery_desktop_lib::audio::{
     load_phrases_file, tts_piper::PiperTts, tts_winrt::WinRtTts, PIPER_VOICE_REL,
 };
 

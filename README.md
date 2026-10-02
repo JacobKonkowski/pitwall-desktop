@@ -1,16 +1,16 @@
-# PitWall Desktop
+# Race Refinery
 
-[![CI](https://github.com/JacobKonkowski/pitwall-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobKonkowski/pitwall-desktop/actions/workflows/ci.yml)
+[![CI](https://github.com/JacobKonkowski/race-refinery-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobKonkowski/race-refinery-desktop/actions/workflows/ci.yml)
 
-PitWall is iRacing telemetry for Windows: post-session IBT analysis, live shared-memory telemetry, a rule-based voice coach, and an in-headset HUD via PitWall’s OpenXR layer (plus a local web preview).
+Race Refinery is iRacing telemetry for Windows: post-session IBT analysis, live shared-memory telemetry, a rule-based voice coach, and an in-headset HUD via Race Refinery’s OpenXR layer (plus a local web preview).
 
-**Repository:** [github.com/JacobKonkowski/pitwall-desktop](https://github.com/JacobKonkowski/pitwall-desktop)
+**Repository:** [github.com/JacobKonkowski/race-refinery-desktop](https://github.com/JacobKonkowski/race-refinery-desktop)
 
 ## Quick start
 
 ```powershell
-git clone https://github.com/JacobKonkowski/pitwall-desktop.git
-cd pitwall-desktop
+git clone https://github.com/JacobKonkowski/race-refinery-desktop.git
+cd race-refinery-desktop
 .\setup.ps1 -SkipBuild
 npm run tauri dev
 ```
@@ -25,7 +25,7 @@ npm run tauri dev
 | [Rust](https://rustup.rs/) 1.89+ | Required by the `pitwall` crate |
 | [Node.js](https://nodejs.org/) 18+ | Frontend build and Tauri CLI |
 | iRacing | Disk telemetry for IBT import; shared memory for live monitor |
-| OpenXR VR runtime (optional) | In-headset HUD via PitWall’s OpenXR API layer |
+| OpenXR VR runtime (optional) | In-headset HUD via Race Refinery’s OpenXR API layer |
 
 ### iRacing configuration
 
@@ -55,7 +55,7 @@ The UI is a feature shell with two surfaces: **Analyze** and **Live** (`src/feat
 - Real-time telemetry via `pitwall::Pitwall::connect()`
 - Live leaderboard, session deltas, coach message preview
 - **Audio coach** — WAV clips for fixed phrases + WinRT TTS for numbers. See [docs/AUDIO_COACH.md](docs/AUDIO_COACH.md)
-- **In-headset HUD** — PitWall OpenXR API layer; web preview at `http://127.0.0.1:17342/vr`. See [docs/NATIVE_VR.md](docs/NATIVE_VR.md)
+- **In-headset HUD** — Race Refinery OpenXR API layer; web preview at `http://127.0.0.1:17342/vr`. See [docs/NATIVE_VR.md](docs/NATIVE_VR.md)
 - Demo clock for offline UI / SHM test pattern without a sim session
 
 ### Field awareness
@@ -74,7 +74,7 @@ Live gaps, pack state, and session best/optimal deltas while connected. See [doc
 
 ## Data storage
 
-- SQLite under `%LOCALAPPDATA%\pitwall-desktop\` (schema **v2** — see [docs/DATA_MODEL.md](docs/DATA_MODEL.md))
+- SQLite under `%LOCALAPPDATA%\race-refinery\` (schema **v2** — see [docs/DATA_MODEL.md](docs/DATA_MODEL.md))
 - Settings JSON beside the DB (audio + VR + overlay layout for VR slots)
 - Coach WAV clips: `src-tauri/resources/audio/coach/default/`
 

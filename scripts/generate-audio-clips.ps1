@@ -1,6 +1,6 @@
-# Dev-only: batch-export PitWall coach WAV clips with the bundled Piper neural voice
+# Dev-only: batch-export Race Refinery coach WAV clips with the bundled Piper neural voice
 # (the same voice the app uses live for numbers), or WinRT / placeholder.
-# Does NOT run inside the PitWall app - only on your machine when regenerating assets.
+# Does NOT run inside the Race Refinery app - only on your machine when regenerating assets.
 #
 # Examples:
 #   .\scripts\generate-audio-clips.ps1

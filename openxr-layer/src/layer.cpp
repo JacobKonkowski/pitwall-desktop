@@ -1,9 +1,9 @@
-// PitWall OpenXR API layer.
+// Race Refinery OpenXR API layer.
 //
 // Inserted by the OpenXR loader between iRacing and the active runtime (Meta,
 // SteamVR, VDXR, ...). It hooks xrEndFrame and appends one composition-layer
-// quad per enabled PitWall overlay, drawing the pixels with Direct2D from the
-// shared-memory snapshot produced by the PitWall desktop process.
+// quad per enabled Race Refinery overlay, drawing the pixels with Direct2D from the
+// shared-memory snapshot produced by the Race Refinery desktop process.
 //
 // Structure follows the standard implicit-layer pattern from
 // Ybalrid/OpenXR-API-Layer-Template: negotiate -> create-instance shim ->
@@ -24,7 +24,7 @@
 #include <openxr/openxr_loader_negotiation.h>
 
 #include "hud_renderer.h"
-#include "pitwall_vr_shm.h"
+#include "race_refinery_vr_shm.h"
 #include "shm_reader.h"
 
 // One-shot diagnostics for "is the layer actually in the iRacing process?"
@@ -35,7 +35,7 @@ static void WriteLayerStatus(const char* line) {
         return;
     }
     const std::string file =
-        std::string(path) + "\\pitwall-desktop\\layer-status.txt";
+        std::string(path) + "\\race-refinery\\layer-status.txt";
     HANDLE h = CreateFileA(file.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
@@ -60,11 +60,11 @@ uint64_t NowMs() {
 // Per-kind swapchain dimensions.
 void HudDimensions(uint32_t kind, uint32_t& width, uint32_t& height) {
     switch (kind) {
-        case PW_OVERLAY_STANDINGS: width = 512; height = 640; break;  // tall list
-        case PW_OVERLAY_RELATIVE:  width = 512; height = 512; break;  // square board
-        case PW_OVERLAY_RADAR:     width = 512; height = 512; break;  // square dish
-        case PW_OVERLAY_TRACKMAP:  width = 512; height = 512; break;  // square circuit
-        case PW_OVERLAY_COACH:
+        case RR_OVERLAY_STANDINGS: width = 512; height = 640; break;  // tall list
+        case RR_OVERLAY_RELATIVE:  width = 512; height = 512; break;  // square board
+        case RR_OVERLAY_RADAR:     width = 512; height = 512; break;  // square dish
+        case RR_OVERLAY_TRACKMAP:  width = 512; height = 512; break;  // square circuit
+        case RR_OVERLAY_COACH:
         default:                   width = 1024; height = 288; break; // wide-short
     }
 }
@@ -109,7 +109,7 @@ struct LayerContext {
     uint32_t lastRecenterSeq = 0;
     bool needAnchor = true;
 
-    OverlaySwapchain overlays[PITWALL_VR_MAX_OVERLAYS];
+    OverlaySwapchain overlays[RACE_REFINERY_VR_MAX_OVERLAYS];
     HudRenderer renderer;
     ShmReader shm;
     bool sessionReady = false;
@@ -151,7 +151,7 @@ bool EnsureRendererFromTexture(ID3D11Texture2D* texture) {
 // ---------------------------------------------------------------------------
 
 bool EnsureOverlaySwapchain(int slot, uint32_t kind) {
-    if (slot < 0 || slot >= PITWALL_VR_MAX_OVERLAYS) {
+    if (slot < 0 || slot >= RACE_REFINERY_VR_MAX_OVERLAYS) {
         return false;
     }
     OverlaySwapchain& ov = g_ctx.overlays[slot];
@@ -203,7 +203,7 @@ bool EnsureOverlaySwapchain(int slot, uint32_t kind) {
 
 // Acquire/wait/render/release one overlay's swapchain image. Returns true if the
 // image is ready to be referenced by a composition layer this frame.
-bool RenderOverlay(int slot, const PwOverlay& overlay, const PwSnapshot& snapshot) {
+bool RenderOverlay(int slot, const RrOverlay& overlay, const RrSnapshot& snapshot) {
     if (!EnsureOverlaySwapchain(slot, overlay.kind)) {
         return false;
     }
@@ -231,7 +231,7 @@ bool RenderOverlay(int slot, const PwOverlay& overlay, const PwSnapshot& snapsho
 }
 
 XrSpace SpaceFor(uint32_t lockSpace) {
-    if (lockSpace == PW_LOCK_LOCAL) {
+    if (lockSpace == RR_LOCK_LOCAL) {
         return g_ctx.anchorSpace != XR_NULL_HANDLE ? g_ctx.anchorSpace : g_ctx.localSpace;
     }
     return g_ctx.viewSpace;
@@ -282,13 +282,13 @@ bool RebuildAnchor(XrTime displayTime) {
 // Hooked entry points
 // ---------------------------------------------------------------------------
 
-XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
+XRAPI_ATTR XrResult XRAPI_CALL RaceRefinery_xrEndFrame(XrSession session,
                                                   const XrFrameEndInfo* frameEndInfo) {
     if (session != g_ctx.session || !g_ctx.sessionReady || frameEndInfo == nullptr) {
         return g_ctx.dispatch.endFrame(session, frameEndInfo);
     }
 
-    PwSharedBlock block;
+    RrSharedBlock block;
     if (!g_ctx.shm.Read(block, NowMs(), kMaxSnapshotAgeMs)) {
         return g_ctx.dispatch.endFrame(session, frameEndInfo);
     }
@@ -305,13 +305,13 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
 
     // Quad structs must outlive the endFrame call below.
     std::vector<XrCompositionLayerQuad> quads;
-    quads.reserve(PITWALL_VR_MAX_OVERLAYS);
+    quads.reserve(RACE_REFINERY_VR_MAX_OVERLAYS);
 
     const uint32_t overlayCount =
-        block.overlay_count < PITWALL_VR_MAX_OVERLAYS ? block.overlay_count
-                                                      : PITWALL_VR_MAX_OVERLAYS;
+        block.overlay_count < RACE_REFINERY_VR_MAX_OVERLAYS ? block.overlay_count
+                                                      : RACE_REFINERY_VR_MAX_OVERLAYS;
     for (uint32_t i = 0; i < overlayCount; ++i) {
-        const PwOverlay& ov = block.overlays[i];
+        const RrOverlay& ov = block.overlays[i];
         if (!ov.enabled) {
             continue;
         }
@@ -344,7 +344,7 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrEndFrame(XrSession session,
     return g_ctx.dispatch.endFrame(session, &modified);
 }
 
-XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateSession(XrInstance instance,
+XRAPI_ATTR XrResult XRAPI_CALL RaceRefinery_xrCreateSession(XrInstance instance,
                                                        const XrSessionCreateInfo* createInfo,
                                                        XrSession* session) {
     const XrResult res = g_ctx.dispatch.createSession(instance, createInfo, session);
@@ -404,7 +404,7 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateSession(XrInstance instance,
     return res;
 }
 
-XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrDestroySession(XrSession session) {
+XRAPI_ATTR XrResult XRAPI_CALL RaceRefinery_xrDestroySession(XrSession session) {
     if (session == g_ctx.session) {
         for (auto& ov : g_ctx.overlays) {
             if (ov.swapchain != XR_NULL_HANDLE) {
@@ -429,13 +429,13 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrDestroySession(XrSession session) {
     return g_ctx.dispatch.destroySession(session);
 }
 
-XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrDestroyInstance(XrInstance instance) {
+XRAPI_ATTR XrResult XRAPI_CALL RaceRefinery_xrDestroyInstance(XrInstance instance) {
     PFN_xrDestroyInstance down = g_ctx.dispatch.destroyInstance;
     g_ctx = LayerContext{};
     return down ? down(instance) : XR_SUCCESS;
 }
 
-XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrGetInstanceProcAddr(XrInstance instance,
+XRAPI_ATTR XrResult XRAPI_CALL RaceRefinery_xrGetInstanceProcAddr(XrInstance instance,
                                                              const char* name,
                                                              PFN_xrVoidFunction* function) {
     const auto bind = [&](PFN_xrVoidFunction fn) {
@@ -443,13 +443,13 @@ XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrGetInstanceProcAddr(XrInstance instance
         return XR_SUCCESS;
     };
     if (std::strcmp(name, "xrEndFrame") == 0)
-        return bind(reinterpret_cast<PFN_xrVoidFunction>(PitWall_xrEndFrame));
+        return bind(reinterpret_cast<PFN_xrVoidFunction>(RaceRefinery_xrEndFrame));
     if (std::strcmp(name, "xrCreateSession") == 0)
-        return bind(reinterpret_cast<PFN_xrVoidFunction>(PitWall_xrCreateSession));
+        return bind(reinterpret_cast<PFN_xrVoidFunction>(RaceRefinery_xrCreateSession));
     if (std::strcmp(name, "xrDestroySession") == 0)
-        return bind(reinterpret_cast<PFN_xrVoidFunction>(PitWall_xrDestroySession));
+        return bind(reinterpret_cast<PFN_xrVoidFunction>(RaceRefinery_xrDestroySession));
     if (std::strcmp(name, "xrDestroyInstance") == 0)
-        return bind(reinterpret_cast<PFN_xrVoidFunction>(PitWall_xrDestroyInstance));
+        return bind(reinterpret_cast<PFN_xrVoidFunction>(RaceRefinery_xrDestroyInstance));
     return g_ctx.dispatch.getInstanceProcAddr(instance, name, function);
 }
 
@@ -461,7 +461,7 @@ void Load(const char* name, T& slot) {
     }
 }
 
-XRAPI_ATTR XrResult XRAPI_CALL PitWall_xrCreateApiLayerInstance(
+XRAPI_ATTR XrResult XRAPI_CALL RaceRefinery_xrCreateApiLayerInstance(
     const XrInstanceCreateInfo* info, const XrApiLayerCreateInfo* apiLayerInfo,
     XrInstance* instance) {
     XrApiLayerNextInfo* nextInfo = apiLayerInfo->nextInfo;
@@ -509,9 +509,9 @@ XRAPI_ATTR XrResult XRAPI_CALL xrNegotiateLoaderApiLayerInterface(
     }
     apiLayerRequest->layerInterfaceVersion = XR_CURRENT_LOADER_API_LAYER_VERSION;
     apiLayerRequest->layerApiVersion = XR_CURRENT_API_VERSION;
-    apiLayerRequest->getInstanceProcAddr = PitWall_xrGetInstanceProcAddr;
-    apiLayerRequest->createApiLayerInstance = PitWall_xrCreateApiLayerInstance;
-    WriteLayerStatus("negotiate: PitWall OpenXR layer loaded");
+    apiLayerRequest->getInstanceProcAddr = RaceRefinery_xrGetInstanceProcAddr;
+    apiLayerRequest->createApiLayerInstance = RaceRefinery_xrCreateApiLayerInstance;
+    WriteLayerStatus("negotiate: Race Refinery OpenXR layer loaded");
     return XR_SUCCESS;
 }
 

@@ -1,6 +1,6 @@
 # Features
 
-PitWall exposes features via `src/features/registry.ts`: **Analyze**, **Live**, and **Settings**.
+Race Refinery exposes features via `src/features/registry.ts`: **Analyze**, **Live**, and **Settings**.
 
 ## Analyze
 
@@ -45,7 +45,7 @@ Overlay layout settings configure a **shared widget catalog** (coach / standings
 
 ## Settings
 
-Persisted via `get_settings` / `save_settings_cmd` (full write) or `patch_settings_cmd` (merge top-level keys). The **Settings** page covers VR HUD mode, per-widget VR placement, recenter bindings (keyboard / wheel button), and the audio coach: voice (bundled PitWall neural voice, or a Windows voice from `list_tts_voices_cmd` for numbers), speed, volume, pause between calls, low-fuel threshold, chatter level, fuel-call margin, radio beep, and every callout category. The Live page keeps quick toggles for common audio categories plus monitor overlay and VR actions (including Recenter and coach VR size/opacity/height sliders).
+Persisted via `get_settings` / `save_settings_cmd` (full write) or `patch_settings_cmd` (merge top-level keys). The **Settings** page covers VR HUD mode, per-widget VR placement, recenter bindings (keyboard / wheel button), and the audio coach: voice (bundled Race Refinery neural voice, or a Windows voice from `list_tts_voices_cmd` for numbers), speed, volume, pause between calls, low-fuel threshold, chatter level, fuel-call margin, radio beep, and every callout category. The Live page keeps quick toggles for common audio categories plus monitor overlay and VR actions (including Recenter and coach VR size/opacity/height sliders).
 
 ## Track map
 

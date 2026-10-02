@@ -69,7 +69,7 @@ jobs:
         run: npm run docs:api
 
       - name: Build without VR feature matrix note
-        run: cargo check -p pitwall-desktop --no-default-features
+        run: cargo check -p race-refinery-desktop --no-default-features
         continue-on-error: true
 
   advisories:
@@ -125,7 +125,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: pitwall-desktop-msi
+          name: race-refinery-msi
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe

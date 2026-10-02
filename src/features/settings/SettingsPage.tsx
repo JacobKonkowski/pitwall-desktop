@@ -238,7 +238,7 @@ export function SettingsPage() {
           </div>
           <p className="muted small">
             {native
-              ? "Draws widgets directly in the headset through the PitWall OpenXR layer."
+              ? "Draws widgets directly in the headset through the Race Refinery OpenXR layer."
               : "Serves the HUD at http://127.0.0.1:17342/vr for a browser or OpenKneeboard tab."}{" "}
             Takes effect the next time you start the HUD.
           </p>
@@ -455,7 +455,7 @@ export function SettingsPage() {
           </div>
           <p className="muted small">
             Keyboard combos need a modifier (Ctrl, Alt, Shift) unless you use F-keys, the numpad,
-            Pause, Scroll Lock, or Insert. The combo is reserved system-wide while PitWall runs.
+            Pause, Scroll Lock, or Insert. The combo is reserved system-wide while Race Refinery runs.
           </p>
         </div>
       </div>
@@ -483,7 +483,7 @@ export function SettingsPage() {
                 onChange={(e) => update({ audioCoachVoice: e.target.value })}
               >
                 <option value="">
-                  {neuralVoice ? "PitWall voice (neural)" : "PitWall voice (not installed)"}
+                  {neuralVoice ? "Race Refinery voice (neural)" : "Race Refinery voice (not installed)"}
                 </option>
                 {savedVoiceMissing ? (
                   <option value={settings.audioCoachVoice}>
@@ -506,12 +506,12 @@ export function SettingsPage() {
               </button>
             </div>
             <p className="muted small">
-              Callouts are recorded in the PitWall voice, and live numbers (lap times, gaps,
+              Callouts are recorded in the Race Refinery voice, and live numbers (lap times, gaps,
               deltas) are spoken in the same voice on your PC. A Windows voice only changes the
               numbers and sounds more robotic.
               {neuralVoice
                 ? ""
-                : " The PitWall voice files are missing from this install, so numbers use Windows speech."}
+                : " The Race Refinery voice files are missing from this install, so numbers use Windows speech."}
             </p>
           </div>
 

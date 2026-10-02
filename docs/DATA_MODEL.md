@@ -1,6 +1,6 @@
 # Data model
 
-SQLite at `%LOCALAPPDATA%\pitwall-desktop\` (see `storage/db.rs`). **`PRAGMA user_version = 6`**.
+SQLite at `%LOCALAPPDATA%\race-refinery\` (see `storage/db.rs`). **`PRAGMA user_version = 6`**.
 
 Opening a pre-v2 DB drops analysis tables (`sessions`, `laps`, `sectors`, `lap_traces`) and requires reimport. v2 → v6 are additive migrations on `lap_traces` (GPS, elapsed time, raw pedals, then ABS activity), so existing sessions survive — they just have no GPS / exact corner timing / driver-pedal coloring / assist data until re-imported.
 
@@ -75,7 +75,7 @@ Frontend types: `src/shared/types.ts`.
 ## Track map cache
 
 Generated circuit outlines are stored as JSON beside the database:
-`%LOCALAPPDATA%\pitwall-desktop\track-maps\{slug}.json`. Imports write via
-`pitwall_storage::save_track_map`; Analyze / monitor / VR read via `load_track_map`.
+`%LOCALAPPDATA%\race-refinery\track-maps\{slug}.json`. Imports write via
+`race_refinery_storage::save_track_map`; Analyze / monitor / VR read via `load_track_map`.
 Outlines require GPS channels on the source IBT. Trace `lat` / `lon` (kept on
 `lap_traces`) let Analyze draw a lap's racing line in the outline's projection.

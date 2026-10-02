@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve PitWall Desktop.
+Thanks for helping improve Race Refinery.
 
 ---
 
@@ -41,7 +41,7 @@ OpenXR layer build: [NATIVE_VR.md](NATIVE_VR.md) and [openxr-layer/README.md](..
 | Features | `src/features/analyze/`, `src/features/live/` |
 | Shared IPC | `src/shared/` |
 | HUD widgets | `src/widgets/` |
-| Monitor host | `src/monitor/`, `crates/pitwall-monitor` |
+| Monitor host | `src/monitor/`, `crates/race-refinery-monitor` |
 | Docs hub | `docs/README.md` |
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the system map.
@@ -85,7 +85,7 @@ See [AUDIO_COACH.md](AUDIO_COACH.md). Phrases in `scripts/audio-phrases.txt`; co
 | Live field | **LIVE_TELEMETRY.md**, **COMPARISON.md** if SDK-related |
 | Lap cleanup / pace rules | **ANALYSIS.md**, `analysis/cleanup.rs` |
 
-Index: [docs/README.md](README.md). Prefer goal-oriented wording (what PitWall does); mention other apps only when needed for OpenXR load-order conflicts.
+Index: [docs/README.md](README.md). Prefer goal-oriented wording (what Race Refinery does); mention other apps only when needed for OpenXR load-order conflicts.
 
 ---
 

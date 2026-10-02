@@ -40,7 +40,7 @@ The Piper voice lives in `src-tauri/resources/audio/coach/piper/` (`*.onnx`, `to
 
 The voice loads once per app session (about 1 s) on the coach thread and synthesizes roughly 15× faster than real time on two CPU threads, so it stays light next to the sim. A plan's units are appended to one sink in order, so the next number is synthesized while the radio beep and clip before it are already playing. Piper output and baked clips are trimmed to 40 ms of edge padding so chained units flow.
 
-`audioCoachVoice` empty (the default, "PitWall voice") selects Piper; a Windows voice name routes numbers through WinRT instead. `audioCoachRate` maps to Piper speed and WinRT speaking rate; `audioCoachVolume` is applied on the sink. If Piper fails to load or synthesize, numbers fall back to WinRT and a warning is logged once.
+`audioCoachVoice` empty (the default, "Race Refinery voice") selects Piper; a Windows voice name routes numbers through WinRT instead. `audioCoachRate` maps to Piper speed and WinRT speaking rate; `audioCoachVolume` is applied on the sink. If Piper fails to load or synthesize, numbers fall back to WinRT and a warning is logged once.
 
 ---
 

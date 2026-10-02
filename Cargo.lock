@@ -3121,33 +3121,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pitwall-analysis"
-version = "0.1.0"
-dependencies = [
- "pitwall-telemetry",
- "rayon",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pitwall-audio"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "parking_lot",
- "pitwall-live",
- "pitwall-settings",
- "rodio",
- "serde",
- "serde_json",
- "sherpa-onnx",
- "tokio-util",
- "tracing",
- "windows 0.58.0",
-]
-
-[[package]]
 name = "pitwall-derive"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3156,138 +3129,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "pitwall-desktop"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "hound",
- "parking_lot",
- "pitwall",
- "pitwall-analysis",
- "pitwall-audio",
- "pitwall-ingest",
- "pitwall-input",
- "pitwall-live",
- "pitwall-monitor",
- "pitwall-settings",
- "pitwall-storage",
- "pitwall-telemetry",
- "pitwall-vr",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-updater",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "windows 0.58.0",
-]
-
-[[package]]
-name = "pitwall-ingest"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "dirs 6.0.0",
- "notify",
- "parking_lot",
- "pitwall",
- "pitwall-analysis",
- "pitwall-storage",
- "pitwall-telemetry",
- "sha2",
- "tauri",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "pitwall-input"
-version = "0.1.0"
-dependencies = [
- "parking_lot",
- "pitwall-settings",
- "tracing",
- "windows 0.58.0",
-]
-
-[[package]]
-name = "pitwall-live"
-version = "0.1.0"
-dependencies = [
- "futures",
- "parking_lot",
- "pitwall",
- "pitwall-settings",
- "pitwall-telemetry",
- "serde",
- "tauri",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "pitwall-monitor"
-version = "0.1.0"
-dependencies = [
- "parking_lot",
- "pitwall-settings",
- "serde",
- "tauri",
- "tracing",
-]
-
-[[package]]
-name = "pitwall-settings"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dirs 6.0.0",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pitwall-storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "dirs 6.0.0",
- "pitwall-analysis",
- "rusqlite",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pitwall-telemetry"
-version = "0.1.0"
-
-[[package]]
-name = "pitwall-vr"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "parking_lot",
- "pitwall-analysis",
- "pitwall-live",
- "pitwall-settings",
- "pitwall-storage",
- "serde",
- "serde_json",
- "tokio-util",
- "tracing",
- "windows 0.58.0",
 ]
 
 [[package]]
@@ -3462,6 +3303,165 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "race-refinery-analysis"
+version = "0.1.0"
+dependencies = [
+ "race-refinery-telemetry",
+ "rayon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "race-refinery-audio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "parking_lot",
+ "race-refinery-live",
+ "race-refinery-settings",
+ "rodio",
+ "serde",
+ "serde_json",
+ "sherpa-onnx",
+ "tokio-util",
+ "tracing",
+ "windows 0.58.0",
+]
+
+[[package]]
+name = "race-refinery-desktop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hound",
+ "parking_lot",
+ "pitwall",
+ "race-refinery-analysis",
+ "race-refinery-audio",
+ "race-refinery-ingest",
+ "race-refinery-input",
+ "race-refinery-live",
+ "race-refinery-monitor",
+ "race-refinery-settings",
+ "race-refinery-storage",
+ "race-refinery-telemetry",
+ "race-refinery-vr",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-updater",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "windows 0.58.0",
+]
+
+[[package]]
+name = "race-refinery-ingest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs 6.0.0",
+ "notify",
+ "parking_lot",
+ "pitwall",
+ "race-refinery-analysis",
+ "race-refinery-storage",
+ "race-refinery-telemetry",
+ "sha2",
+ "tauri",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "race-refinery-input"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "race-refinery-settings",
+ "tracing",
+ "windows 0.58.0",
+]
+
+[[package]]
+name = "race-refinery-live"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "parking_lot",
+ "pitwall",
+ "race-refinery-settings",
+ "race-refinery-telemetry",
+ "serde",
+ "tauri",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "race-refinery-monitor"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "race-refinery-settings",
+ "serde",
+ "tauri",
+ "tracing",
+]
+
+[[package]]
+name = "race-refinery-settings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs 6.0.0",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "race-refinery-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs 6.0.0",
+ "race-refinery-analysis",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "race-refinery-telemetry"
+version = "0.1.0"
+
+[[package]]
+name = "race-refinery-vr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "parking_lot",
+ "race-refinery-analysis",
+ "race-refinery-live",
+ "race-refinery-settings",
+ "race-refinery-storage",
+ "serde",
+ "serde_json",
+ "tokio-util",
+ "tracing",
+ "windows 0.58.0",
+]
 
 [[package]]
 name = "raw-window-handle"

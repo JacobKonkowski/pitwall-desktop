@@ -64,11 +64,11 @@ Short rationale for non-obvious decisions (ADR-lite). Each entry: context → de
 
 ---
 
-## Seqlock on `Local\PitWallVR`
+## Seqlock on `Local\RaceRefineryVR`
 
 **Context:** Rust writer (~30 Hz) and C++ reader (per frame) share one memory block.
 
-**Decision:** Seqlock protocol in `shm.rs` / `pitwall_vr_shm.h` — reader retries on torn reads.
+**Decision:** Seqlock protocol in `shm.rs` / `race_refinery_vr_shm.h` — reader retries on torn reads.
 
 **Consequences:** No mutex in the compositor hot path; occasional retry on conflict.
 

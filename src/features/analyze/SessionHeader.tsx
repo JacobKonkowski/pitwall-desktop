@@ -28,7 +28,7 @@ export function SessionHeader({ session, stats, sessionTypes, onReimport, reimpo
             className="btn btn-ghost sh-reimport"
             onClick={onReimport}
             disabled={reimporting}
-            title="Re-analyze this session's IBT with the latest PitWall analysis"
+            title="Re-analyze this session's IBT with the latest Race Refinery analysis"
           >
             {reimporting ? "Re-importing…" : "Re-import"}
           </button>
