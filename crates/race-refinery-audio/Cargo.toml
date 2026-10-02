@@ -11,7 +11,7 @@ race-refinery-live = { path = "../race-refinery-live" }
 race-refinery-settings = { path = "../race-refinery-settings" }
 anyhow = "1"
 parking_lot = "0.12"
-rodio = { version = "0.19", default-features = false, features = ["wav"] }
+rodio = { version = "0.22", default-features = false, features = ["wav"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sherpa-onnx = "1.13.8"
