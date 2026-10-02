@@ -1,7 +1,7 @@
-# PitWall audio coach clip phrases (key=text)
+# Race Refinery audio coach clip phrases (key=text)
 # Regenerate WAVs with scripts/generate-audio-clips.ps1
 
-intro_online=PitWall coach online.
+intro_online=Race Refinery coach online.
 intro_good_luck=Good luck.
 
 flag_red=Red flag.

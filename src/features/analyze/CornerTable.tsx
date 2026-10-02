@@ -152,7 +152,7 @@ export function CornerTable({
       {biggest ? <p className="corner-insight">{cornerInsight(biggest)}</p> : null}
       {estimated ? (
         <p className="muted corner-note">
-          One of these laps was imported before PitWall stored lap timing, so corner
+          One of these laps was imported before Race Refinery stored lap timing, so corner
           times are estimated from speed. Re-import the session for exact numbers.
         </p>
       ) : null}

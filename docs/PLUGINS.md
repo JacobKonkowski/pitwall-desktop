@@ -1,11 +1,11 @@
 # Plugins & extension points
 
-PitWall does not load third-party DLLs at runtime. Extensions land as **in-repo
+Race Refinery does not load third-party DLLs at runtime. Extensions land as **in-repo
 slices** (or forks) using stable seams:
 
 ## Coach rules
 
-1. Add `crates/pitwall-audio/src/engine/rules/my_rule.rs`
+1. Add `crates/race-refinery-audio/src/engine/rules/my_rule.rs`
 2. Register in `rules/mod.rs`
 3. Add phrases / WAVs if needed (`scripts/audio-phrases.txt`)
 4. Unit-test the rule with a synthetic `LiveSnapshot`

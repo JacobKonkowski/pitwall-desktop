@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use pitwall_input::InputWatcher;
+use race_refinery_input::InputWatcher;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::analysis::{

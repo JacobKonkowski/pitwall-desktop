@@ -1,6 +1,6 @@
 # Architecture
 
-PitWall is a Tauri 2 + React desktop app with a **Cargo workspace** of domain crates
+Race Refinery is a Tauri 2 + React desktop app with a **Cargo workspace** of domain crates
 and a thin `src-tauri` composition root. See [FOUNDATION.md](FOUNDATION.md) for the
 dependency table and contributor playbook.
 
@@ -11,7 +11,7 @@ dependency table and contributor playbook.
 └─────────────┬───────────────────────────┬───────────────┘
               │ invoke / events           │
 ┌─────────────▼───────────────────────────▼───────────────┐
-│  pitwall-desktop (commands / AppState)                  │
+│  race-refinery-desktop (commands / AppState)                  │
 ├──────────┬──────────┬──────────┬──────────┬─────────────┤
 │ ingest   │ live     │ audio    │ monitor  │ vr          │
 │ analysis │ storage  │ settings │ telemetry│             │

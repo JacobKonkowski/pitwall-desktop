@@ -1,11 +1,11 @@
 # Live field awareness
 
-PitWall’s live goal is **field awareness while you drive**: where you are relative to
+Race Refinery’s live goal is **field awareness while you drive**: where you are relative to
 the cars around you, session pace markers, and pack/spotter state — fed into the Live
 tab, voice coach, and in-headset HUD.
 
 Analyze Insights stay focused on **your** IBT laps (client-side). This document covers
-live SDK channels and how PitWall uses them.
+live SDK channels and how Race Refinery uses them.
 
 ## What live telemetry provides
 
@@ -20,7 +20,7 @@ live SDK channels and how PitWall uses them.
 | Flags | `SessionFlags` | — |
 | Your incident count | `PlayerCarMyIncidentCount` | Partial |
 
-PitWall does not import other drivers’ IBT files; field data comes from the live
+Race Refinery does not import other drivers’ IBT files; field data comes from the live
 shared-memory session.
 
 ## Live field awareness

@@ -27,7 +27,7 @@ import { TrackMapPanel } from "./TrackMapPanel";
 import { computeSessionStats } from "./sessionStats";
 import { useImportActions } from "./useImportActions";
 
-const LAST_SESSION_KEY = "pitwall.lastSessionId";
+const LAST_SESSION_KEY = "raceRefinery.lastSessionId";
 
 /** Fastest pace-eligible lap in the session (the default compare reference). */
 function defaultReferenceLap(laps: LapSummary[]): LapSummary | null {

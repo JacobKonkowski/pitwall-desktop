@@ -1,34 +1,34 @@
-//! PitWall Desktop — Tauri backend library.
+//! Race Refinery — Tauri backend library.
 //!
-//! Composition root: domain crates (`pitwall_telemetry`, `pitwall_analysis`,
-//! `pitwall_ingest`, `pitwall_storage`, `pitwall_live`, `pitwall_audio`,
-//! `pitwall_vr`, `pitwall_settings`, `pitwall_monitor`) plus [`commands`] IPC.
+//! Composition root: domain crates (`race_refinery_telemetry`, `race_refinery_analysis`,
+//! `race_refinery_ingest`, `race_refinery_storage`, `race_refinery_live`, `race_refinery_audio`,
+//! `race_refinery_vr`, `race_refinery_settings`, `race_refinery_monitor`) plus [`commands`] IPC.
 //! Domains must not depend on `commands`.
 
 pub mod commands;
 mod recenter;
 
-pub use pitwall_analysis as analysis;
-pub use pitwall_audio as audio;
-pub use pitwall_ingest as ingest;
-pub use pitwall_live as live;
-pub use pitwall_monitor as monitor;
-pub use pitwall_settings as settings;
-pub use pitwall_storage as storage;
-pub use pitwall_telemetry as telemetry;
-pub use pitwall_vr as vr;
+pub use race_refinery_analysis as analysis;
+pub use race_refinery_audio as audio;
+pub use race_refinery_ingest as ingest;
+pub use race_refinery_live as live;
+pub use race_refinery_monitor as monitor;
+pub use race_refinery_settings as settings;
+pub use race_refinery_storage as storage;
+pub use race_refinery_telemetry as telemetry;
+pub use race_refinery_vr as vr;
 
 use std::sync::Arc;
 
 use crate::commands::AppState;
-use pitwall_ingest::start_watcher;
+use race_refinery_ingest::start_watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new("pitwall_desktop_lib=info,pitwall=warn")
+                tracing_subscriber::EnvFilter::new("race_refinery_desktop_lib=info,pitwall=warn")
             }),
         )
         .try_init();

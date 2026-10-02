@@ -26,7 +26,7 @@ if ((Test-Path $Model) -and -not $Force) {
 
 $Archive = "vits-piper-$Voice"
 $Url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$Archive.tar.bz2"
-$Work = Join-Path ([System.IO.Path]::GetTempPath()) "pitwall-piper-$([guid]::NewGuid().ToString('N'))"
+$Work = Join-Path ([System.IO.Path]::GetTempPath()) "race-refinery-piper-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $Work | Out-Null
 
 try {

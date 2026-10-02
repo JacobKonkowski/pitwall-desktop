@@ -1,14 +1,14 @@
 [package]
-name = "pitwall-desktop"
+name = "race-refinery-desktop"
 version = "0.1.0"
 description = "Post-session iRacing telemetry analysis"
-authors = ["jrkon"]
+authors = ["Race Refinery"]
 license.workspace = true
 edition = "2021"
-default-run = "pitwall-desktop"
+default-run = "race-refinery-desktop"
 
 [lib]
-name = "pitwall_desktop_lib"
+name = "race_refinery_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -41,16 +41,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hound = "3.5"
 
-pitwall-telemetry = { path = "../crates/pitwall-telemetry" }
-pitwall-analysis = { path = "../crates/pitwall-analysis" }
-pitwall-settings = { path = "../crates/pitwall-settings" }
-pitwall-storage = { path = "../crates/pitwall-storage" }
-pitwall-ingest = { path = "../crates/pitwall-ingest" }
-pitwall-live = { path = "../crates/pitwall-live" }
-pitwall-audio = { path = "../crates/pitwall-audio" }
-pitwall-vr = { path = "../crates/pitwall-vr" }
-pitwall-monitor = { path = "../crates/pitwall-monitor" }
-pitwall-input = { path = "../crates/pitwall-input" }
+race-refinery-telemetry = { path = "../crates/race-refinery-telemetry" }
+race-refinery-analysis = { path = "../crates/race-refinery-analysis" }
+race-refinery-settings = { path = "../crates/race-refinery-settings" }
+race-refinery-storage = { path = "../crates/race-refinery-storage" }
+race-refinery-ingest = { path = "../crates/race-refinery-ingest" }
+race-refinery-live = { path = "../crates/race-refinery-live" }
+race-refinery-audio = { path = "../crates/race-refinery-audio" }
+race-refinery-vr = { path = "../crates/race-refinery-vr" }
+race-refinery-monitor = { path = "../crates/race-refinery-monitor" }
+race-refinery-input = { path = "../crates/race-refinery-input" }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

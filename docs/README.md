@@ -1,6 +1,6 @@
-# PitWall documentation hub
+# Race Refinery documentation hub
 
-PitWall Desktop helps you get faster in iRacing: **Analyze** your IBT telemetry after a session, and **Live** coach + HUD while you drive (voice callouts and an in-headset OpenXR panel).
+Race Refinery helps you get faster in iRacing: **Analyze** your IBT telemetry after a session, and **Live** coach + HUD while you drive (voice callouts and an in-headset OpenXR panel).
 
 ## Guides
 
@@ -44,7 +44,7 @@ PitWall Desktop helps you get faster in iRacing: **Analyze** your IBT telemetry 
 - Types → `src/shared/types.ts`, [DATA_MODEL.md](DATA_MODEL.md)
 - Live UI → `src/features/live/LivePage.tsx`
 - Analyze UI → `src/features/analyze/*`
-- Analysis cleanup → `crates/pitwall-analysis`, [ANALYSIS.md](ANALYSIS.md)
+- Analysis cleanup → `crates/race-refinery-analysis`, [ANALYSIS.md](ANALYSIS.md)
 - Feature list → `src/features/registry.ts`
 - Crate map → [FOUNDATION.md](FOUNDATION.md)
 

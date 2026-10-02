@@ -83,7 +83,7 @@ pub fn init(app: &AppHandle, state: &Arc<AppState>) {
     let hwnd = 0;
 
     let vr = state.vr.clone();
-    let watcher = pitwall_input::InputWatcher::start(hwnd, move || vr.request_recenter());
+    let watcher = race_refinery_input::InputWatcher::start(hwnd, move || vr.request_recenter());
     let _ = state.input.set(watcher);
 
     let settings = state.settings.lock().clone();

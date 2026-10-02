@@ -28,7 +28,7 @@ export function AppShell({ features }: Props) {
     <div className="app-shell">
       <header className="app-header" role="banner">
         <div className="app-brand">
-          <span className="brand-mark">PitWall</span>
+          <span className="brand-mark">Race Refinery</span>
           <span className="brand-sub">race telemetry</span>
         </div>
         <div className="app-header-actions" aria-label="Feature actions">

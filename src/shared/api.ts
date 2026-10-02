@@ -1,5 +1,5 @@
 /**
- * Tauri IPC wrappers for the PitWall backend.
+ * Tauri IPC wrappers for the Race Refinery backend.
  *
  * Commands use `invoke()`; live/import updates use `listen()` helpers below.
  * Analyze, live, audio, monitor, and VR handlers are registered in

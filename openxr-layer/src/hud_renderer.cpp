@@ -10,7 +10,7 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
-// PitWall HUD palette (matches the ?layout=ironman CSS in hud_server.rs).
+// Race Refinery HUD palette (matches the ?layout=ironman CSS in hud_server.rs).
 const D2D1_COLOR_F kGlow = {0.36f, 1.0f, 0.66f, 1.0f};      // #5dffa8
 const D2D1_COLOR_F kGlowDim = {0.36f, 1.0f, 0.66f, 0.6f};
 const D2D1_COLOR_F kHero = {0.91f, 1.0f, 0.95f, 1.0f};      // #e8fff3
@@ -50,12 +50,12 @@ std::wstring FormatGap(float s) {
 
 const wchar_t* PackLabel(uint32_t state) {
     switch (state) {
-        case PW_PACK_CLEAR: return L"CLEAR";
-        case PW_PACK_CAR_LEFT: return L"\u25C0 CAR";
-        case PW_PACK_CAR_RIGHT: return L"CAR \u25B6";
-        case PW_PACK_THREE_WIDE: return L"3-WIDE";
-        case PW_PACK_TWO_LEFT: return L"2 LEFT";
-        case PW_PACK_TWO_RIGHT: return L"2 RIGHT";
+        case RR_PACK_CLEAR: return L"CLEAR";
+        case RR_PACK_CAR_LEFT: return L"\u25C0 CAR";
+        case RR_PACK_CAR_RIGHT: return L"CAR \u25B6";
+        case RR_PACK_THREE_WIDE: return L"3-WIDE";
+        case RR_PACK_TWO_LEFT: return L"2 LEFT";
+        case RR_PACK_TWO_RIGHT: return L"2 RIGHT";
         default: return L"";
     }
 }
@@ -67,26 +67,26 @@ D2D1_COLOR_F DeltaColor(float ms) {
 
 // Track-map vertices are normalized 0..1; letterbox them into the render target
 // so the circuit keeps its aspect ratio on a non-square overlay.
-D2D1_POINT_2F TrackMapPixel(const PwTrackMapPoint& p, float w, float h) {
+D2D1_POINT_2F TrackMapPixel(const RrTrackMapPoint& p, float w, float h) {
     const float side = w < h ? w : h;
     return {(w - side) * 0.5f + p.x * side, (h - side) * 0.5f + p.y * side};
 }
 
 // Interpolate a lap fraction onto the outline, treating the gap between the last
 // and first vertex as the closing segment. Mirrors `track_map::point_at`.
-D2D1_POINT_2F TrackMapPointAt(const PwTrackMap& map, float pct, float w, float h) {
+D2D1_POINT_2F TrackMapPointAt(const RrTrackMap& map, float pct, float w, float h) {
     const uint32_t count = map.point_count;
     float t = std::fmod(pct, 1.0f);
     if (t < 0.0f) t += 1.0f;
 
-    const PwTrackMapPoint& first = map.points[0];
-    const PwTrackMapPoint& last = map.points[count - 1];
+    const RrTrackMapPoint& first = map.points[0];
+    const RrTrackMapPoint& last = map.points[count - 1];
     if (t <= first.pct || t >= last.pct) {
         const float span = 1.0f - last.pct + first.pct;
         if (span <= 0.0f) return TrackMapPixel(first, w, h);
         const float travelled = t >= last.pct ? t - last.pct : 1.0f - last.pct + t;
         const float u = travelled / span;
-        const PwTrackMapPoint lerped = {last.x + (first.x - last.x) * u,
+        const RrTrackMapPoint lerped = {last.x + (first.x - last.x) * u,
                                         last.y + (first.y - last.y) * u, t};
         return TrackMapPixel(lerped, w, h);
     }
@@ -94,11 +94,11 @@ D2D1_POINT_2F TrackMapPointAt(const PwTrackMap& map, float pct, float w, float h
     uint32_t hi = 1;
     while (hi < count && map.points[hi].pct <= t) ++hi;
     if (hi >= count) hi = count - 1;
-    const PwTrackMapPoint& a = map.points[hi - 1];
-    const PwTrackMapPoint& b = map.points[hi];
+    const RrTrackMapPoint& a = map.points[hi - 1];
+    const RrTrackMapPoint& b = map.points[hi];
     const float span = b.pct - a.pct;
     const float u = span > 0.0f ? (t - a.pct) / span : 0.0f;
-    const PwTrackMapPoint lerped = {a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, t};
+    const RrTrackMapPoint lerped = {a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, t};
     return TrackMapPixel(lerped, w, h);
 }
 
@@ -262,8 +262,8 @@ bool HudRenderer::EnsureDrawTexture(uint32_t width, uint32_t height) {
     return true;
 }
 
-bool HudRenderer::DrawToSurface(IDXGISurface* surface, const PwOverlay& overlay,
-                                const PwSnapshot& snapshot, float opacity) {
+bool HudRenderer::DrawToSurface(IDXGISurface* surface, const RrOverlay& overlay,
+                                const RrSnapshot& snapshot, float opacity) {
     D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
         D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
@@ -281,11 +281,11 @@ bool HudRenderer::DrawToSurface(IDXGISurface* surface, const PwOverlay& overlay,
     (void)opacity;
 
     switch (overlay.kind) {
-        case PW_OVERLAY_STANDINGS: DrawStandings(snapshot, size.width, size.height); break;
-        case PW_OVERLAY_RELATIVE: DrawRelative(snapshot, size.width, size.height); break;
-        case PW_OVERLAY_RADAR: DrawRadar(snapshot, size.width, size.height); break;
-        case PW_OVERLAY_TRACKMAP: DrawTrackMap(snapshot, size.width, size.height); break;
-        case PW_OVERLAY_COACH:
+        case RR_OVERLAY_STANDINGS: DrawStandings(snapshot, size.width, size.height); break;
+        case RR_OVERLAY_RELATIVE: DrawRelative(snapshot, size.width, size.height); break;
+        case RR_OVERLAY_RADAR: DrawRadar(snapshot, size.width, size.height); break;
+        case RR_OVERLAY_TRACKMAP: DrawTrackMap(snapshot, size.width, size.height); break;
+        case RR_OVERLAY_COACH:
         default: DrawCoach(snapshot, size.width, size.height); break;
     }
 
@@ -319,8 +319,8 @@ void HudRenderer::DrawCornerBrackets(D2D1_RECT_F r, D2D1_COLOR_F color) {
     m_d2dContext->DrawLine({r.right, r.bottom}, {r.right, r.bottom - len}, brush.Get(), w);
 }
 
-bool HudRenderer::Render(ID3D11Texture2D* target, const PwOverlay& overlay,
-                         const PwSnapshot& snapshot, float opacity) {
+bool HudRenderer::Render(ID3D11Texture2D* target, const RrOverlay& overlay,
+                         const RrSnapshot& snapshot, float opacity) {
     if (!m_ready || !target) {
         return false;
     }
@@ -352,7 +352,7 @@ bool HudRenderer::Render(ID3D11Texture2D* target, const PwOverlay& overlay,
     return true;
 }
 
-void HudRenderer::DrawCoach(const PwSnapshot& s, float w, float h) {
+void HudRenderer::DrawCoach(const RrSnapshot& s, float w, float h) {
     const float cx = w * 0.5f;
 
     // Hero lap time, centered.
@@ -402,23 +402,23 @@ void HudRenderer::DrawCoach(const PwSnapshot& s, float w, float h) {
 
     // Field pace, per user preference.
     std::wstring field;
-    if (s.field_pace_mode == PW_FIELD_PACE_OPTIMAL) {
+    if (s.field_pace_mode == RR_FIELD_PACE_OPTIMAL) {
         field = std::wstring(L"OPT ") + FormatDelta(s.delta_field_optimal_ms);
-    } else if (s.field_pace_mode == PW_FIELD_PACE_BOTH) {
+    } else if (s.field_pace_mode == RR_FIELD_PACE_BOTH) {
         field = std::wstring(L"FLD ") + FormatDelta(s.delta_field_best_ms) + L"  OPT " +
                 FormatDelta(s.delta_field_optimal_ms);
     } else {
         field = std::wstring(L"FLD ") + FormatDelta(s.delta_field_best_ms);
     }
     DrawText(field.c_str(), m_value.Get(), {cx + 130.0f, dy, cx + 380.0f, dy + 34.0f},
-             DeltaColor(s.field_pace_mode == PW_FIELD_PACE_OPTIMAL
+             DeltaColor(s.field_pace_mode == RR_FIELD_PACE_OPTIMAL
                             ? s.delta_field_optimal_ms
                             : s.delta_field_best_ms));
 
     // Pack / spotter line (hidden when off / clear handled by empty label).
     const wchar_t* pack = PackLabel(s.pack_state);
     if (pack && *pack) {
-        const D2D1_COLOR_F packColor = s.pack_state == PW_PACK_CLEAR ? kGlow : kWarn;
+        const D2D1_COLOR_F packColor = s.pack_state == RR_PACK_CLEAR ? kGlow : kWarn;
         DrawText(pack, m_badge.Get(), {cx - 120.0f, dy + 36.0f, cx + 120.0f, dy + 70.0f},
                  packColor);
     }
@@ -449,36 +449,36 @@ void HudRenderer::DrawCoach(const PwSnapshot& s, float w, float h) {
              kGlowDim);
 }
 
-void HudRenderer::DrawStandings(const PwSnapshot& s, float w, float h) {
+void HudRenderer::DrawStandings(const RrSnapshot& s, float w, float h) {
     DrawText(L"STANDINGS", m_label.Get(), {24.0f, 8.0f, w - 24.0f, 32.0f}, kGlowDim);
     const float rowH = 30.0f;
-    const uint32_t count = s.competitor_count < PITWALL_VR_MAX_COMPETITORS
+    const uint32_t count = s.competitor_count < RACE_REFINERY_VR_MAX_COMPETITORS
                                ? s.competitor_count
-                               : PITWALL_VR_MAX_COMPETITORS;
+                               : RACE_REFINERY_VR_MAX_COMPETITORS;
     const uint32_t maxRows = static_cast<uint32_t>((h - 40.0f) / rowH);
     for (uint32_t i = 0; i < count && i < maxRows; ++i) {
-        const PwCompetitor& c = s.competitors[i];
-        const bool isPlayer = (c.flags & PW_COMPETITOR_IS_PLAYER) != 0;
+        const RrCompetitor& c = s.competitors[i];
+        const bool isPlayer = (c.flags & RR_COMPETITOR_IS_PLAYER) != 0;
         const float y = 40.0f + rowH * i;
         wchar_t line[128];
-        char name[PITWALL_VR_NAME_LEN + 1];
-        std::memcpy(name, c.name, PITWALL_VR_NAME_LEN);
-        name[PITWALL_VR_NAME_LEN] = '\0';
+        char name[RACE_REFINERY_VR_NAME_LEN + 1];
+        std::memcpy(name, c.name, RACE_REFINERY_VR_NAME_LEN);
+        name[RACE_REFINERY_VR_NAME_LEN] = '\0';
         swprintf(line, 128, L"P%-2d  #%hs  %hs", c.position, c.number, name);
         DrawText(line, m_label.Get(), {24.0f, y, w - 24.0f, y + rowH}, isPlayer ? kHero : kGlow);
     }
 }
 
-void HudRenderer::DrawRelative(const PwSnapshot& s, float w, float h) {
+void HudRenderer::DrawRelative(const RrSnapshot& s, float w, float h) {
     DrawText(L"RELATIVE", m_label.Get(), {24.0f, 8.0f, w - 24.0f, 32.0f}, kGlowDim);
     const float rowH = 32.0f;
     const float cy = h * 0.5f;
-    const uint32_t count = s.competitor_count < PITWALL_VR_MAX_COMPETITORS
+    const uint32_t count = s.competitor_count < RACE_REFINERY_VR_MAX_COMPETITORS
                                ? s.competitor_count
-                               : PITWALL_VR_MAX_COMPETITORS;
+                               : RACE_REFINERY_VR_MAX_COMPETITORS;
     for (uint32_t i = 0; i < count; ++i) {
-        const PwCompetitor& c = s.competitors[i];
-        if (IsNone(c.gap_to_player_s) || (c.flags & PW_COMPETITOR_IS_PLAYER)) {
+        const RrCompetitor& c = s.competitors[i];
+        if (IsNone(c.gap_to_player_s) || (c.flags & RR_COMPETITOR_IS_PLAYER)) {
             continue;
         }
         if (std::fabs(c.gap_to_player_s) > 8.0f) {
@@ -492,7 +492,7 @@ void HudRenderer::DrawRelative(const PwSnapshot& s, float w, float h) {
     DrawText(L"YOU", m_value.Get(), {24.0f, cy - 16.0f, 200.0f, cy + 16.0f}, kHero);
 }
 
-void HudRenderer::DrawRadar(const PwSnapshot& s, float w, float h) {
+void HudRenderer::DrawRadar(const RrSnapshot& s, float w, float h) {
     const float cx = w * 0.5f;
     const float cy = h * 0.5f;
     ComPtr<ID2D1SolidColorBrush> me, them;
@@ -501,13 +501,13 @@ void HudRenderer::DrawRadar(const PwSnapshot& s, float w, float h) {
     if (me) {
         m_d2dContext->FillEllipse(D2D1::Ellipse({cx, cy}, 8.0f, 8.0f), me.Get());
     }
-    const uint32_t count = s.competitor_count < PITWALL_VR_MAX_COMPETITORS
+    const uint32_t count = s.competitor_count < RACE_REFINERY_VR_MAX_COMPETITORS
                                ? s.competitor_count
-                               : PITWALL_VR_MAX_COMPETITORS;
+                               : RACE_REFINERY_VR_MAX_COMPETITORS;
     const float scale = 14.0f;  // pixels per second of gap
     for (uint32_t i = 0; i < count && them; ++i) {
-        const PwCompetitor& c = s.competitors[i];
-        if (IsNone(c.gap_to_player_s) || (c.flags & PW_COMPETITOR_IS_PLAYER)) {
+        const RrCompetitor& c = s.competitors[i];
+        if (IsNone(c.gap_to_player_s) || (c.flags & RR_COMPETITOR_IS_PLAYER)) {
             continue;
         }
         if (std::fabs(c.gap_to_player_s) > 3.0f) {
@@ -518,16 +518,16 @@ void HudRenderer::DrawRadar(const PwSnapshot& s, float w, float h) {
     }
 }
 
-void HudRenderer::DrawTrackMap(const PwSnapshot& s, float w, float h) {
-    const PwTrackMap& map = s.track_map;
+void HudRenderer::DrawTrackMap(const RrSnapshot& s, float w, float h) {
+    const RrTrackMap& map = s.track_map;
     if (map.point_count < 2) {
         DrawText(L"NO TRACK MAP", m_label.Get(),
                  {0.0f, h * 0.5f - 16.0f, w, h * 0.5f + 16.0f}, kGlowDim);
         return;
     }
-    const uint32_t count = map.point_count < PITWALL_VR_MAX_TRACK_MAP_POINTS
+    const uint32_t count = map.point_count < RACE_REFINERY_VR_MAX_TRACK_MAP_POINTS
                                ? map.point_count
-                               : PITWALL_VR_MAX_TRACK_MAP_POINTS;
+                               : RACE_REFINERY_VR_MAX_TRACK_MAP_POINTS;
 
     ComPtr<ID2D1SolidColorBrush> circuit, me, them, pit;
     m_d2dContext->CreateSolidColorBrush(kGlowDim, circuit.GetAddressOf());
@@ -549,16 +549,16 @@ void HudRenderer::DrawTrackMap(const PwSnapshot& s, float w, float h) {
     const D2D1_POINT_2F start = TrackMapPixel(map.points[0], w, h);
     m_d2dContext->DrawEllipse(D2D1::Ellipse(start, 9.0f, 9.0f), circuit.Get(), 3.0f);
 
-    const uint32_t cars = s.competitor_count < PITWALL_VR_MAX_COMPETITORS
+    const uint32_t cars = s.competitor_count < RACE_REFINERY_VR_MAX_COMPETITORS
                               ? s.competitor_count
-                              : PITWALL_VR_MAX_COMPETITORS;
+                              : RACE_REFINERY_VR_MAX_COMPETITORS;
     for (uint32_t i = 0; i < cars && them && pit; ++i) {
-        const PwCompetitor& c = s.competitors[i];
-        if (c.flags & PW_COMPETITOR_IS_PLAYER) {
+        const RrCompetitor& c = s.competitors[i];
+        if (c.flags & RR_COMPETITOR_IS_PLAYER) {
             continue;  // the player is drawn from the snapshot below
         }
         ID2D1SolidColorBrush* brush =
-            (c.flags & PW_COMPETITOR_ON_PIT_ROAD) ? pit.Get() : them.Get();
+            (c.flags & RR_COMPETITOR_ON_PIT_ROAD) ? pit.Get() : them.Get();
         const D2D1_POINT_2F at = TrackMapPointAt(map, c.lap_dist_pct, w, h);
         m_d2dContext->FillEllipse(D2D1::Ellipse(at, 7.0f, 7.0f), brush);
     }

@@ -577,8 +577,8 @@ export function LivePage() {
               <div className="vr-checklist">
                 <h3>RaceLab-off checklist</h3>
                 <ul className="muted small">
-                  <li>Disable RaceLab VR (and other OpenXR API layers) before using PitWall native.</li>
-                  <li>Install the PitWall OpenXR layer once, then restart iRacing in OpenXR / VR mode.</li>
+                  <li>Disable RaceLab VR (and other OpenXR API layers) before using Race Refinery native.</li>
+                  <li>Install the Race Refinery OpenXR layer once, then restart iRacing in OpenXR / VR mode.</li>
                   <li>Only one implicit OpenXR layer stack should be active — two layers fight for compositing.</li>
                   <li>Confirm layer diagnostics show ready, then Start HUD and verify the test-pattern quad.</li>
                 </ul>

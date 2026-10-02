@@ -1,4 +1,4 @@
-// Direct2D/DirectWrite renderer for the PitWall overlays.
+// Direct2D/DirectWrite renderer for the Race Refinery overlays.
 //
 // Draws into OpenXR D3D11 swapchain textures. iRacing's device often lacks
 // D3D11_CREATE_DEVICE_BGRA_SUPPORT, so we prefer a private BGRA device on the
@@ -11,7 +11,7 @@
 #include <dwrite.h>
 #include <wrl/client.h>
 
-#include "pitwall_vr_shm.h"
+#include "race_refinery_vr_shm.h"
 
 class HudRenderer {
 public:
@@ -23,8 +23,8 @@ public:
     bool Initialize(ID3D11Device* appDevice);
 
     // Draw one overlay into `target` (a BGRA swapchain texture) from `snapshot`.
-    bool Render(ID3D11Texture2D* target, const PwOverlay& overlay,
-                const PwSnapshot& snapshot, float opacity);
+    bool Render(ID3D11Texture2D* target, const RrOverlay& overlay,
+                const RrSnapshot& snapshot, float opacity);
 
 private:
     Microsoft::WRL::ComPtr<ID3D11Device> m_appDevice;
@@ -52,14 +52,14 @@ private:
 
     bool InitD2D(ID3D11Device* device);
     bool EnsureDrawTexture(uint32_t width, uint32_t height);
-    bool DrawToSurface(IDXGISurface* surface, const PwOverlay& overlay,
-                       const PwSnapshot& snapshot, float opacity);
+    bool DrawToSurface(IDXGISurface* surface, const RrOverlay& overlay,
+                       const RrSnapshot& snapshot, float opacity);
 
-    void DrawCoach(const PwSnapshot& s, float w, float h);
-    void DrawStandings(const PwSnapshot& s, float w, float h);
-    void DrawRelative(const PwSnapshot& s, float w, float h);
-    void DrawRadar(const PwSnapshot& s, float w, float h);
-    void DrawTrackMap(const PwSnapshot& s, float w, float h);
+    void DrawCoach(const RrSnapshot& s, float w, float h);
+    void DrawStandings(const RrSnapshot& s, float w, float h);
+    void DrawRelative(const RrSnapshot& s, float w, float h);
+    void DrawRadar(const RrSnapshot& s, float w, float h);
+    void DrawTrackMap(const RrSnapshot& s, float w, float h);
 
     void DrawText(const wchar_t* text, IDWriteTextFormat* fmt, D2D1_RECT_F rect,
                   D2D1_COLOR_F color);
