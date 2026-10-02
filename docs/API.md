@@ -43,7 +43,7 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 | `get_settings` | `getSettings` | Full `AppSettings` |
 | `save_settings_cmd` | `saveSettings` | Full write; applies recenter bindings; emits `settings-changed` |
 | `patch_settings_cmd` | `patchSettings` | Merge top-level camelCase keys; nested objects replaced whole |
-| `list_tts_voices_cmd` | `listTtsVoices` | Installed Windows speech voices for the coach picker |
+| `list_tts_voices_cmd` | `listTtsVoices` | Installed Windows speech voices (numbers-only alternatives to the bundled Piper voice) |
 
 ## Audio
 
@@ -51,9 +51,9 @@ Backend commands are registered in `src-tauri/src/lib.rs` from `commands/mod.rs`
 |---------|-----------|--------|
 | `start_audio_coach` | `startAudioCoach` | |
 | `stop_audio_coach` | `stopAudioCoach` | |
-| `get_audio_coach_status` | `getAudioCoachStatus` | |
+| `get_audio_coach_status` | `getAudioCoachStatus` | Includes `neuralVoice` (bundled Piper voice installed) |
 | `get_audio_coach_message` | `getAudioCoachMessage` | |
-| `test_audio_coach` | `testAudioCoach` | TTS-only sample |
+| `test_audio_coach` | `testAudioCoach` | Sample lap callout with the saved voice settings |
 
 ## Monitor overlays
 

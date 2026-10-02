@@ -13,25 +13,26 @@ mod imp {
 
     pub struct WinRtTts {
         synthesizer: SpeechSynthesizer,
-        rate: f32,
-        volume: f32,
     }
 
     impl WinRtTts {
-        pub fn new(rate: f32, volume: f32) -> anyhow::Result<Self> {
-            Ok(Self {
+        pub fn new(rate: f32) -> anyhow::Result<Self> {
+            let mut tts = Self {
                 synthesizer: SpeechSynthesizer::new()?,
-                rate,
-                volume,
-            })
+            };
+            tts.set_rate(rate);
+            Ok(tts)
         }
 
+        /// Speaking rate multiplier (1.0 = normal). Volume is applied at playback.
         pub fn set_rate(&mut self, rate: f32) {
-            self.rate = rate;
-        }
-
-        pub fn set_volume(&mut self, volume: f32) {
-            self.volume = volume;
+            let applied = self
+                .synthesizer
+                .Options()
+                .and_then(|o| o.SetSpeakingRate(f64::from(rate.clamp(0.5, 6.0))));
+            if let Err(e) = applied {
+                tracing::warn!("WinRT speaking rate: {e}");
+            }
         }
 
         fn all_voices() -> anyhow::Result<Vec<VoiceInformation>> {
@@ -115,7 +116,6 @@ mod imp {
                 .map_err(|e| anyhow::anyhow!("WinRT stream read: {e}"))?;
             let mut buf = vec![0u8; size];
             reader.ReadBytes(&mut buf)?;
-            let _ = (self.rate, self.volume);
             Ok(buf)
         }
     }
@@ -125,15 +125,13 @@ mod imp {
     }
 
     fn voice_info(v: &VoiceInformation) -> anyhow::Result<VoiceInfo> {
+        let display_name = v.DisplayName()?.to_string();
+        let lower = display_name.to_ascii_lowercase();
         Ok(VoiceInfo {
-            display_name: v.DisplayName()?.to_string(),
+            neural: lower.contains("neural") || lower.contains("natural"),
+            display_name,
             language: v.Language()?.to_string(),
             gender: format!("{:?}", v.Gender()?),
-            neural: v
-                .DisplayName()?
-                .to_string()
-                .to_ascii_lowercase()
-                .contains("neural"),
         })
     }
 }
@@ -150,13 +148,11 @@ mod imp {
     pub struct WinRtTts;
 
     impl WinRtTts {
-        pub fn new(_rate: f32, _volume: f32) -> anyhow::Result<Self> {
+        pub fn new(_rate: f32) -> anyhow::Result<Self> {
             anyhow::bail!("WinRT TTS is only available on Windows")
         }
 
         pub fn set_rate(&mut self, _rate: f32) {}
-
-        pub fn set_volume(&mut self, _volume: f32) {}
 
         pub fn list_voices() -> anyhow::Result<Vec<VoiceInfo>> {
             anyhow::bail!("WinRT TTS is only available on Windows")

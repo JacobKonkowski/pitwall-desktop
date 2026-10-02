@@ -480,6 +480,8 @@ export interface AppSettings {
 export interface AudioCoachStatus {
   active: boolean;
   lastMessage: string;
+  /** Bundled Piper voice is installed, so the default voice is neural. */
+  neuralVoice: boolean;
 }
 
 export interface MonitorOverlayStatus {
