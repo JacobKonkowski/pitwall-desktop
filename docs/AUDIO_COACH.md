@@ -1,6 +1,6 @@
 # Audio coach
 
-The live audio coach speaks race-engineer callouts while you drive. **Runtime policy:** pre-recorded WAV clips for fixed phrases plus **Windows WinRT TTS** for dynamic numbers (lap times, gaps, positions). That keeps latency predictable during a session; heavy voice synthesis stays in the offline clip-bake tooling.
+The live audio coach speaks race-engineer callouts while you drive. **Runtime policy:** fixed phrases are pre-recorded WAV clips, and dynamic numbers (lap times, gaps, deltas, positions) are synthesized live by the **same bundled Piper neural voice** the clips were baked with, so a callout sounds like one speaker. Windows WinRT speech is the fallback when the Piper voice is missing, or when the user picks a Windows voice in Settings.
 
 ---
 
@@ -14,7 +14,8 @@ flowchart LR
   Queue --> Player[AudioPlayer rodio]
   Player --> Speakers[Speakers]
   Manifest[ClipManifest] --> Player
-  WinRT[tts_winrt] --> Player
+  Piper[tts_piper] --> Player
+  WinRT[tts_winrt fallback] --> Player
 ```
 
 | Module | Role |
@@ -22,7 +23,9 @@ flowchart LR
 | `audio/engine/` + `rules/*` | Priority logic, edge detection, session modes (`coach.rs` re-exports `RaceEngine`) |
 | `audio/speech.rs` | `SpeechPlan` / `SpeechUnit` (clip, TTS, sequence) |
 | `audio/queue.rs` | Serializes playback; one line at a time |
-| `audio/player.rs` | rodio WAV playback + WinRT synthesis |
+| `audio/player.rs` | One rodio sink per plan: clips + synthesized numbers, volume |
+| `audio/tts_piper.rs` | Piper (VITS) voice via sherpa-onnx, CPU, in-process |
+| `audio/tts_winrt.rs` | Windows speech fallback and voice list |
 | `audio/manifest.rs` | Maps clip keys → WAV paths |
 | `audio/clip_phrases.rs` | Phrase file loader for clip export |
 | `audio/phrasing.rs` | Number/time formatting for TTS |
@@ -31,15 +34,23 @@ flowchart LR
 
 Clips ship in `src-tauri/resources/audio/coach/default/` (`manifest.json` + `*.wav`) and are bundled via `bundle.resources` in `tauri.conf.json`. At startup the host passes the resolved folder (Tauri resource dir in a packaged build, the `src-tauri` tree under `tauri dev`) to `AudioCoachService::set_clips_dir`. If no `manifest.json` is found, the coach logs a warning and continues TTS-only; clip callouts are skipped.
 
+### Voice
+
+The Piper voice lives in `src-tauri/resources/audio/coach/piper/` (`*.onnx`, `tokens.txt`, `espeak-ng-data/`, about 78 MB). It is **not committed**: run `scripts/fetch-piper-voice.ps1` once per checkout; the release CI job runs it before `tauri build`, and the folder is bundled like the clips (`AudioCoachService::set_voice_dir`). The default is `en_US-norman-medium`, trained on public-domain LibriVox audio. Do not swap in Lessac-derived Piper voices (`lessac`, `ryan`, `amy`, `joe`, `hfc_*`, …): their training data is research-only or non-commercial.
+
+The voice loads once per app session (about 1 s) on the coach thread and synthesizes roughly 15× faster than real time on two CPU threads, so it stays light next to the sim. A plan's units are appended to one sink in order, so the next number is synthesized while the radio beep and clip before it are already playing. Piper output and baked clips are trimmed to 40 ms of edge padding so chained units flow.
+
+`audioCoachVoice` empty (the default, "PitWall voice") selects Piper; a Windows voice name routes numbers through WinRT instead. `audioCoachRate` maps to Piper speed and WinRT speaking rate; `audioCoachVolume` is applied on the sink. If Piper fails to load or synthesize, numbers fall back to WinRT and a warning is logged once.
+
 ---
 
 ## Speech plans
 
 - **Clip only** — flags, pack, many fuel phrases (`flag_yellow`, `pack_car_left`, …)
 - **TTS only** — rare full-string dynamic lines
-- **Sequence** — clip prefix + WinRT numbers (typical lap/sector: `"Lap"` clip + `"1:23.456"` TTS)
+- **Sequence** — clip prefix + live numbers (typical lap: `"Lap"` clip + `"12, 1 23.5"` TTS)
 
-Lap and sector callouts use sequences so intonation stays consistent while times stay accurate.
+Lap and sector callouts use sequences so intonation stays consistent while times stay accurate. `phrasing.rs` writes numbers the way the Piper phonemizer reads them naturally: lap times in radio cadence (`"1 23.5"` → "one twenty-three point five", `"1 oh 5.3"` for seconds under ten), deltas in tenths under a second (`"1 tenth"`, never `"0 tenths"`), and whole-second gaps without a trailing `.0`.
 
 ---
 
@@ -98,25 +109,27 @@ Session reset clears coach state when track or session type changes.
 
 ## Dev clip pipeline
 
-Neural WinRT synthesis runs **only** in the export tool at dev time.
+Clips are baked with the same Piper voice the app uses live (`--engine piper`, the default). The script fetches the voice first if it is missing.
 
 ```powershell
-.\scripts\generate-audio-clips.ps1 -ListVoices
-.\scripts\generate-audio-clips.ps1 -Voice "Jenny"
+.\scripts\generate-audio-clips.ps1
+.\scripts\generate-audio-clips.ps1 -Only tyre_hot,lap_invalid
 ```
 
 Or via Cargo:
 
 ```powershell
+cargo run --release --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips
+cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine winrt --voice "Guy"
 cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --list-voices
-cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine winrt
 ```
 
 1. Edit [`scripts/audio-phrases.txt`](../scripts/audio-phrases.txt) (`key=spoken text`)
 2. Run the script — writes `src-tauri/resources/audio/coach/default/*.wav` + `manifest.json`.
    To add clips without re-recording the rest, pass `-Only key1,key2`; other WAVs
    and manifest entries are kept. `radio_beep` is a synthesized chirp, not speech.
-3. Commit WAVs so release builds bundle your voice
+3. Commit WAVs so release builds bundle them. If you change the Piper voice, re-bake
+   every clip so callouts and live numbers stay one speaker.
 4. Add a rule under `audio/engine/rules/` (or extend an existing rule) if it's a new alert type
 5. Add a settings toggle if user-configurable
 
@@ -140,9 +153,9 @@ cargo run --manifest-path src-tauri\Cargo.toml --bin gen-audio-clips -- --engine
 |---------|---------|
 | `start_audio_coach` | Start poll loop (requires live monitor) |
 | `stop_audio_coach` | Stop queue and player |
-| `get_audio_coach_status` | Active flag + last message |
+| `get_audio_coach_status` | Active flag, last message, `neuralVoice` (Piper installed) |
 | `get_audio_coach_message` | Last spoken line |
-| `test_audio_coach` | One-shot TTS sample (works without WAV clips) |
+| `test_audio_coach` | One-shot lap callout (clips + live number) with the saved voice, speed, volume |
 
 Auto-starts when `audioCoachEnabled` is true and live monitor starts.
 

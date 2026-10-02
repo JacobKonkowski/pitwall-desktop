@@ -21,6 +21,8 @@ pack_two_right=Two cars on your right.
 pack_clear=Clear all around.
 pack_clear_left=Clear left.
 pack_clear_right=Clear right.
+pack_approaching_ahead=Closing on traffic ahead.
+pack_approaching_behind=Car closing from behind.
 
 gap_ahead=Gap ahead.
 gap_behind=Gap behind.
@@ -44,6 +46,7 @@ tyre_hot=Tyres are running hot.
 lap_invalid=Invalid lap.
 
 fuel_good_to_finish=Fuel is good to the finish.
+fuel_one_more_stop=Fuel to the finish, with a lap to spare.
 fuel_low=Fuel low.
 fuel_pit_this_lap=Pit this lap or next.
 fuel_short_on_fuel=Short on fuel.

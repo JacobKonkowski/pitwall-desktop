@@ -1,10 +1,12 @@
 //! Dev-only: batch-export coach WAV clips from `scripts/audio-phrases.txt`.
 //!
 //! **Not invoked by the PitWall app at runtime.** Use while developing to bake
-//! neural WinRT speech into committed WAV files.
+//! the bundled Piper voice into committed WAV files, so fixed callouts match the
+//! live numbers the app synthesizes with the same voice.
 //!
 //! ```text
-//! cargo run --bin gen-audio-clips -- --engine winrt
+//! cargo run --bin gen-audio-clips
+//! cargo run --bin gen-audio-clips -- --engine winrt --voice "Guy"
 //! cargo run --bin gen-audio-clips -- --list-voices
 //! cargo run --bin gen-audio-clips -- --engine placeholder
 //! cargo run --bin gen-audio-clips -- --only tyre_hot,lap_invalid
@@ -13,30 +15,37 @@
 //! `radio_beep` is not speech: it is always written as a synthesized two-tone
 //! chirp, independent of the engine.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use pitwall_desktop_lib::audio::{load_phrases_file, tts_winrt::WinRtTts};
+use pitwall_desktop_lib::audio::{
+    load_phrases_file, tts_piper::PiperTts, tts_winrt::WinRtTts, PIPER_VOICE_REL,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "gen-audio-clips")]
 struct Args {
-    /// `winrt` = Windows neural SpeechSynthesizer (dev machine only).
+    /// `piper` = bundled neural voice (run scripts/fetch-piper-voice.ps1 first).
+    /// `winrt` = Windows SpeechSynthesizer.
     /// `placeholder` = short silence for CI / layout tests.
-    #[arg(long, default_value = "winrt")]
+    #[arg(long, default_value = "piper")]
     engine: String,
 
     #[arg(long)]
     list_voices: bool,
 
     /// Substring match on WinRT voice display name (e.g. "Jenny", "Guy").
-    /// Default: first en-US neural voice.
+    /// Default: first en-US neural voice. WinRT engine only.
     #[arg(long)]
     voice: Option<String>,
+
+    /// Piper voice folder (`*.onnx`, `tokens.txt`, `espeak-ng-data/`).
+    #[arg(long, default_value = PIPER_VOICE_REL, value_name = "DIR")]
+    voice_dir: PathBuf,
 
     #[arg(long, default_value = "scripts/audio-phrases.txt", value_name = "PATH")]
     phrases: PathBuf,
@@ -84,12 +93,19 @@ fn main() -> anyhow::Result<()> {
         phrases.retain(|k, _| args.only.contains(k));
     }
 
+    let voice_dir = if args.voice_dir.is_absolute() {
+        args.voice_dir
+    } else {
+        manifest_dir.join(&args.voice_dir)
+    };
+
     let engine = args.engine.to_ascii_lowercase();
     let mut manifest = match engine.as_str() {
         "placeholder" => export_placeholder(&phrases, &out_dir)?,
-        "winrt" if phrases.is_empty() => HashMap::new(),
+        "piper" | "winrt" if phrases.is_empty() => HashMap::new(),
+        "piper" => export_piper(&phrases, &out_dir, &voice_dir)?,
         "winrt" => export_winrt(&phrases, &out_dir, args.voice.as_deref())?,
-        other => anyhow::bail!("unknown engine '{other}' (use winrt or placeholder)"),
+        other => anyhow::bail!("unknown engine '{other}' (use piper, winrt or placeholder)"),
     };
 
     let mut count = phrases.len();
@@ -145,12 +161,54 @@ fn export_placeholder(
     Ok(manifest)
 }
 
+fn export_piper(
+    phrases: &HashMap<String, String>,
+    out_dir: &Path,
+    voice_dir: &Path,
+) -> anyhow::Result<HashMap<String, String>> {
+    let tts = PiperTts::load(voice_dir).map_err(|e| {
+        e.context(format!(
+            "Piper voice not found in {} (run scripts/fetch-piper-voice.ps1)",
+            voice_dir.display()
+        ))
+    })?;
+    println!("Using Piper voice: {}", tts.model_name());
+
+    let mut manifest = HashMap::new();
+    let mut keys: Vec<_> = phrases.keys().collect();
+    keys.sort();
+
+    for key in keys {
+        let text = &phrases[key];
+        let file = format!("{key}.wav");
+        let audio = tts.synthesize(text, 1.0)?;
+        if audio.samples.is_empty() {
+            anyhow::bail!("Piper returned empty audio for '{key}'");
+        }
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: audio.sample_rate,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        };
+        let mut writer = WavWriter::create(out_dir.join(&file), spec)?;
+        for s in &audio.samples {
+            writer.write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)?;
+        }
+        writer.finalize()?;
+        manifest.insert(key.clone(), file);
+        println!("piper: {key}  ({text})");
+    }
+
+    Ok(manifest)
+}
+
 fn export_winrt(
     phrases: &HashMap<String, String>,
     out_dir: &Path,
     voice: Option<&str>,
 ) -> anyhow::Result<HashMap<String, String>> {
-    let mut tts = WinRtTts::new(1.0, 1.0)?;
+    let mut tts = WinRtTts::new(1.0)?;
     tts.set_voice(voice)?;
     if let Some(name) = tts.current_voice_name() {
         println!("Using voice: {name}");
@@ -179,8 +237,8 @@ fn export_winrt(
 /// Short two-tone radio chirp (1.2 kHz then 1.8 kHz, ~140 ms) with a soft
 /// envelope so it does not click.
 fn write_radio_beep(path: &Path) -> anyhow::Result<()> {
-    // Matches the WinRT speech clips.
-    const RATE: u32 = 16000;
+    // Matches the Piper speech clips.
+    const RATE: u32 = 22050;
     let spec = WavSpec {
         channels: 1,
         sample_rate: RATE,
@@ -235,7 +293,8 @@ fn write_placeholder_wav(path: &Path) -> anyhow::Result<()> {
 }
 
 fn write_manifest(out_dir: &Path, manifest: &HashMap<String, String>) -> anyhow::Result<()> {
-    let json = serde_json::to_string_pretty(manifest)?;
+    let sorted: BTreeMap<_, _> = manifest.iter().collect();
+    let json = serde_json::to_string_pretty(&sorted)?;
     fs::write(out_dir.join("manifest.json"), json)?;
     Ok(())
 }

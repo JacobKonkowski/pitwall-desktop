@@ -23,12 +23,13 @@
 | Symptom | Check |
 |---------|--------|
 | Test Coach works, live silent | Missing WAVs under `src-tauri/resources/audio/coach/default/` — regenerate clips. Look for `Coach clips unavailable, continuing TTS-only` in the log |
-| No Test Coach either | Windows speech / WinRT voices installed; coach not muted in settings |
+| Numbers sound robotic | Settings voice should be "PitWall voice (neural)". If it says "not installed", run `scripts/fetch-piper-voice.ps1` (dev) or reinstall; the log shows `Piper voice not installed` |
+| No Test Coach either | Audio output device; coach volume above 0 in settings; for a Windows voice, WinRT voices installed |
 | Pack / clear wrong | Pack uses `CarLeftRight` enum; confirm on-track / not pit-road suppression |
 | Clip key missing | Phrase in `scripts/audio-phrases.txt` + regenerate; player skips missing files |
 
 ```powershell
-.\scripts\generate-audio-clips.ps1 -Engine WinRT
+.\scripts\generate-audio-clips.ps1 -Only <key>
 ```
 
 ## Native VR

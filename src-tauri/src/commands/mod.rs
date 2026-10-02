@@ -610,17 +610,22 @@ fn vr_layer_manifest_path(app: &AppHandle) -> Result<String, String> {
 /// Coach clip folder: bundled resources in a packaged build, else the `src-tauri`
 /// tree under `tauri dev`. `None` when neither holds a `manifest.json`.
 pub(crate) fn coach_clips_dir(app: &AppHandle) -> Option<PathBuf> {
+    coach_resource_dir(app, crate::audio::COACH_CLIPS_REL, "manifest.json")
+}
+
+/// Piper voice folder, resolved like [`coach_clips_dir`]; `None` when not installed.
+pub(crate) fn coach_voice_dir(app: &AppHandle) -> Option<PathBuf> {
+    coach_resource_dir(app, crate::audio::PIPER_VOICE_REL, "tokens.txt")
+}
+
+fn coach_resource_dir(app: &AppHandle, rel: &str, marker: &str) -> Option<PathBuf> {
     use tauri::Manager;
-    let bundled = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|dir| dir.join(crate::audio::COACH_CLIPS_REL));
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(crate::audio::COACH_CLIPS_REL);
+    let bundled = app.path().resource_dir().ok().map(|dir| dir.join(rel));
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel);
     bundled
         .into_iter()
         .chain(std::iter::once(dev))
-        .find(|dir| dir.join("manifest.json").is_file())
+        .find(|dir| dir.join(marker).is_file())
 }
 
 #[tauri::command]

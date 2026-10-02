@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   captureControllerButton,
+  getAudioCoachStatus,
   getSettings,
   listTtsVoices,
   recenterVr,
@@ -76,6 +77,7 @@ export function SettingsPage() {
   const [capturingKey, setCapturingKey] = useState(false);
   const [capturingButton, setCapturingButton] = useState(false);
   const [voices, setVoices] = useState<TtsVoiceInfo[]>([]);
+  const [neuralVoice, setNeuralVoice] = useState(true);
   const settingsRef = useRef<AppSettings | null>(null);
   const saveTimer = useRef<number | null>(null);
 
@@ -89,6 +91,9 @@ export function SettingsPage() {
     listTtsVoices()
       .then(setVoices)
       .catch(() => setVoices([]));
+    getAudioCoachStatus()
+      .then((s) => setNeuralVoice(s.neuralVoice))
+      .catch(() => undefined);
     return () => {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     };
@@ -107,6 +112,20 @@ export function SettingsPage() {
       if (!latest) return;
       saveSettings(latest).catch((e) => showToast(`Settings save failed: ${String(e)}`, "error"));
     }, 150);
+  };
+
+  /** The test reads settings from disk, so land any pending edit (e.g. a new voice) first. */
+  const testCoach = async () => {
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try {
+      if (settingsRef.current) await saveSettings(settingsRef.current);
+      await testAudioCoach();
+    } catch (e) {
+      showToast(`Coach test failed: ${String(e)}`, "error");
+    }
   };
 
   const update = (patch: Partial<AppSettings>) => {
@@ -463,25 +482,36 @@ export function SettingsPage() {
                 value={settings.audioCoachVoice}
                 onChange={(e) => update({ audioCoachVoice: e.target.value })}
               >
-                <option value="">System default</option>
+                <option value="">
+                  {neuralVoice ? "PitWall voice (neural)" : "PitWall voice (not installed)"}
+                </option>
                 {savedVoiceMissing ? (
                   <option value={settings.audioCoachVoice}>
                     {settings.audioCoachVoice} (not installed)
                   </option>
                 ) : null}
-                {voices.map((v) => (
-                  <option key={v.displayName} value={v.displayName}>
-                    {v.displayName} ({v.language}
-                    {v.neural ? ", neural" : ""})
-                  </option>
-                ))}
+                {voices.length > 0 ? (
+                  <optgroup label="Windows voices (numbers only)">
+                    {voices.map((v) => (
+                      <option key={v.displayName} value={v.displayName}>
+                        {v.displayName} ({v.language}
+                        {v.neural ? ", neural" : ""})
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
               </select>
-              <button type="button" className="btn" onClick={() => void testAudioCoach()}>
+              <button type="button" className="btn" onClick={() => void testCoach()}>
                 Test
               </button>
             </div>
             <p className="muted small">
-              The voice reads numbers (lap times, gaps). Fixed phrases use the recorded clips.
+              Callouts are recorded in the PitWall voice, and live numbers (lap times, gaps,
+              deltas) are spoken in the same voice on your PC. A Windows voice only changes the
+              numbers and sounds more robotic.
+              {neuralVoice
+                ? ""
+                : " The PitWall voice files are missing from this install, so numbers use Windows speech."}
             </p>
           </div>
 

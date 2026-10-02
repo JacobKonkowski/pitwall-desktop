@@ -48,6 +48,9 @@ pub fn run() {
             if let Some(dir) = commands::coach_clips_dir(app.handle()) {
                 state.audio.set_clips_dir(dir);
             }
+            if let Some(dir) = commands::coach_voice_dir(app.handle()) {
+                state.audio.set_voice_dir(dir);
+            }
             start_watcher(app.handle().clone(), state.import.clone());
             recenter::init(app.handle(), &state);
             Ok(())

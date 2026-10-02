@@ -31,6 +31,10 @@ target/
 openxr-layer/build/
 src-tauri/resources/openxr-layer/*.dll
 
+# Piper coach voice (~78 MB; fetch with scripts/fetch-piper-voice.ps1)
+src-tauri/resources/audio/coach/piper/*
+!src-tauri/resources/audio/coach/piper/README.md
+
 # Local env
 .env
 .env.*

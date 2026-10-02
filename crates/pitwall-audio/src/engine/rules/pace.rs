@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use pitwall_settings::AppSettings;
 
 use super::super::super::phrasing::{
-    format_delta_tts, format_duration_long, format_gap_seconds, lap_time_tts, sector_time_tts,
+    format_delta_tts, format_gap_seconds, lap_time_tts, sector_time_tts,
 };
 use super::super::super::queue::SpeechPriority;
 use super::super::super::speech::{SpeechPlan, SpeechUnit};
@@ -97,22 +97,23 @@ impl Rule for PaceRule {
                     self.best_lap_ms =
                         Some(self.best_lap_ms.map(|b| b.min(lap_ms)).unwrap_or(lap_ms));
                 } else if settings.audio_invalid_lap_enabled {
-                    let time_str = format_duration_long(lap_ms);
                     self.pending_lap_plan = Some(wrap_with_radio(
                         settings,
                         SpeechPlan::sequence(vec![
                             SpeechUnit::Clip("lap_invalid".into()),
                             SpeechUnit::Clip("lap".into()),
-                            SpeechUnit::Tts(format!("{completed_lap}, {time_str}.")),
+                            SpeechUnit::Tts(format!("{}.", lap_time_tts(completed_lap, lap_ms))),
                         ]),
                     ));
                 } else {
-                    let time_str = format_duration_long(lap_ms);
                     self.pending_lap_plan = Some(wrap_with_radio(
                         settings,
                         SpeechPlan::sequence(vec![
                             SpeechUnit::Clip("lap".into()),
-                            SpeechUnit::Tts(format!("{completed_lap}, {time_str}. Out lap.")),
+                            SpeechUnit::Tts(format!(
+                                "{}. Out lap.",
+                                lap_time_tts(completed_lap, lap_ms)
+                            )),
                         ]),
                     ));
                 }

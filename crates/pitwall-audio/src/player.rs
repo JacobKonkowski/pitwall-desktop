@@ -1,99 +1,164 @@
-﻿use std::fs::File;
+﻿use std::cell::Cell;
+use std::fs::File;
 use std::io::{BufReader, Cursor};
-use std::path::Path;
-use std::time::Duration;
+use std::sync::Arc;
 
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use rodio::buffer::SamplesBuffer;
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+
+use pitwall_settings::AppSettings;
 
 use super::manifest::ClipManifest;
 use super::speech::{SpeechPlan, SpeechUnit};
+use super::tts_piper::PiperTts;
 use super::tts_winrt::WinRtTts;
+
+type BoxedSource = Box<dyn Source<Item = f32> + Send>;
 
 pub struct AudioPlayer {
     _stream: OutputStream,
     handle: OutputStreamHandle,
     manifest: ClipManifest,
-    tts: WinRtTts,
+    piper: Option<Arc<PiperTts>>,
+    winrt: Option<WinRtTts>,
+    rate: f32,
+    volume: f32,
+    /// Windows voice picked for numbers; empty selects the bundled Piper voice.
+    voice: String,
+    piper_failed: Cell<bool>,
 }
 
 impl AudioPlayer {
-    pub fn new(manifest: ClipManifest, rate: f32, volume: f32) -> anyhow::Result<Self> {
+    pub fn new(
+        manifest: ClipManifest,
+        piper: Option<Arc<PiperTts>>,
+        settings: &AppSettings,
+    ) -> anyhow::Result<Self> {
         let (stream, handle) =
             OutputStream::try_default().map_err(|e| anyhow::anyhow!("audio output: {e}"))?;
-        Ok(Self {
+        let winrt = match WinRtTts::new(settings.audio_coach_rate) {
+            Ok(tts) => Some(tts),
+            Err(e) => {
+                tracing::warn!("Windows speech unavailable: {e:#}");
+                None
+            }
+        };
+        let mut player = Self {
             _stream: stream,
             handle,
             manifest,
-            tts: WinRtTts::new(rate, volume)?,
-        })
-    }
-
-    pub fn set_voice_settings(&mut self, rate: f32, volume: f32, voice: &str) {
-        self.tts.set_rate(rate);
-        self.tts.set_volume(volume);
-        if !voice.is_empty() {
-            if let Err(e) = self.tts.set_voice(Some(voice)) {
-                tracing::warn!("TTS voice selection failed: {e:#}");
-            }
-        }
-    }
-
-    pub fn play_plan(&self, plan: &SpeechPlan) -> anyhow::Result<()> {
-        match plan {
-            SpeechPlan::Clip(key) => self.play_clip(key),
-            SpeechPlan::Sequence(units) => {
-                for unit in units {
-                    match unit {
-                        SpeechUnit::Tts(text) => self.play_tts(text)?,
-                        SpeechUnit::Clip(key) => {
-                            if let Err(e) = self.play_clip(key) {
-                                tracing::warn!("clip {key}: {e:#}");
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn play_clip(&self, key: &str) -> anyhow::Result<()> {
-        let Some(path) = self.manifest.path(key) else {
-            tracing::warn!("missing coach clip: {key}");
-            return Ok(());
+            piper,
+            winrt,
+            rate: settings.audio_coach_rate,
+            volume: settings.audio_coach_volume,
+            voice: settings.audio_coach_voice.clone(),
+            piper_failed: Cell::new(false),
         };
-        self.play_wav_file(&path)
+        player.select_winrt_voice();
+        Ok(player)
     }
 
-    fn play_tts(&self, text: &str) -> anyhow::Result<()> {
-        let bytes = self.tts.synthesize_wav(text)?;
-        if bytes.is_empty() {
-            return Ok(());
+    /// Pick up rate / volume / voice changes; cheap when nothing changed.
+    pub fn apply_settings(&mut self, settings: &AppSettings) {
+        if (settings.audio_coach_rate - self.rate).abs() > f32::EPSILON {
+            self.rate = settings.audio_coach_rate;
+            if let Some(winrt) = &mut self.winrt {
+                winrt.set_rate(self.rate);
+            }
         }
-        self.play_wav_bytes(&bytes)
+        self.volume = settings.audio_coach_volume;
+        if settings.audio_coach_voice != self.voice {
+            self.voice = settings.audio_coach_voice.clone();
+            self.select_winrt_voice();
+        }
     }
 
-    fn play_wav_file(&self, path: &Path) -> anyhow::Result<()> {
-        let file = File::open(path)?;
-        let decoder = Decoder::new(BufReader::new(file))?;
-        self.play_decoder(decoder)
+    fn select_winrt_voice(&mut self) {
+        let Some(winrt) = &mut self.winrt else {
+            return;
+        };
+        let hint = (!self.voice.is_empty()).then_some(self.voice.as_str());
+        if let Err(e) = winrt.set_voice(hint) {
+            tracing::warn!("TTS voice selection failed: {e:#}");
+        }
     }
 
-    fn play_wav_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
-        let decoder = Decoder::new(Cursor::new(bytes.to_vec()))?;
-        self.play_decoder(decoder)
-    }
-
-    fn play_decoder<R: std::io::Read + std::io::Seek + Send + 'static>(
-        &self,
-        decoder: Decoder<R>,
-    ) -> anyhow::Result<()> {
+    /// Play every unit back to back on one sink. Units are appended in order, so
+    /// synthesis of a later number overlaps playback of the clips before it.
+    pub fn play_plan(&self, plan: &SpeechPlan) -> anyhow::Result<()> {
+        let single;
+        let units: &[SpeechUnit] = match plan {
+            SpeechPlan::Clip(key) => {
+                single = [SpeechUnit::Clip(key.clone())];
+                &single
+            }
+            SpeechPlan::Sequence(units) => units,
+        };
         let sink = Sink::try_new(&self.handle)?;
-        sink.append(decoder);
-        while !sink.empty() {
-            std::thread::sleep(Duration::from_millis(20));
+        sink.set_volume(self.volume.max(0.0));
+        for unit in units {
+            let source = match unit {
+                SpeechUnit::Clip(key) => self.clip_source(key),
+                SpeechUnit::Tts(text) => self.tts_source(text),
+            };
+            if let Some(source) = source {
+                sink.append(source);
+            }
         }
         sink.sleep_until_end();
         Ok(())
+    }
+
+    fn clip_source(&self, key: &str) -> Option<BoxedSource> {
+        let Some(path) = self.manifest.path(key) else {
+            tracing::warn!("missing coach clip: {key}");
+            return None;
+        };
+        let decoded = File::open(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|file| Ok(Decoder::new(BufReader::new(file))?));
+        match decoded {
+            Ok(decoder) => Some(Box::new(decoder.convert_samples())),
+            Err(e) => {
+                tracing::warn!("clip {key}: {e:#}");
+                None
+            }
+        }
+    }
+
+    fn tts_source(&self, text: &str) -> Option<BoxedSource> {
+        if text.trim().is_empty() {
+            return None;
+        }
+        if self.voice.is_empty() {
+            if let Some(piper) = &self.piper {
+                match piper.synthesize(text, self.rate) {
+                    Ok(audio) if audio.samples.is_empty() => return None,
+                    Ok(audio) => {
+                        return Some(Box::new(SamplesBuffer::new(
+                            1,
+                            audio.sample_rate,
+                            audio.samples,
+                        )))
+                    }
+                    Err(e) => {
+                        if !self.piper_failed.replace(true) {
+                            tracing::warn!("Piper TTS failed, using Windows speech: {e:#}");
+                        }
+                    }
+                }
+            }
+        }
+        let winrt = self.winrt.as_ref()?;
+        let decoded = winrt
+            .synthesize_wav(text)
+            .and_then(|bytes| Ok(Decoder::new(Cursor::new(bytes))?));
+        match decoded {
+            Ok(decoder) => Some(Box::new(decoder.convert_samples())),
+            Err(e) => {
+                tracing::warn!("TTS '{text}': {e:#}");
+                None
+            }
+        }
     }
 }

@@ -31,17 +31,25 @@ irsdkEnableDisk=1
 
 Restart iRacing after changing. Record with **Alt+L** → `Documents\iRacing\telemetry\*.ibt`.
 
-## Generate coach WAV clips (dev)
+## Coach voice and clips (dev)
 
-Live coach prefers baked WAVs under `src-tauri/resources/audio/coach/default/`.
+The coach speaks numbers with a bundled Piper neural voice that is not committed (about 78 MB). Fetch it once per checkout, before `tauri dev` or `tauri build`:
 
 ```powershell
-.\scripts\generate-audio-clips.ps1 -Engine WinRT
-# Fallback (silent placeholders for CI / layout):
+.\scripts\fetch-piper-voice.ps1
+```
+
+Without it the app still runs, but numbers fall back to the robotic Windows speech.
+
+The fixed callouts are committed WAVs under `src-tauri/resources/audio/coach/default/`, baked with the same voice. Re-bake only after editing `scripts/audio-phrases.txt`:
+
+```powershell
+.\scripts\generate-audio-clips.ps1
+# Silent placeholders for CI / layout:
 .\scripts\generate-audio-clips.ps1 -Engine Placeholder
 ```
 
-Test Coach uses TTS-only and works without WAVs; live coach needs the clip set matching `manifest.json`.
+Test Coach plays a lap callout (clips plus a live lap time) with the saved voice, speed and volume.
 
 ---
 
@@ -49,7 +57,7 @@ Test Coach uses TTS-only and works without WAVs; live coach needs the clip set m
 
 1. **app.ini** — `irsdkEnableMem=1` and `irsdkEnableDisk=1`, then restart iRacing.
 2. **Import** — Confirm Analyze can see sessions (auto-watcher or Import). Reimport after schema upgrades.
-3. **Test Coach** — Live tab → Test Coach. You should hear speech (TTS path).
+3. **Test Coach** — Live tab → Test Coach. You should hear a radio-style lap callout in one natural voice.
 4. **Demo clock** — Start Demo Clock on Live to exercise UI / SHM test pattern without a session.
 5. **HUD preview** — Open HUD preview → browser at `http://127.0.0.1:17342/vr`.
 6. **Other OpenXR layers** — Disable any other OpenXR API layers that composite overlays. Only one layer stack should own compositing while you test PitWall.

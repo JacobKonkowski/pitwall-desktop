@@ -1,4 +1,5 @@
-//! Path B audio coach: WAV clips + WinRT TTS for dynamic numbers.
+//! Path B audio coach: pre-baked WAV clips for fixed callouts, plus the bundled
+//! Piper neural voice (WinRT fallback) for dynamic numbers.
 mod clip_phrases;
 mod coach;
 pub mod engine;
@@ -8,16 +9,18 @@ mod player;
 mod queue;
 mod session_mode;
 mod speech;
+pub mod tts_piper;
 pub mod tts_winrt;
 
 pub use clip_phrases::load_phrases_file;
 pub use engine::{RaceContext, RaceEngine, RuleSet, SessionMeta};
 pub use speech::SpeechPlan;
+pub use tts_piper::PIPER_VOICE_REL;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -30,6 +33,7 @@ use manifest::ClipManifest;
 use player::AudioPlayer;
 use queue::SpeechQueue;
 use speech::SpeechUnit;
+use tts_piper::PiperTts;
 
 /// Coach clip folder relative to a resource root (`manifest.json` + `*.wav`).
 pub const COACH_CLIPS_REL: &str = "resources/audio/coach/default";
@@ -39,6 +43,8 @@ pub struct AudioCoachService {
     active: Mutex<bool>,
     last_message: Mutex<String>,
     clips_dir: Mutex<Option<PathBuf>>,
+    voice_dir: Mutex<Option<PathBuf>>,
+    piper: Mutex<Option<Arc<PiperTts>>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -46,6 +52,8 @@ pub struct AudioCoachService {
 pub struct AudioCoachStatus {
     pub active: bool,
     pub last_message: String,
+    /// The bundled Piper voice is installed, so the default voice is neural.
+    pub neural_voice: bool,
 }
 
 impl AudioCoachService {
@@ -55,12 +63,19 @@ impl AudioCoachService {
             active: Mutex::new(false),
             last_message: Mutex::new(String::new()),
             clips_dir: Mutex::new(None),
+            voice_dir: Mutex::new(None),
+            piper: Mutex::new(None),
         }
     }
 
     /// Directory the host resolved for coach clips; tried before workspace fallbacks.
     pub fn set_clips_dir(&self, dir: PathBuf) {
         *self.clips_dir.lock() = Some(dir);
+    }
+
+    /// Directory the host resolved for the Piper voice; tried before workspace fallbacks.
+    pub fn set_voice_dir(&self, dir: PathBuf) {
+        *self.voice_dir.lock() = Some(dir);
     }
 
     pub fn is_active(&self) -> bool {
@@ -71,6 +86,7 @@ impl AudioCoachService {
         AudioCoachStatus {
             active: *self.active.lock(),
             last_message: self.last_message.lock().clone(),
+            neural_voice: piper_voice_dir(self).is_some(),
         }
     }
 
@@ -120,26 +136,78 @@ impl Default for AudioCoachService {
     }
 }
 
-/// The clip set committed in the repo, which `tauri dev` and tests run against.
-fn workspace_clips_dir() -> PathBuf {
+/// `rel` inside the repo's `src-tauri` tree, which `tauri dev` and tests run against.
+fn workspace_resource_dir(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../src-tauri")
-        .join(COACH_CLIPS_REL)
+        .join(rel)
 }
 
-/// Clip directories in lookup order: host override, repo `src-tauri`, this crate,
-/// then beside the running executable.
-fn clip_dir_candidates(override_dir: Option<PathBuf>) -> Vec<PathBuf> {
+/// The clip set committed in the repo.
+fn workspace_clips_dir() -> PathBuf {
+    workspace_resource_dir(COACH_CLIPS_REL)
+}
+
+/// Resource directories in lookup order: host override, repo `src-tauri`, this
+/// crate, then beside the running executable.
+fn resource_dir_candidates(override_dir: Option<PathBuf>, rel: &str) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = override_dir.into_iter().collect();
-    candidates.push(workspace_clips_dir());
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(COACH_CLIPS_REL));
+    candidates.push(workspace_resource_dir(rel));
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel));
     if let Some(dir) = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(PathBuf::from))
     {
-        candidates.push(dir.join(COACH_CLIPS_REL));
+        candidates.push(dir.join(rel));
     }
     candidates
+}
+
+fn clip_dir_candidates(override_dir: Option<PathBuf>) -> Vec<PathBuf> {
+    resource_dir_candidates(override_dir, COACH_CLIPS_REL)
+}
+
+fn piper_voice_dir(service: &AudioCoachService) -> Option<PathBuf> {
+    let override_dir = service.voice_dir.lock().clone();
+    resource_dir_candidates(override_dir, PIPER_VOICE_REL)
+        .into_iter()
+        .find(|dir| PiperTts::is_voice_dir(dir))
+}
+
+/// Load the Piper voice once per process; `None` (WinRT fallback) when absent.
+fn piper_voice(service: &AudioCoachService) -> Option<Arc<PiperTts>> {
+    let mut cached = service.piper.lock();
+    if let Some(piper) = cached.as_ref() {
+        return Some(Arc::clone(piper));
+    }
+    let Some(dir) = piper_voice_dir(service) else {
+        tracing::warn!("Piper voice not installed; numbers use Windows speech");
+        return None;
+    };
+    let started = Instant::now();
+    match PiperTts::load(&dir) {
+        Ok(piper) => {
+            tracing::info!(
+                "Piper voice {} loaded in {} ms",
+                piper.model_name(),
+                started.elapsed().as_millis()
+            );
+            let piper = Arc::new(piper);
+            *cached = Some(Arc::clone(&piper));
+            Some(piper)
+        }
+        Err(e) => {
+            tracing::warn!("Piper voice failed to load, using Windows speech: {e:#}");
+            None
+        }
+    }
+}
+
+fn build_player(
+    service: &AudioCoachService,
+    settings: &AppSettings,
+) -> anyhow::Result<AudioPlayer> {
+    AudioPlayer::new(load_manifest(service), piper_voice(service), settings)
 }
 
 fn coach_clips_dir(service: &AudioCoachService) -> PathBuf {
@@ -159,19 +227,21 @@ fn load_manifest(service: &AudioCoachService) -> ClipManifest {
     })
 }
 
+/// Same voice, volume, and clip + number blend as an on-track lap callout.
 fn run_speak_test(service: Arc<AudioCoachService>) -> anyhow::Result<()> {
-    let manifest = load_manifest(&service);
     let settings = load_settings();
-    let player = AudioPlayer::new(
-        manifest,
-        settings.audio_coach_rate,
-        settings.audio_coach_volume,
-    )?;
-    let plan = SpeechPlan::sequence(vec![
-        SpeechUnit::Tts("PitWall coach online.".into()),
-        SpeechUnit::Tts("Last lap, one minute twenty nine point four five two.".into()),
+    let player = build_player(&service, &settings)?;
+    let mut units = Vec::new();
+    if settings.audio_radio_effects_enabled {
+        units.push(SpeechUnit::Clip("radio_beep".into()));
+    }
+    units.extend([
+        SpeechUnit::Clip("intro_online".into()),
+        SpeechUnit::Clip("lap".into()),
+        SpeechUnit::Tts(phrasing::lap_time_tts(12, 89_452.0)),
+        SpeechUnit::Tts(phrasing::format_delta_tts(-300.0)),
     ]);
-    play(&player, &service, &plan, &settings)
+    play(&player, &service, &SpeechPlan::sequence(units), &settings)
 }
 
 fn run_audio_loop(
@@ -179,28 +249,14 @@ fn run_audio_loop(
     live: Arc<LiveService>,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
-    let manifest = load_manifest(&service);
     let settings = load_settings();
-    let mut player = AudioPlayer::new(
-        manifest,
-        settings.audio_coach_rate,
-        settings.audio_coach_volume,
-    )?;
+    let mut player = build_player(&service, &settings)?;
     let mut engine = CoachEngine::new();
     let mut queue = SpeechQueue::new(3);
-    let mut applied_rate = f32::NAN;
-    let mut applied_volume = f32::NAN;
-    let mut applied_voice = String::new();
 
     while !cancel.is_cancelled() {
         let settings = load_settings();
-        apply_voice_settings(
-            &mut player,
-            &settings,
-            &mut applied_rate,
-            &mut applied_volume,
-            &mut applied_voice,
-        );
+        player.apply_settings(&settings);
 
         if let Some(meta) = live.session_meta.lock().clone() {
             engine.set_session_meta(meta);
@@ -227,29 +283,6 @@ fn run_audio_loop(
         thread::sleep(Duration::from_millis(250));
     }
     Ok(())
-}
-
-fn apply_voice_settings(
-    player: &mut AudioPlayer,
-    settings: &AppSettings,
-    applied_rate: &mut f32,
-    applied_volume: &mut f32,
-    applied_voice: &mut String,
-) {
-    let voice = settings.audio_coach_voice.clone();
-    if (settings.audio_coach_rate - *applied_rate).abs() > f32::EPSILON
-        || (settings.audio_coach_volume - *applied_volume).abs() > f32::EPSILON
-        || voice != *applied_voice
-    {
-        player.set_voice_settings(
-            settings.audio_coach_rate,
-            settings.audio_coach_volume,
-            &voice,
-        );
-        *applied_rate = settings.audio_coach_rate;
-        *applied_volume = settings.audio_coach_volume;
-        *applied_voice = voice;
-    }
 }
 
 fn play(
